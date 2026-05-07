@@ -11,6 +11,7 @@
 | US7 | Course Recommendations | As a student, I want recommended TUM courses in my roadmap milestones when applicable, so that I can align my studies with my goal.             
 | US8 | External Recommendations           | As a student, I want the roadmap to include steps beyond TUM (e.g., external certifications, skills to acquire), so that I have a holistic view of what it takes to reach my career goal besides studies.                               |
 | US9 | Save Roadmap           | As a student, I want to be able to store my roadmap and view it again later.                            | 
+| US10 | Choose Goal Type          | As a student, I want to be able to choose if I want to submit a "Career Goal" or "University Course Goal".                            | 
 
 ## System Stories
 
