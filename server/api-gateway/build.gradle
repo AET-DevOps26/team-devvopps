@@ -1,0 +1,4 @@
+springBoot {
+    mainClass = 'com.tum.gateway.ApiGatewayApplication'
+}
+

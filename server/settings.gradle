@@ -1,1 +1,6 @@
-rootProject.name = 'roadmap'
+rootProject.name = 'server'
+
+include 'course-service'
+include 'roadmap-service'
+include 'user-progress-service'
+include 'api-gateway'

@@ -1,0 +1,7 @@
+springBoot {
+    mainClass = 'com.tum.roadmap.RoadmapApplication'
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-webflux'
+}
