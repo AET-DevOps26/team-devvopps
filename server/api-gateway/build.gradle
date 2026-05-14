@@ -2,3 +2,10 @@ springBoot {
     mainClass = 'com.tum.gateway.ApiGatewayApplication'
 }
 
+configurations {
+    runtimeClasspath {
+        exclude group: 'org.springframework.boot', module: 'spring-boot-starter-data-jpa'
+        exclude group: 'org.postgresql'
+    }
+}
+

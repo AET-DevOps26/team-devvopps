@@ -14,7 +14,7 @@ This project uses **Java 21 (Spring Boot)** for the backend and **Node.js (React
 ### 1. Setup (Environment Preparation)
 To create an isolated Conda environment containing all dependencies, run the following command in your terminal:
 ```bash
-conda create -y -n team-devvopps -c conda-forge openjdk=21 nodejs
+conda create -y -n team-devvopps -c conda-forge openjdk=25 nodejs
 ```
 
 ### 2. Running the Backend (Spring Boot)
