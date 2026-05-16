@@ -1,13 +1,10 @@
-package com.tum.userprogress.service;
+package com.tum.user.service;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
-
 @Service
 @RequiredArgsConstructor
-public class UserProgressService {
+public class UserService {
 
-    
 }
