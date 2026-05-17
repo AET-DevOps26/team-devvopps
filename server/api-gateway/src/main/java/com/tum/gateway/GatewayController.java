@@ -3,6 +3,7 @@ package com.tum.gateway;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -44,6 +45,13 @@ public class GatewayController {
         String path = request.getRequestURI();
         String query = request.getQueryString();
         String url = targetBaseUrl + path + (query != null ? "?" + query : "");
-        return restTemplate.exchange(url, HttpMethod.valueOf(request.getMethod()), entity, byte[].class);
+        ResponseEntity<byte[]> response = restTemplate.exchange(url, HttpMethod.valueOf(request.getMethod()), entity, byte[].class);
+        HttpHeaders headers = new HttpHeaders();
+        response.getHeaders().forEach((key, values) -> {
+            if (!key.equalsIgnoreCase("Transfer-Encoding")) {
+                headers.put(key, values);
+            }
+        });
+        return ResponseEntity.status(response.getStatusCode()).headers(headers).body(response.getBody());
     }
 }

@@ -1,24 +1,22 @@
-import { useEffect, useState } from "react";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import AdminPanel from "./pages/AdminPanel";
 
-function App() {
-  const [message, setMessage] = useState<string>("");
-
-  useEffect(() => {
-    fetch("http://localhost:8080/api/roadmaps/test")
-      .then((res: Response) => res.text())
-      .then((data: string) => setMessage(data))
-      .catch((err: unknown) => {
-        console.error("Fetch error:", err);
-        setMessage("Error loading data");
-      });
-  }, []);
-
+function RoadmapPage() {
   return (
-    <div style={{ padding: "40px" }}>
+    <div style={{ maxWidth: 600, margin: "80px auto", fontFamily: "sans-serif", textAlign: "center" }}>
       <h1>TUMgoal Roadmap</h1>
-      <p>{message}</p>
+      <p style={{ color: "#888" }}>Personalized learning roadmap generation coming soon.</p>
     </div>
   );
 }
 
-export default App
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<RoadmapPage />} />
+        <Route path="/admin" element={<AdminPanel />} />
+      </Routes>
+    </BrowserRouter>
+  );
+}
