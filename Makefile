@@ -1,7 +1,7 @@
 NAMESPACE = team-devvopps
 IMAGE_PREFIX = team-devvopps
 
-.PHONY: help k8s-build k8s-deploy k8s-down docker-up docker-down dev
+.PHONY: help k8s-build k8s-deploy k8s-seed k8s-down docker-up docker-down dev
 
 help:
 	@echo "Available commands:"
@@ -20,6 +20,7 @@ k8s-build:
 	docker build -t $(IMAGE_PREFIX)/roadmap-service:latest  -f server/roadmap-service/Dockerfile server/
 	docker build -t $(IMAGE_PREFIX)/api-gateway:latest      -f server/api-gateway/Dockerfile server/
 	docker build -t $(IMAGE_PREFIX)/client:latest           client/
+	docker build -t $(IMAGE_PREFIX)/course-seeder:latest    -f server/course-service/Dockerfile.seeder server/course-service/
 
 k8s-deploy: k8s-build
 	kubectl apply -f infra/k8s/namespace.yaml
@@ -33,10 +34,17 @@ k8s-deploy: k8s-build
 	@echo ""
 	@echo "Waiting for pods to be ready..."
 	kubectl wait --for=condition=ready pod --all -n $(NAMESPACE) --timeout=120s
+	$(MAKE) k8s-seed
 	@echo ""
 	@echo "Deployment complete!"
 	@echo "  Client:      http://localhost:30000"
 	@echo "  API Gateway: http://localhost:30080"
+
+k8s-seed:
+	@echo "Running course seeder (checks if data exists first)..."
+	kubectl delete job course-seeder -n $(NAMESPACE) --ignore-not-found
+	kubectl apply -f infra/k8s/seeder/job.yaml
+	@echo "Seeder job started. Follow with: kubectl logs -n $(NAMESPACE) job/course-seeder -f"
 
 k8s-down:
 	kubectl delete namespace $(NAMESPACE)
