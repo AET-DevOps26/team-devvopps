@@ -4,8 +4,9 @@ import com.tum.roadmap.model.*;
 import com.tum.roadmap.repository.GoalRepository;
 import com.tum.roadmap.repository.RoadmapRepository;
 
-import lombok.AllArgsConstructor;
+import lombok.RequiredArgsConstructor;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
@@ -15,15 +16,15 @@ import java.time.LocalDateTime;
  * Service layer for Roadmap-related business logic.
  */
 @Service
-@AllArgsConstructor
+@RequiredArgsConstructor
 public class RoadmapService {
-    
+
     private final RoadmapRepository roadmapRepository;
     private final GoalRepository goalRepository;
     private final RestTemplate restTemplate;
 
-    // External microservice URLs
-    private final String USER_URL = "http://localhost:8081/users/";
+    @Value("${user.service.url:http://localhost:8081}/users/")
+    private String USER_URL;
 
     /**
      * Calls user-service to verify that the user exists.

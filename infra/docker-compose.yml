@@ -1,0 +1,88 @@
+services:
+
+  # ── Database ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../server/init-databases.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Spring Boot Services ──────────────────────────────────────────────────
+  user-service:
+    build:
+      context: ../server
+      dockerfile: user-service/Dockerfile
+    environment:
+      DB_HOST: postgres
+      DB_NAME: userdb
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  course-service:
+    build:
+      context: ../server
+      dockerfile: course-service/Dockerfile
+    environment:
+      DB_HOST: postgres
+      DB_NAME: coursedb
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  roadmap-service:
+    build:
+      context: ../server
+      dockerfile: roadmap-service/Dockerfile
+    environment:
+      DB_HOST: postgres
+      DB_NAME: roadmapdb
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      USER_SERVICE_HOST: user-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      user-service:
+        condition: service_started
+
+  # ── API Gateway ───────────────────────────────────────────────────────────
+  api-gateway:
+    build:
+      context: ../server
+      dockerfile: api-gateway/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      USER_SERVICE_HOST: user-service
+      COURSE_SERVICE_HOST: course-service
+      ROADMAP_SERVICE_HOST: roadmap-service
+    depends_on:
+      - user-service
+      - course-service
+      - roadmap-service
+
+  # ── React Frontend ────────────────────────────────────────────────────────
+  client:
+    build:
+      context: ../client
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - api-gateway
+
+volumes:
+  postgres_data:

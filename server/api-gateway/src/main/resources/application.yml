@@ -5,21 +5,19 @@ spring:
   application:
     name: api-gateway
 
-  cloud:
-    gateway:
-      routes:
+services:
+  user:
+    url: http://${USER_SERVICE_HOST:localhost}:8081
+  course:
+    url: http://${COURSE_SERVICE_HOST:localhost}:8082
+  roadmap:
+    url: http://${ROADMAP_SERVICE_HOST:localhost}:8083
 
-        - id: user-service
-          uri: http://localhost:8081
-          predicates:
-            - Path=/users/**
-
-        - id: course-service
-          uri: http://localhost:8082
-          predicates:
-            - Path=/courses/**
-
-        - id: roadmap-service
-          uri: http://localhost:8083
-          predicates:
-            - Path=/roadmaps/**
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    prometheus:
+      enabled: true
