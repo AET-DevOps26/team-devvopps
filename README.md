@@ -79,7 +79,7 @@ cd ../roadmap-service
 
 Once PostgreSQL is running and services are built, open a **new terminal** to populate the coursedb with real TUM Master Informatik courses:
 
-** For macOS / Linux:**
+**For macOS / Linux:**
 ```bash
 conda activate team-devvopps
 cd server/course-service
