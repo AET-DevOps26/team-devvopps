@@ -45,5 +45,16 @@ public class Course {
     /** Registration information and enrollment details */
     @Column(columnDefinition = "TEXT")
     private String registration;
-}
 
+    /** Semester(s) when the course is offered (e.g., "Winter 2024/25", "Summer 2025") */
+    @Column(columnDefinition = "TEXT")
+    private String offered_in;
+
+    /** Recommended literature and further reading materials */
+    @Column(columnDefinition = "TEXT")
+    private String recommended_literature;
+
+    /** TUM course number (e.g., CVL-EDS027) for display purposes and referencing on TUMonline */
+    @Column
+    private String tum_number;
+}

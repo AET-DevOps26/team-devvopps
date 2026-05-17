@@ -1,7 +1,7 @@
 # team-devvopps
 Repository for team devvopps
 
-## 🏗️ System Architecture
+## System Architecture
 
 ### Microservices
 The backend consists of **3 independent Spring Boot microservices**:
@@ -31,9 +31,10 @@ This project uses **Java 25 (Spring Boot)** for the backend microservices and **
 ---
 
 ### 1. Setup (Environment Preparation)
-To create an isolated Conda environment containing all dependencies, run the following command in your terminal:
+To create an isolated Conda environment containing all dependencies (Java, Node.js, and Python packages), run:
 ```bash
-conda create -y -n team-devvopps -c conda-forge openjdk=25 nodejs
+conda env create -f environment.yml
+conda activate team-devvopps
 ```
 
 ---
@@ -42,7 +43,7 @@ conda create -y -n team-devvopps -c conda-forge openjdk=25 nodejs
 
 First, **ensure that Docker Desktop is running**.
 
-#### Step 1: Start PostgreSQL with all 3 databases
+#### Step 1: Start PostgreSQL
 Open a terminal and run:
 ```bash
 conda activate team-devvopps
@@ -52,27 +53,15 @@ docker-compose up
 This starts PostgreSQL on port 5432 with 3 databases: userdb, coursedb, roadmapdb.
 Leave this terminal running.
 
-#### Step 2: Start user-service (port 8081)
-Open a **new terminal** and run:
+#### Step 2: Build the Spring Boot services and create databases
+First, build the Spring Boot services by running:
 ```bash
 conda activate team-devvopps
 cd server/user-service
 ../gradlew bootRun
-```
-
-#### Step 3: Start course-service (port 8082)
-Open another **new terminal** and run:
-```bash
-conda activate team-devvopps
-cd server/course-service
+cd ../course-service
 ../gradlew bootRun
-```
-
-#### Step 4: Start roadmap-service (port 8083)
-Open another **new terminal** and run:
-```bash
-conda activate team-devvopps
-cd server/roadmap-service
+cd ../roadmap-service
 ../gradlew bootRun
 ```
 
@@ -85,11 +74,28 @@ cd server/roadmap-service
 - course-service: http://localhost:8082
 - roadmap-service: http://localhost:8083
 
-**Database credentials (local development only):**
-- Host: localhost
-- Port: 5432
-- Username: postgres
-- Password: postgres
+
+#### Step 3: Populate course database
+
+Once PostgreSQL is running and services are built, open a **new terminal** to populate the coursedb with real TUM Master Informatik courses:
+```bash
+conda activate team-devvopps
+cd server/course-service
+python3 fetch_and_seed_courses.py
+```
+This fetches ~930 courses from the TUM Campus Online API and inserts them into the coursedb. The data persists across Docker restarts. You only need to run this once, but you can re-run it anytime to refresh the course data.
+
+*Optional: To verify the courses were loaded, run `python3 browse_courses.py` for an interactive course browser.*
+
+
+### Regenerating/Resetting the Database
+If you want to reset the database and start fresh, run:
+```bash
+cd server
+docker-compose down
+docker volume rm server_postgres_data
+```
+Then do Step 2 and 3 again. 
 
 ---
 
@@ -112,12 +118,12 @@ npm run dev
 
 Once the application is running successfully, you can access the user interface using your browser at `http://localhost:3000`.
 
+
 ---
 
 ## 🔄 Next Steps
 
-1. **Populate mock course data** - Create data.sql with TUM course information
-2. **Implement REST API endpoints** - Add controllers and services for each microservice
-3. **Service communication** - Enable inter-service API calls
-4. **Docker containerization** - Create Dockerfiles for all services
-5. **Single-command deployment** - Update compose.yaml to orchestrate all services as containers
+1. **Implement REST API endpoints** - Add controllers and services for each microservice
+2. **Service communication** - Enable inter-service API calls
+3. **Docker containerization** - Create Dockerfiles for all services
+4. **Single-command deployment** - Update compose.yaml to orchestrate all 3 services as containers
