@@ -13,7 +13,7 @@ The backend consists of **3 independent Spring Boot microservices**:
 Each service has:
 - Its own PostgreSQL database (userdb, coursedb, roadmapdb)
 - Independent entity models with auto-created schema
-- REST API endpoints (to be implemented)
+- REST API endpoints 
 
 **Entity Relationships:** See the UML diagram in `/server/docs/` for complete data model and relationships.
 
@@ -78,14 +78,22 @@ cd ../roadmap-service
 #### Step 3: Populate course database
 
 Once PostgreSQL is running and services are built, open a **new terminal** to populate the coursedb with real TUM Master Informatik courses:
+
+** For macOS / Linux:**
 ```bash
 conda activate team-devvopps
 cd server/course-service
-python3 fetch_and_seed_courses.py
+python3 fetch_and_seed_courses.py for 
+```
+**For Windows:**
+```bash
+conda activate team-devvopps
+cd server/course-service
+python fetch_and_seed_courses.py for 
 ```
 This fetches ~930 courses from the TUM Campus Online API and inserts them into the coursedb. The data persists across Docker restarts. You only need to run this once, but you can re-run it anytime to refresh the course data.
 
-*Optional: To verify the courses were loaded, run `python3 browse_courses.py` for an interactive course browser.*
+*Optional: To verify the courses were loaded, run `python3 browse_courses.py` (or `python browse_courses.py` if using Windows) for an interactive course browser.*
 
 
 ### Regenerating/Resetting the Database

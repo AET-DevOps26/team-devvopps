@@ -24,5 +24,7 @@ public class User {
     /** User's name (required) */
     @Column(nullable = false)
     private String name;
+
+    
 }
 
