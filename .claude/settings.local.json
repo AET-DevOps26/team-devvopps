@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker-compose logs *)",
+      "Bash(docker exec *)",
+      "Bash(docker-compose up *)",
+      "Bash(curl -s http://localhost:8080/users)",
+      "Bash(curl -s -X POST http://localhost:8080/users -H 'Content-Type: application/json' -d '{\"name\": \"Hafize Test\"}')",
+      "Bash(curl -s http://localhost:8080/courses)"
+    ]
+  }
+}

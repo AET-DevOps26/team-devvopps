@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  namespace: team-devvopps
+data:
+  init.sql: |
+    CREATE DATABASE userdb;
+    CREATE DATABASE coursedb;
+    CREATE DATABASE roadmapdb;
