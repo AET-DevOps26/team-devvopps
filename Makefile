@@ -1,0 +1,76 @@
+NAMESPACE = team-devvopps
+IMAGE_PREFIX = team-devvopps
+
+.PHONY: help k8s-build k8s-deploy k8s-down docker-up docker-down dev
+
+help:
+	@echo "Available commands:"
+	@echo "  make k8s-build    - Build all Docker images for Kubernetes"
+	@echo "  make k8s-deploy   - Build images and deploy to Kubernetes"
+	@echo "  make k8s-down     - Tear down Kubernetes deployment"
+	@echo "  make docker-up    - Start full stack with Docker Compose"
+	@echo "  make docker-down  - Stop Docker Compose stack"
+	@echo "  make dev          - Start all Spring Boot services locally (background)"
+
+# ── Kubernetes ────────────────────────────────────────────────────────────────
+
+k8s-build:
+	docker build -t $(IMAGE_PREFIX)/user-service:latest     -f server/user-service/Dockerfile server/
+	docker build -t $(IMAGE_PREFIX)/course-service:latest   -f server/course-service/Dockerfile server/
+	docker build -t $(IMAGE_PREFIX)/roadmap-service:latest  -f server/roadmap-service/Dockerfile server/
+	docker build -t $(IMAGE_PREFIX)/api-gateway:latest      -f server/api-gateway/Dockerfile server/
+	docker build -t $(IMAGE_PREFIX)/client:latest           client/
+
+k8s-deploy: k8s-build
+	kubectl apply -f infra/k8s/namespace.yaml
+	kubectl apply -f infra/k8s/
+	kubectl apply -f infra/k8s/postgres/
+	kubectl apply -f infra/k8s/user-service/
+	kubectl apply -f infra/k8s/course-service/
+	kubectl apply -f infra/k8s/roadmap-service/
+	kubectl apply -f infra/k8s/api-gateway/
+	kubectl apply -f infra/k8s/client/
+	@echo ""
+	@echo "Waiting for pods to be ready..."
+	kubectl wait --for=condition=ready pod --all -n $(NAMESPACE) --timeout=120s
+	@echo ""
+	@echo "Deployment complete!"
+	@echo "  Client:      http://localhost:30000"
+	@echo "  API Gateway: http://localhost:30080"
+
+k8s-down:
+	kubectl delete namespace $(NAMESPACE)
+
+k8s-status:
+	kubectl get pods -n $(NAMESPACE)
+	kubectl get services -n $(NAMESPACE)
+
+# ── Docker Compose ────────────────────────────────────────────────────────────
+
+docker-up:
+	cd infra && docker-compose up --build
+
+docker-down:
+	cd infra && docker-compose down
+
+docker-reset:
+	cd infra && docker-compose down -v
+
+# ── Local Development ─────────────────────────────────────────────────────────
+
+dev:
+	@echo "Starting all Spring Boot services in background..."
+	@mkdir -p logs
+	cd server && ./gradlew :user-service:bootRun    > ../logs/user-service.log    2>&1 & echo "user-service    → logs/user-service.log"
+	cd server && ./gradlew :course-service:bootRun  > ../logs/course-service.log  2>&1 & echo "course-service  → logs/course-service.log"
+	cd server && ./gradlew :roadmap-service:bootRun > ../logs/roadmap-service.log 2>&1 & echo "roadmap-service → logs/roadmap-service.log"
+	cd server && ./gradlew :api-gateway:bootRun     > ../logs/api-gateway.log     2>&1 & echo "api-gateway     → logs/api-gateway.log"
+	@echo ""
+	@echo "All services starting. Follow logs with:"
+	@echo "  tail -f logs/user-service.log"
+	@echo "  tail -f logs/api-gateway.log"
+
+dev-stop:
+	@pkill -f "gradlew" || true
+	@pkill -f "bootRun" || true
+	@echo "Spring Boot processes stopped."
