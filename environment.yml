@@ -1,0 +1,11 @@
+name: team-devvopps
+channels:
+  - conda-forge
+dependencies:
+  - openjdk=25
+  - nodejs
+  - pip
+  - pip:
+    - aiohttp==3.11.11
+    - psycopg2-binary==2.9.12
+    - python-dotenv==1.0.1

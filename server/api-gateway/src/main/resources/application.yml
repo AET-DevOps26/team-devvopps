@@ -1,0 +1,23 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+
+services:
+  user:
+    url: http://${USER_SERVICE_HOST:localhost}:8081
+  course:
+    url: http://${COURSE_SERVICE_HOST:localhost}:8082
+  roadmap:
+    url: http://${ROADMAP_SERVICE_HOST:localhost}:8083
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    prometheus:
+      enabled: true

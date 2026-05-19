@@ -1,0 +1,5 @@
+FROM python:3.13-slim
+WORKDIR /app
+RUN pip install aiohttp psycopg2-binary python-dotenv --no-cache-dir
+COPY fetch_and_seed_courses.py ./
+CMD ["python", "fetch_and_seed_courses.py"]
