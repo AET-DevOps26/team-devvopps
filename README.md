@@ -19,6 +19,32 @@ Each service has:
 
 ---
 
+## Deployment (Azure VM)
+
+The application is automatically built and deployed to an Azure VM on every merge to main via Github Actions.
+
+### URLs
+- **Frontend:** https://client.9.223.113.24.nip.io
+- **API Gateway:** https://api.9.223.113.24.nip.io
+
+### How it works
+1. `build` job: builds and pushes 5 Docker images to ghcr.io
+2. `deploy` job: SSHes into the VM and runs `docker compose up` with the pre-built images
+
+### Stack on the VM
+- Traefik (reverse proxy + automatic HTTPS via Let's Encrypt)
+- Postgres 16
+- All 5 services (api-gateway, user-service, course-service, roadmap-service, client)
+
+### Required GitHub secrets/variables
+| Name | Type | Description |
+|---|---|---|
+| `AZURE_PUBLIC_IP` | variable | Public IP of the Azure VM |
+| `AZURE_USER` | variable | SSH username |
+| `AZURE_PRIVATE_KEY` | secret | SSH private key |
+
+---
+
 ## Running with Kubernetes (Recommended)
 
 The fastest way to run the entire stack. Requires Docker Desktop with Kubernetes enabled.
