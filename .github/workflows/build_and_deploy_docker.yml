@@ -1,0 +1,104 @@
+name: Build and Deploy Docker Images
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push api-gateway
+        uses: docker/build-push-action@v5
+        with:
+          context: ./server
+          file: ./server/api-gateway/Dockerfile
+          push: true
+          tags: ghcr.io/aet-devops26/team-devvopps/api-gateway:latest
+
+      - name: Build and Push user-service
+        uses: docker/build-push-action@v5
+        with:
+          context: ./server
+          file: ./server/user-service/Dockerfile
+          push: true
+          tags: ghcr.io/aet-devops26/team-devvopps/user-service:latest
+
+      - name: Build and Push course-service
+        uses: docker/build-push-action@v5
+        with:
+          context: ./server
+          file: ./server/course-service/Dockerfile
+          push: true
+          tags: ghcr.io/aet-devops26/team-devvopps/course-service:latest
+
+      - name: Build and Push roadmap-service
+        uses: docker/build-push-action@v5
+        with:
+          context: ./server
+          file: ./server/roadmap-service/Dockerfile
+          push: true
+          tags: ghcr.io/aet-devops26/team-devvopps/roadmap-service:latest
+
+      - name: Build and Push client
+        uses: docker/build-push-action@v5
+        with:
+          context: ./client
+          file: ./client/Dockerfile
+          push: true
+          tags: ghcr.io/aet-devops26/team-devvopps/client:latest
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Copy Files to VM
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ vars.AZURE_PUBLIC_IP }}
+          username: ${{ vars.AZURE_USER }}
+          key: ${{ secrets.AZURE_PRIVATE_KEY }}
+          source: "compose.azure.yml,server/init-databases.sql"
+          target: /home/${{ vars.AZURE_USER }}
+
+      - name: SSH to VM and Create .env.prod
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ vars.AZURE_PUBLIC_IP }}
+          username: ${{ vars.AZURE_USER }}
+          key: ${{ secrets.AZURE_PRIVATE_KEY }}
+          script: |
+            rm -f .env.prod
+            touch .env.prod
+            echo "CLIENT_HOST=client.${{ vars.AZURE_PUBLIC_IP }}.nip.io" >> .env.prod
+            echo "SERVER_HOST=api.${{ vars.AZURE_PUBLIC_IP }}.nip.io" >> .env.prod
+            echo "PUBLIC_API_URL=https://api.${{ vars.AZURE_PUBLIC_IP }}.nip.io" >> .env.prod
+
+      - name: SSH to VM and Execute Docker-Compose Up
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ vars.AZURE_PUBLIC_IP }}
+          username: ${{ vars.AZURE_USER }}
+          key: ${{ secrets.AZURE_PRIVATE_KEY }}
+          script: |
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker compose -f compose.azure.yml --env-file=.env.prod up --pull=always -d
