@@ -57,7 +57,7 @@ jobs:
         run: |
           mkdir -p /tmp/actionlint
           cd /tmp/actionlint
-          curl -sL https://github.com/rhysd/actionlint/releases/download/v1.7.1/actionlint_linux_amd64.tar.gz | tar xz
+          curl -fsSL https://github.com/rhysd/actionlint/releases/download/v1.7.1/actionlint_linux_amd64.tar.gz | tar xz
           echo "$(pwd)" >> $GITHUB_PATH
 
       - name: Run actionlint
