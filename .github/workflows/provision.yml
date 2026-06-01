@@ -1,0 +1,77 @@
+name: Provision Azure VM
+
+on:
+  workflow_dispatch:  
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Extract public key
+        run: |
+          echo "${{ secrets.AZURE_PRIVATE_KEY }}" > /tmp/key.pem
+          chmod 400 /tmp/key.pem
+          ssh-keygen -y -f /tmp/key.pem
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        working-directory: ./terraform
+        env:
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+        run: terraform init
+
+      - name: Terraform Apply
+        working-directory: ./terraform
+        env:
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+        run: terraform apply -auto-approve -var="ssh_public_key=${{ secrets.AZURE_SSH_PUBLIC_KEY }}"
+
+      - name: Get VM IP
+        working-directory: ./terraform
+        env:
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+        run: |
+          echo "VM_IP=$(terraform output -raw public_ip)" >> $GITHUB_ENV
+
+      - name: Install Ansible
+        run: pip install ansible
+
+      - name: Write SSH private key
+        run: |
+          echo "${{ secrets.AZURE_PRIVATE_KEY }}" > /tmp/azure_key.pem
+          chmod 400 /tmp/azure_key.pem
+
+      - name: Wait for VM to be ready
+        run: sleep 30
+
+      - name: Run Ansible Playbook
+        run: |
+          ansible-playbook -i "${{ env.VM_IP }}," \
+            -u azureuser \
+            --private-key /tmp/azure_key.pem \
+            --ssh-extra-args="-o StrictHostKeyChecking=no" \
+            ansible/playbook.yml
+
+      - name: Update GitHub Variable AZURE_PUBLIC_IP
+        run: |
+          curl -X PATCH \
+            -H "Authorization: Bearer ${{ secrets.PAT_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/actions/variables/AZURE_PUBLIC_IP \
+            -d "{\"name\":\"AZURE_PUBLIC_IP\",\"value\":\"${{ env.VM_IP }}\"}"
