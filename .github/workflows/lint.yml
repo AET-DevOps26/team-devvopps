@@ -1,0 +1,71 @@
+name: Lint Code
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  lint-client:
+    name: Lint React Client (ESLint)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Dependencies
+        run: npm install
+        working-directory: client
+
+      - name: Run ESLint
+        run: npm run lint
+        working-directory: client
+
+  lint-java:
+    name: Lint Java Services (SpotBugs)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+
+      - name: Run SpotBugs
+        run: ./gradlew check -x test --scan
+        working-directory: server
+
+  lint-actions:
+    name: Lint GitHub Actions Workflows
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install actionlint
+        run: |
+          mkdir -p /tmp/actionlint
+          cd /tmp/actionlint
+          curl -sL https://github.com/rhysd/actionlint/releases/download/v1.7.1/actionlint_linux_amd64.tar.gz | tar xz
+          echo "$(pwd)" >> $GITHUB_PATH
+
+      - name: Run actionlint
+        run: actionlint -format sarif -output /tmp/actionlint-output.sarif .github/workflows/ || true
+
+      - name: Upload SARIF Report
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: /tmp/actionlint-output.sarif
+          wait-for-processing: true
