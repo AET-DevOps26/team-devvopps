@@ -53,19 +53,5 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Install actionlint
-        run: |
-          mkdir -p /tmp/actionlint
-          cd /tmp/actionlint
-          curl -fsSL https://github.com/rhysd/actionlint/releases/download/v1.7.1/actionlint_linux_amd64.tar.gz | tar xz
-          echo "$(pwd)" >> $GITHUB_PATH
-
       - name: Run actionlint
-        run: actionlint -format sarif -output /tmp/actionlint-output.sarif .github/workflows/ || true
-
-      - name: Upload SARIF Report
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: /tmp/actionlint-output.sarif
-          wait-for-processing: true
+        uses: rhysd/actionlint-action@v1
