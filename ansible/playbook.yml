@@ -1,5 +1,5 @@
 - name: Configure Azure VM
-  hosts: azure_vm
+  hosts: all
   become: true
 
   tasks:
