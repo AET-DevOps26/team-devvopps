@@ -11,13 +11,13 @@ on:
     workflows: ["Provision Azure VM"]
     types:
       - completed
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -29,12 +29,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build and Push api-gateway
         uses: docker/build-push-action@v5
         with:
           context: ./server
           file: ./server/api-gateway/Dockerfile
-          push: ${{ github.event_name == 'push' || github.event_name == 'workflow_run' }}
+          push: true
           tags: ghcr.io/aet-devops26/team-devvopps/api-gateway:latest
 
       - name: Build and Push user-service
@@ -42,7 +48,7 @@ jobs:
         with:
           context: ./server
           file: ./server/user-service/Dockerfile
-          push: ${{ github.event_name == 'push' || github.event_name == 'workflow_run' }}
+          push: true
           tags: ghcr.io/aet-devops26/team-devvopps/user-service:latest
 
       - name: Build and Push course-service
@@ -50,7 +56,7 @@ jobs:
         with:
           context: ./server
           file: ./server/course-service/Dockerfile
-          push: ${{ github.event_name == 'push' || github.event_name == 'workflow_run' }}
+          push: true
           tags: ghcr.io/aet-devops26/team-devvopps/course-service:latest
 
       - name: Build and Push roadmap-service
@@ -58,7 +64,7 @@ jobs:
         with:
           context: ./server
           file: ./server/roadmap-service/Dockerfile
-          push: ${{ github.event_name == 'push' || github.event_name == 'workflow_run' }}
+          push: true
           tags: ghcr.io/aet-devops26/team-devvopps/roadmap-service:latest
 
       - name: Build and Push client
@@ -66,7 +72,7 @@ jobs:
         with:
           context: ./client
           file: ./client/Dockerfile
-          push: ${{ github.event_name == 'push' || github.event_name == 'workflow_run' }}
+          push: true
           tags: ghcr.io/aet-devops26/team-devvopps/client:latest
 
   deploy:
@@ -105,6 +111,7 @@ jobs:
           host: ${{ vars.AZURE_PUBLIC_IP }}
           username: ${{ vars.AZURE_USER }}
           key: ${{ secrets.AZURE_PRIVATE_KEY }}
+          command_timeout: 5m
           script: |
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             docker compose -f compose.azure.yml --env-file=.env.prod up --pull=always -d
