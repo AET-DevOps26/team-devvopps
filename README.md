@@ -47,6 +47,27 @@ The `build_and_deploy_docker.yml` workflow runs automatically on every merge to 
 - Postgres 16
 - All 5 services (api-gateway, user-service, course-service, roadmap-service, client)
 
+### One-Time Azure Setup (already done)
+
+The following was set up once to enable the provision workflow. Documented here for reference.
+
+**1. Azure Service Principal**
+- Go to [Azure Portal](https://portal.azure.com) → **Microsoft Entra ID** → **App registrations** → **New registration**
+- Name: `team-devvopps`
+- Go to **Certificates & secrets** → **New client secret** → copy the value immediately
+- Go to **Subscriptions** → your subscription → **Access control (IAM)** → add the app as **Contributor**
+
+**2. Terraform State Backend**
+- Created a storage account (`tfstatedevvopps`) in resource group `team-devvopps`, region `Sweden Central`
+- Inside it, a container named `tfstate` was created
+- The Terraform state is stored remotely in the Azure storage account to allow all team members to share the same state. This means running the provision workflow from any machine or by any team member always operates on the same infrastructure state.
+
+**3. SSH Key Pair**
+- `AZURE_PRIVATE_KEY` and `AZURE_SSH_PUBLIC_KEY` are a matching keypair
+- If they ever need to be rotated, both secrets must be updated together and the VM must be reprovisioned by triggering the Provision Azure VM workflow again
+
+> **Note:** All secrets are already stored in the GitHub repository. No Azure setup is needed to trigger the provisioning workflow.
+
 ### Required GitHub secrets/variables
 | Name | Type | Description |
 |---|---|---|
