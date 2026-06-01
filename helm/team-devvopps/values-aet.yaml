@@ -1,0 +1,12 @@
+# Values for AET Kubernetes Cluster (Staging/Production)
+# These override the defaults in values.yaml
+
+imageRegistry: ghcr.io/aet-devops26/team-devvopps
+imagePullPolicy: IfNotPresent
+
+replicas: 2
+
+ingressHost: team-devvopps.rancher.ase.cit.tum.de
+
+postgres:
+  storage: 10Gi

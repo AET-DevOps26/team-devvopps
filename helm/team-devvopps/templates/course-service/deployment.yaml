@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: course-service
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app: course-service
+  template:
+    metadata:
+      labels:
+        app: course-service
+        monitoring: "true"
+    spec:
+      containers:
+        - name: course-service
+          image: {{ .Values.imageRegistry }}/course-service:{{ .Values.imageTag }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.services.courseService.port }}
+          env:
+            - name: DB_HOST
+              value: postgres
+            - name: DB_NAME
+              value: coursedb
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: password
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: {{ .Values.services.courseService.port }}
+            initialDelaySeconds: 30
+            periodSeconds: 10

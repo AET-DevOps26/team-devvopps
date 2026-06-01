@@ -1,0 +1,39 @@
+# Default values for team-devvopps Helm chart (Local Development)
+# This is a YAML-formatted file for local docker-desktop Kubernetes
+
+namespace: team-devvopps
+
+# Image configuration
+imageRegistry: team-devvopps
+imageTag: latest
+imagePullPolicy: Never
+
+# Replicas (High Availability)
+replicas: 1
+
+# Ingress configuration (empty = use NodePort for local dev)
+ingressHost: ""
+
+# PostgreSQL Configuration
+postgres:
+  version: "16"
+  image: postgres:16
+  storage: 1Gi
+  credentials:
+    username: postgres
+    password: postgres
+
+# Service ports (should not change)
+services:
+  postgres:
+    port: 5432
+  userService:
+    port: 8081
+  courseService:
+    port: 8082
+  roadmapService:
+    port: 8083
+  apiGateway:
+    port: 8080
+  client:
+    port: 80

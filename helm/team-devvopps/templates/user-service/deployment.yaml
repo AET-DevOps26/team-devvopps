@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app: user-service
+  template:
+    metadata:
+      labels:
+        app: user-service
+        monitoring: "true"
+    spec:
+      containers:
+        - name: user-service
+          image: {{ .Values.imageRegistry }}/user-service:{{ .Values.imageTag }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.services.userService.port }}
+          env:
+            - name: DB_HOST
+              value: postgres
+            - name: DB_NAME
+              value: userdb
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: password
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: {{ .Values.services.userService.port }}
+            initialDelaySeconds: 30
+            periodSeconds: 10

@@ -1,16 +1,54 @@
 NAMESPACE = team-devvopps
 IMAGE_PREFIX = team-devvopps
 
-.PHONY: help k8s-build k8s-deploy k8s-seed k8s-down docker-up docker-down dev
+.PHONY: help helm-install helm-install-aet helm-upgrade helm-delete k8s-build k8s-deploy k8s-seed k8s-down docker-up docker-down dev dev-stop k8s-status
 
 help:
 	@echo "Available commands:"
+	@echo ""
+	@echo "Helm (Recommended for AET deployment):"
+	@echo "  make helm-install      - Deploy to local Kubernetes using Helm"
+	@echo "  make helm-install-aet  - Deploy to AET cluster using Helm"
+	@echo "  make helm-upgrade      - Upgrade existing Helm deployment"
+	@echo "  make helm-delete       - Delete Helm deployment"
+	@echo ""
+	@echo "Kubernetes (Legacy):"
 	@echo "  make k8s-build    - Build all Docker images for Kubernetes"
 	@echo "  make k8s-deploy   - Build images and deploy to Kubernetes"
 	@echo "  make k8s-down     - Tear down Kubernetes deployment"
+	@echo ""
+	@echo "Docker Compose:"
 	@echo "  make docker-up    - Start full stack with Docker Compose"
 	@echo "  make docker-down  - Stop Docker Compose stack"
+	@echo ""
+	@echo "Local Development:"
 	@echo "  make dev          - Start all Spring Boot services locally (background)"
+
+# ── Helm ───────────────────────────────────────────────────────────────────────
+
+helm-install:
+	@echo "Installing Helm chart to local Kubernetes..."
+	helm install team-devvopps helm/team-devvopps/ -n team-devvopps --create-namespace
+	@echo ""
+	@echo "Deployment complete!"
+	@echo "  Client:      http://localhost:30000"
+	@echo "  API Gateway: http://localhost:30080"
+
+helm-install-aet:
+	@echo "Installing Helm chart to AET Kubernetes cluster..."
+	helm install team-devvopps helm/team-devvopps/ \
+		-f helm/team-devvopps/values-aet.yaml \
+		-n team-devvopps --create-namespace
+	@echo ""
+	@echo "Check status with: kubectl get pods -n team-devvopps"
+
+helm-upgrade:
+	@echo "Upgrading Helm chart..."
+	helm upgrade team-devvopps helm/team-devvopps/ -n team-devvopps
+
+helm-delete:
+	@echo "Deleting Helm deployment..."
+	helm uninstall team-devvopps -n team-devvopps
 
 # ── Kubernetes ────────────────────────────────────────────────────────────────
 
