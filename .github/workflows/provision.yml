@@ -10,11 +10,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Extract public key
-        run: |
-          echo "${{ secrets.AZURE_PRIVATE_KEY }}" > /tmp/key.pem
-          chmod 400 /tmp/key.pem
-          ssh-keygen -y -f /tmp/key.pem
       - name: Checkout Code
         uses: actions/checkout@v4
 
