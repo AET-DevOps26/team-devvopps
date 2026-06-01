@@ -27,7 +27,7 @@ jobs:
         with:
           context: ./server
           file: ./server/api-gateway/Dockerfile
-          push: true
+          push: ${{ github.event_name == 'push' }}
           tags: ghcr.io/aet-devops26/team-devvopps/api-gateway:latest
 
       - name: Build and Push user-service
@@ -35,7 +35,7 @@ jobs:
         with:
           context: ./server
           file: ./server/user-service/Dockerfile
-          push: true
+          push: ${{ github.event_name == 'push' }}
           tags: ghcr.io/aet-devops26/team-devvopps/user-service:latest
 
       - name: Build and Push course-service
@@ -43,7 +43,7 @@ jobs:
         with:
           context: ./server
           file: ./server/course-service/Dockerfile
-          push: true
+          push: ${{ github.event_name == 'push' }}
           tags: ghcr.io/aet-devops26/team-devvopps/course-service:latest
 
       - name: Build and Push roadmap-service
@@ -51,7 +51,7 @@ jobs:
         with:
           context: ./server
           file: ./server/roadmap-service/Dockerfile
-          push: true
+          push: ${{ github.event_name == 'push' }}
           tags: ghcr.io/aet-devops26/team-devvopps/roadmap-service:latest
 
       - name: Build and Push client
@@ -59,7 +59,7 @@ jobs:
         with:
           context: ./client
           file: ./client/Dockerfile
-          push: true
+          push: ${{ github.event_name == 'push' }}
           tags: ghcr.io/aet-devops26/team-devvopps/client:latest
 
   deploy:
