@@ -1,9 +1,7 @@
 name: Provision Azure VM
 
 on:
-  pull_request: 
-    branches:
-      - main  
+  workflow_dispatch:  # manual trigger only 
 
 jobs:
   provision:
