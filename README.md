@@ -19,6 +19,69 @@ Each service has:
 
 ---
 
+## Deployment (Azure VM)
+
+The application is automatically built and deployed to an Azure VM on every merge to main via Github Actions.
+
+### URLs
+- **Frontend:** https://client.9.223.113.24.nip.io
+- **API Gateway:** https://api.9.223.113.24.nip.io
+
+### CI/CD Pipeline
+
+#### Provisioning the VM (run once)
+The VM is provisioned and configured automatically via the `provision.yml` workflow using Terraform and Ansible.
+- **Terraform** creates the Azure VM (Ubuntu 24.04, Standard_D2s_v3, ports 22/80/443 open)
+- **Ansible** configures the VM (installs Docker and Docker Compose)
+- After provisioning, the `AZURE_PUBLIC_IP` GitHub variable is updated automatically
+
+To provision a new VM: **GitHub -> Actions -> Provision Azure VM -> Run workflow**
+
+#### Deploying the app (automatic on every merge to main)
+The `build_and_deploy_docker.yml` workflow runs automatically on every merge to main:
+1. `build` job: builds and pushes 5 Docker images to ghcr.io (api-gateway, user-service, course-service, roadmap-service, client)
+2. `deploy` job: copies `compose.azure.yml` and `init-databases.sql` to the VM, creates `.env.prod`, runs `docker compose up` with the pre-built images
+
+### Stack on the VM
+- Traefik (reverse proxy + automatic HTTPS via Let's Encrypt)
+- Postgres 16
+- All 5 services (api-gateway, user-service, course-service, roadmap-service, client)
+
+### One-Time Azure Setup (already done)
+
+The following was set up once to enable the provision workflow. Documented here for reference.
+
+**1. Azure Service Principal**
+- Go to [Azure Portal](https://portal.azure.com) → **Microsoft Entra ID** → **App registrations** → **New registration**
+- Name: `team-devvopps`
+- Go to **Certificates & secrets** → **New client secret** → copy the value immediately
+- Go to **Subscriptions** → your subscription → **Access control (IAM)** → add the app as **Contributor**
+
+**2. Terraform State Backend**
+- Created a storage account (`tfstatedevvopps`) in resource group `team-devvopps`, region `Sweden Central`
+- Inside it, a container named `tfstate` was created
+- The Terraform state is stored remotely in the Azure storage account to allow all team members to share the same state. This means running the provision workflow from any machine or by any team member always operates on the same infrastructure state.
+
+**3. SSH Key Pair**
+- `AZURE_PRIVATE_KEY` and `AZURE_SSH_PUBLIC_KEY` are a matching keypair
+- If they ever need to be rotated, both secrets must be updated together and the VM must be reprovisioned by triggering the Provision Azure VM workflow again
+
+> **Note:** All secrets are already stored in the GitHub repository. No Azure setup is needed to trigger the provisioning workflow.
+
+### Required GitHub secrets/variables
+| Name | Type | Description |
+|---|---|---|
+| `AZURE_PUBLIC_IP` | variable | Public IP of the Azure VM (updated automatically after provisioning) |
+| `AZURE_USER` | variable | SSH username (`azureuser`) |
+| `AZURE_PRIVATE_KEY` | secret | SSH private key |
+| `ARM_CLIENT_ID` | secret | Azure service principal client ID (for Terraform) |
+| `ARM_CLIENT_SECRET` | secret | Azure service principal client secret (for Terraform) |
+| `ARM_SUBSCRIPTION_ID` | secret | Azure subscription ID (for Terraform) |
+| `ARM_TENANT_ID` | secret | Azure tenant ID (for Terraform) |
+| `PAT_TOKEN` | secret | GitHub personal access token to update `AZURE_PUBLIC_IP` after provisioning |
+
+---
+
 ## Running with Kubernetes (Recommended)
 
 The fastest way to run the entire stack. Requires Docker Desktop with Kubernetes enabled.
