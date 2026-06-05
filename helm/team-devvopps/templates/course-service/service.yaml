@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: course-service
+  namespace: {{ .Values.namespace }}
+spec:
+  type: ClusterIP
+  selector:
+    app: course-service
+  ports:
+    - port: {{ .Values.services.courseService.port }}
+      targetPort: {{ .Values.services.courseService.port }}

@@ -19,6 +19,7 @@ Each service has:
 
 ---
 
+## Running with Kubernetes
 ## Deployment (Azure VM)
 
 The application is automatically built and deployed to an Azure VM on every merge to main via Github Actions.
@@ -89,32 +90,40 @@ The fastest way to run the entire stack. Requires Docker Desktop with Kubernetes
 ### Prerequisites
 - **Docker Desktop** with **Kubernetes enabled**
   - Docker Desktop → Settings → Kubernetes → Enable Kubernetes → Apply & Restart
+- **Helm 3.x** (install from https://helm.sh/docs/intro/install/)
 
-### 1. Verify Kubernetes is running
+### Using Helm (Recommended)
+
+#### Local Development (Docker Desktop)
 ```bash
-kubectl get nodes
-# Expected: docker-desktop   Ready   control-plane
+make helm-install
 ```
 
-### 2. Build images and deploy
+#### AET Kubernetes Cluster
 ```bash
-make k8s-deploy
-```
-This builds all 5 Docker images and applies all Kubernetes manifests automatically. Waits until all pods are ready.
-
-### 3. Check status (optional)
-```bash
-make k8s-status
+make helm-install-aet
 ```
 
-### 5. Access the application
-- **React Client:** http://localhost:30000
-- **API Gateway:** http://localhost:30080
-
-### Tearing down
+#### Update or remove deployment
 ```bash
-make k8s-down
+make helm-upgrade      # Update existing deployment
+make helm-delete       # Remove deployment
 ```
+
+See `Makefile` for exact commands and `DEPLOYMENT.md` for setup instructions.
+
+### Using kubectl directly (Legacy)
+
+```bash
+make k8s-build        # Build images
+make k8s-deploy       # Deploy to local Kubernetes
+make k8s-status       # Check pod status
+make k8s-down         # Tear down
+```
+
+**Access the application:**
+- React Client: http://localhost:30000
+- API Gateway: http://localhost:30080
 
 ---
 

@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+    spec:
+      containers:
+        - name: api-gateway
+          image: {{ .Values.imageRegistry }}/api-gateway:{{ .Values.imageTag }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.services.apiGateway.port }}
+          env:
+            - name: USER_SERVICE_HOST
+              value: user-service
+            - name: COURSE_SERVICE_HOST
+              value: course-service
+            - name: ROADMAP_SERVICE_HOST
+              value: roadmap-service
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: {{ .Values.services.apiGateway.port }}
+            initialDelaySeconds: 20
+            periodSeconds: 10

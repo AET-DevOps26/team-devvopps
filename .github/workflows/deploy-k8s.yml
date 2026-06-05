@@ -1,0 +1,90 @@
+name: Deploy to AET Kubernetes Cluster
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'team-devvopps' }}
+  HELM_RELEASE_NAME: team-devvopps
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'latest'
+
+      - name: Configure kubectl
+        env:
+          KUBECONFIG_CONTENT: ${{ secrets.KUBECONFIG }}
+        run: |
+          if [ -z "$KUBECONFIG_CONTENT" ]; then
+            echo "ERROR: KUBECONFIG secret not configured"
+            echo "Please add your kubeconfig to GitHub Secrets as 'KUBECONFIG'"
+            exit 1
+          fi
+
+          mkdir -p "$HOME/.kube"
+          echo "$KUBECONFIG_CONTENT" > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+
+          echo "Testing kubectl connection..."
+          kubectl cluster-info
+          kubectl get nodes
+
+      - name: Create namespace if it doesn't exist
+        run: |
+          kubectl create namespace "$K8S_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Lint Helm chart
+        run: helm lint helm/team-devvopps/
+
+      - name: Deploy with Helm
+        run: |
+          helm upgrade --install "$HELM_RELEASE_NAME" helm/team-devvopps/ \
+            -f helm/team-devvopps/values-aet.yaml \
+            -n "$K8S_NAMESPACE" \
+            --wait \
+            --timeout 5m
+
+      - name: Verify deployment
+        run: |
+          echo "Checking pod status..."
+          kubectl get pods -n "$K8S_NAMESPACE"
+          kubectl get services -n "$K8S_NAMESPACE"
+          kubectl get ingress -n "$K8S_NAMESPACE" || echo "No ingress configured yet"
+
+          echo ""
+          echo "Release status:"
+          helm status "$HELM_RELEASE_NAME" -n "$K8S_NAMESPACE"
+
+      - name: Wait for pods to be ready
+        run: |
+          echo "Waiting for all pods to be ready..."
+          kubectl wait --for=condition=ready pod \
+            --all \
+            -n "$K8S_NAMESPACE" \
+            --timeout=5m
+
+      - name: Deployment Success
+        run: |
+          echo "Deployment successful!"
+          echo ""
+          echo "Release: $HELM_RELEASE_NAME"
+          echo "Namespace: $K8S_NAMESPACE"
+          echo ""
+          echo "Pod Status:"
+          kubectl get pods -n "$K8S_NAMESPACE"
+          echo ""
+          echo "Next steps:"
+          echo "1. Check ingress: kubectl get ingress -n $K8S_NAMESPACE"
+          echo "2. View logs: kubectl logs -n $K8S_NAMESPACE -l app=<service>"
+          echo "3. Port forward (if needed): kubectl port-forward -n $K8S_NAMESPACE svc/<service> <local>:<remote>"

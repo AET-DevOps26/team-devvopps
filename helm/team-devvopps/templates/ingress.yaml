@@ -1,0 +1,26 @@
+{{- if .Values.ingressHost }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: team-devvopps-ingress
+  namespace: {{ .Values.namespace }}
+spec:
+  rules:
+    - host: {{ .Values.ingressHost }}
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  number: {{ .Values.services.apiGateway.port }}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: client
+                port:
+                  number: {{ .Values.services.client.port }}
+{{- end }}
