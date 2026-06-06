@@ -38,10 +38,6 @@ jobs:
 
           echo "kubectl configured successfully"
 
-      - name: Create namespace if it doesn't exist
-        run: |
-          kubectl create namespace "$K8S_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
-
       - name: Lint Helm chart
         run: helm lint helm/team-devvopps/
 
