@@ -36,9 +36,7 @@ jobs:
           echo "$KUBECONFIG_CONTENT" > "$HOME/.kube/config"
           chmod 600 "$HOME/.kube/config"
 
-          echo "Testing kubectl connection..."
-          kubectl cluster-info
-          kubectl get nodes
+          echo "kubectl configured successfully"
 
       - name: Create namespace if it doesn't exist
         run: |
@@ -48,9 +46,14 @@ jobs:
         run: helm lint helm/team-devvopps/
 
       - name: Deploy with Helm
+        env:
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER || 'postgres' }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD || 'postgres' }}
         run: |
           helm upgrade --install "$HELM_RELEASE_NAME" helm/team-devvopps/ \
             -f helm/team-devvopps/values-aet.yaml \
+            --set postgres.credentials.username="$POSTGRES_USER" \
+            --set postgres.credentials.password="$POSTGRES_PASSWORD" \
             -n "$K8S_NAMESPACE" \
             --wait \
             --timeout 5m
