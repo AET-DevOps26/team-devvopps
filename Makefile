@@ -27,8 +27,16 @@ help:
 # ── Helm ───────────────────────────────────────────────────────────────────────
 
 helm-install:
+	@if [ ! -f helm/team-devvopps/values-secrets.yaml ]; then \
+		echo "Creating values-secrets.yaml from example..."; \
+		cp helm/team-devvopps/values-secrets.example.yaml helm/team-devvopps/values-secrets.yaml; \
+		echo "Edit helm/team-devvopps/values-secrets.yaml with your credentials before deploying"; \
+		exit 1; \
+	fi
 	@echo "Installing Helm chart to local Kubernetes..."
-	helm install team-devvopps helm/team-devvopps/ -n team-devvopps --create-namespace
+	helm install team-devvopps helm/team-devvopps/ \
+		-f helm/team-devvopps/values-secrets.yaml \
+		-n team-devvopps --create-namespace
 	@echo ""
 	@echo "Deployment complete!"
 	@echo "  Client:      http://localhost:30000"
@@ -36,15 +44,40 @@ helm-install:
 
 helm-install-aet:
 	@echo "Installing Helm chart to AET Kubernetes cluster..."
+	@if [ -z "$(POSTGRES_USER)" ] || [ -z "$(POSTGRES_PASSWORD)" ]; then \
+		echo ""; \
+		echo "ERROR: Database credentials required"; \
+		echo ""; \
+		echo "Usage: POSTGRES_USER=<user> POSTGRES_PASSWORD=<pass> make helm-install-aet"; \
+		echo ""; \
+		echo "Example:"; \
+		echo "  POSTGRES_USER=postgres POSTGRES_PASSWORD=postgres make helm-install-aet"; \
+		echo ""; \
+		echo "OR use GitHub Actions (recommended):"; \
+		echo "  1. Set GitHub Secrets: POSTGRES_USER and POSTGRES_PASSWORD"; \
+		echo "  2. Push to main or trigger workflow manually"; \
+		echo ""; \
+		exit 1; \
+	fi
+	@echo "Using credentials: username=$(POSTGRES_USER)"
 	helm install team-devvopps helm/team-devvopps/ \
 		-f helm/team-devvopps/values-aet.yaml \
+		--set postgres.credentials.username=$(POSTGRES_USER) \
+		--set postgres.credentials.password=$(POSTGRES_PASSWORD) \
 		-n team-devvopps --create-namespace
 	@echo ""
+	@echo "Deployment complete!"
 	@echo "Check status with: kubectl get pods -n team-devvopps"
 
 helm-upgrade:
+	@if [ ! -f helm/team-devvopps/values-secrets.yaml ]; then \
+		echo "Error: helm/team-devvopps/values-secrets.yaml not found"; \
+		exit 1; \
+	fi
 	@echo "Upgrading Helm chart..."
-	helm upgrade team-devvopps helm/team-devvopps/ -n team-devvopps
+	helm upgrade team-devvopps helm/team-devvopps/ \
+		-f helm/team-devvopps/values-secrets.yaml \
+		-n team-devvopps
 
 helm-delete:
 	@echo "Deleting Helm deployment..."

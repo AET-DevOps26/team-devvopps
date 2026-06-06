@@ -19,6 +19,13 @@ spec:
           imagePullPolicy: {{ .Values.imagePullPolicy }}
           ports:
             - containerPort: {{ .Values.services.apiGateway.port }}
+          resources:
+            requests:
+              cpu: 150m
+              memory: 256Mi
+            limits:
+              cpu: 400m
+              memory: 512Mi
           env:
             - name: USER_SERVICE_HOST
               value: user-service

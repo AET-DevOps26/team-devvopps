@@ -11,6 +11,13 @@ spec:
       initContainers:
         - name: wait-for-table
           image: {{ .Values.postgres.image }}
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
           command:
             - sh
             - -c
@@ -31,6 +38,13 @@ spec:
         - name: seeder
           image: {{ .Values.imageRegistry }}/course-seeder:{{ .Values.imageTag }}
           imagePullPolicy: {{ .Values.imagePullPolicy }}
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
           env:
             - name: DB_HOST
               value: postgres

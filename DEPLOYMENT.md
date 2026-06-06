@@ -1,40 +1,59 @@
-# Automated Deployment to AET Kubernetes Cluster
+# Deployment to AET Kubernetes Cluster
 
-## GitHub Actions Setup
+## For Tutors: Deploy the Project
 
-The workflow `.github/workflows/deploy-k8s.yml` automatically deploys to the AET cluster when you push to `main`.
+Choose one method:
 
-### Prerequisites
+### Method 1: Automatic Deployment (Easiest)
 
-1. Get your `kubeconfig` file from Rancher: https://rancher.ase.cit.tum.de (Profile → Kubeconfig)
-2. Add it as a GitHub secret called `KUBECONFIG`
+**All credentials in GitHub. Just trigger the pipeline:**
 
-### Adding Secrets/Variables to GitHub
+1. Go to GitHub repo → Actions tab
+2. Click "Deploy to AET Kubernetes Cluster"
+3. Click "Run workflow"
+4. Check logs for success
 
-**Option 1: Web UI**
-- Go to Settings → Secrets and variables → Actions
-- Click "New repository secret" → Add `KUBECONFIG` with your kubeconfig contents
-- (Optional) Click "New repository variable" → Add `K8S_NAMESPACE` = `team-devvopps`
+Done!
 
-**Option 2: GitHub CLI**
+---
+
+### Method 2: Manual Deployment
+
+**If you prefer to deploy from command line:**
+
+1. Contact the team to get:
+   - kubeconfig file (stud.yaml)
+   - Database credentials (username/password)
+
+2. Deploy:
 ```bash
-gh secret set KUBECONFIG < path/to/stud.yaml
-gh variable set K8S_NAMESPACE --body "team-devvopps"
+export KUBECONFIG=~/path/to/stud.yaml
+POSTGRES_USER=<username> POSTGRES_PASSWORD=<password> make helm-install-aet
 ```
 
-### Testing the Workflow
+3. Verify (after namespace is created):
+```bash
+kubectl get pods -n team-devvopps
+kubectl get services -n team-devvopps
+```
 
-1. Push to `main` branch (auto-triggers)
-2. Or manually trigger: Actions tab → "Deploy to AET Kubernetes Cluster" → "Run workflow"
-3. Check logs in the Actions tab to verify success
+---
 
-### Troubleshooting
+## Prerequisites
 
-**"KUBECONFIG secret not configured"** → Add the secret above
+- Method 1 (GitHub Actions): No setup needed ✅
+- Method 2 (Manual): Need `kubectl` and `helm` installed locally
 
-**"cluster reachability check failed"** → Verify kubeconfig is valid and cluster is accessible
+---
 
-**"No nodes available for pod scheduling"** → Check namespace/resources exist on cluster
+## Troubleshooting
 
-See the workflow file (`.github/workflows/deploy-k8s.yml`) for full deployment logic.
+**Namespace doesn't exist:**
+→ Ask instructors to create `team-devvopps` namespace in Rancher
+
+**Pods stuck in Pending:**
+→ Run: `kubectl describe namespace team-devvopps` to check resources
+
+
+
 

@@ -19,139 +19,12 @@ Each service has:
 
 ---
 
-## Running with Kubernetes
-## Deployment (Azure VM)
+## Quick Start
 
-The application is automatically built and deployed to an Azure VM on every merge to main via Github Actions.
+**Choose your setup method:**
 
-### URLs
-- **Frontend:** https://client.9.223.113.24.nip.io
-- **API Gateway:** https://api.9.223.113.24.nip.io
-
-### CI/CD Pipeline
-
-#### Provisioning the VM (run once)
-The VM is provisioned and configured automatically via the `provision.yml` workflow using Terraform and Ansible.
-- **Terraform** creates the Azure VM (Ubuntu 24.04, Standard_D2s_v3, ports 22/80/443 open)
-- **Ansible** configures the VM (installs Docker and Docker Compose)
-- After provisioning, the `AZURE_PUBLIC_IP` GitHub variable is updated automatically
-
-To provision a new VM: **GitHub -> Actions -> Provision Azure VM -> Run workflow**
-
-#### Deploying the app (automatic on every merge to main)
-The `build_and_deploy_docker.yml` workflow runs automatically on every merge to main:
-1. `build` job: builds and pushes 5 Docker images to ghcr.io (api-gateway, user-service, course-service, roadmap-service, client)
-2. `deploy` job: copies `compose.azure.yml` and `init-databases.sql` to the VM, creates `.env.prod`, runs `docker compose up` with the pre-built images
-
-### Stack on the VM
-- Traefik (reverse proxy + automatic HTTPS via Let's Encrypt)
-- Postgres 16
-- All 5 services (api-gateway, user-service, course-service, roadmap-service, client)
-
-### One-Time Azure Setup (already done)
-
-The following was set up once to enable the provision workflow. Documented here for reference.
-
-**1. Azure Service Principal**
-- Go to [Azure Portal](https://portal.azure.com) → **Microsoft Entra ID** → **App registrations** → **New registration**
-- Name: `team-devvopps`
-- Go to **Certificates & secrets** → **New client secret** → copy the value immediately
-- Go to **Subscriptions** → your subscription → **Access control (IAM)** → add the app as **Contributor**
-
-**2. Terraform State Backend**
-- Created a storage account (`tfstatedevvopps`) in resource group `team-devvopps`, region `Sweden Central`
-- Inside it, a container named `tfstate` was created
-- The Terraform state is stored remotely in the Azure storage account to allow all team members to share the same state. This means running the provision workflow from any machine or by any team member always operates on the same infrastructure state.
-
-**3. SSH Key Pair**
-- `AZURE_PRIVATE_KEY` and `AZURE_SSH_PUBLIC_KEY` are a matching keypair
-- If they ever need to be rotated, both secrets must be updated together and the VM must be reprovisioned by triggering the Provision Azure VM workflow again
-
-> **Note:** All secrets are already stored in the GitHub repository. No Azure setup is needed to trigger the provisioning workflow.
-
-### Required GitHub secrets/variables
-| Name | Type | Description |
-|---|---|---|
-| `AZURE_PUBLIC_IP` | variable | Public IP of the Azure VM (updated automatically after provisioning) |
-| `AZURE_USER` | variable | SSH username (`azureuser`) |
-| `AZURE_PRIVATE_KEY` | secret | SSH private key |
-| `ARM_CLIENT_ID` | secret | Azure service principal client ID (for Terraform) |
-| `ARM_CLIENT_SECRET` | secret | Azure service principal client secret (for Terraform) |
-| `ARM_SUBSCRIPTION_ID` | secret | Azure subscription ID (for Terraform) |
-| `ARM_TENANT_ID` | secret | Azure tenant ID (for Terraform) |
-| `PAT_TOKEN` | secret | GitHub personal access token to update `AZURE_PUBLIC_IP` after provisioning |
-
----
-
-## Running with Kubernetes (Recommended)
-
-The fastest way to run the entire stack. Requires Docker Desktop with Kubernetes enabled.
-
-### Prerequisites
-- **Docker Desktop** with **Kubernetes enabled**
-  - Docker Desktop → Settings → Kubernetes → Enable Kubernetes → Apply & Restart
-- **Helm 3.x** (install from https://helm.sh/docs/intro/install/)
-
-### Using Helm (Recommended)
-
-#### Local Development (Docker Desktop)
-```bash
-make helm-install
-```
-
-#### AET Kubernetes Cluster
-```bash
-make helm-install-aet
-```
-
-#### Update or remove deployment
-```bash
-make helm-upgrade      # Update existing deployment
-make helm-delete       # Remove deployment
-```
-
-See `Makefile` for exact commands and `DEPLOYMENT.md` for setup instructions.
-
-### Using kubectl directly (Legacy)
-
-```bash
-make k8s-build        # Build images
-make k8s-deploy       # Deploy to local Kubernetes
-make k8s-status       # Check pod status
-make k8s-down         # Tear down
-```
-
-**Access the application:**
-- React Client: http://localhost:30000
-- API Gateway: http://localhost:30080
-
----
-
-## Running with Docker Compose
-
-Runs the full stack with a single command. No Kubernetes required.
-
-### Prerequisites
-- **Docker Desktop** (must be open and running)
-
-### Start the full stack
-```bash
-make docker-up
-```
-
-### Access the application
-- **React Client:** http://localhost:3000
-- **API Gateway:** http://localhost:8080
-
-### Stop
-```bash
-make docker-down
-```
-
-### Reset the database
-```bash
-make docker-reset
-```
+- **Local development with your IDE:** [Running Locally (Development)](#running-locally-development)
+- **Full stack with containers:** [Running with Docker Compose](#running-with-docker-compose) or [Running with Kubernetes](#running-with-kubernetes)
 
 ---
 
@@ -164,33 +37,24 @@ For active development without Docker for the services.
 - **Miniconda** or **Anaconda**
 - **Java 25** (included in conda environment)
 
-### 1. Setup environment
+### Setup
+
 ```bash
+# 1. Create conda environment
 conda env create -f environment.yml
 conda activate team-devvopps
-```
 
-### 2. Start PostgreSQL
-```bash
-conda activate team-devvopps
+# 2. Start PostgreSQL in Docker
 cd server
 docker-compose up
-```
-This starts PostgreSQL on port 5432 with 3 databases: userdb, coursedb, roadmapdb.
 
-### 3. Start Spring Boot services
-```bash
+# 3. In another terminal, start all Spring Boot services
 make dev
-```
-All 4 services start in the background. Logs are written to `logs/` directory:
-```bash
-tail -f logs/user-service.log
-tail -f logs/api-gateway.log
-```
 
-To stop all services:
-```bash
-make dev-stop
+# 4. In another terminal, start frontend (optional)
+cd client
+npm install
+npm run dev
 ```
 
 **Services available at:**
@@ -198,30 +62,189 @@ make dev-stop
 - user-service: http://localhost:8081
 - course-service: http://localhost:8082
 - roadmap-service: http://localhost:8083
+- Frontend: http://localhost:3000
 
-### 4. Start the frontend
+### Viewing Logs
+
 ```bash
-conda activate team-devvopps
-cd client
-npm install
-npm run dev
+tail -f logs/user-service.log
+tail -f logs/api-gateway.log
 ```
 
-Frontend available at: http://localhost:3000
+### Populate Course Database (First Time)
 
-### 5. Populate course database (first time only)
 ```bash
-conda activate team-devvopps
 cd server/course-service
 python3 fetch_and_seed_courses.py   # macOS/Linux
 python fetch_and_seed_courses.py    # Windows
 ```
-Fetches ~930 courses from the TUM Campus Online API into coursedb. Only needs to be run once.
 
-### Reset local database
+### Stop & Cleanup
+
 ```bash
+# Stop services
+make dev-stop
+
+# Reset database
 cd server
 docker-compose down
 docker volume rm server_postgres_data
 ```
-Then repeat steps 2–5.
+
+---
+
+## Running with Docker Compose
+
+Runs the full stack with a single command. No Kubernetes or local Java installation required.
+
+### Prerequisites
+- **Docker Desktop** (must be open and running)
+
+### Commands
+
+```bash
+make docker-up      # Start full stack
+make docker-down    # Stop stack
+make docker-reset   # Stop and delete all data
+```
+
+### Access
+- **React Client:** http://localhost:3000
+- **API Gateway:** http://localhost:8080
+
+---
+
+## Running with Kubernetes
+
+The fastest containerized way to run the entire stack.
+
+### Prerequisites
+- **Docker Desktop** with **Kubernetes enabled**
+  - Settings → Kubernetes → Enable Kubernetes → Apply & Restart
+- **Helm 3.x** (install from https://helm.sh/docs/intro/install/)
+
+### Local Development (Docker Desktop)
+
+**First time setup:**
+
+1. Copy the example secrets file:
+```bash
+cp helm/team-devvopps/values-secrets.example.yaml helm/team-devvopps/values-secrets.yaml
+```
+
+2. Edit `helm/team-devvopps/values-secrets.yaml` with your database credentials:
+```yaml
+postgres:
+  credentials:
+    username: your_username
+    password: your_password
+```
+
+3. Deploy:
+```bash
+make helm-install
+```
+
+**Access:**
+- React Client: http://localhost:30000
+- API Gateway: http://localhost:30080
+
+**Manage deployment:**
+```bash
+make helm-upgrade    # Update existing deployment
+make helm-delete     # Remove deployment
+make k8s-status      # Check pod status
+```
+
+### AET Kubernetes Cluster
+
+For deployment to the AET cluster, see [DEPLOYMENT.md](DEPLOYMENT.md)
+
+```bash
+make helm-install-aet    # Deploy to AET (uses GitHub Secrets)
+```
+
+### Legacy kubectl (Not Recommended)
+
+```bash
+make k8s-build        # Build all Docker images
+make k8s-deploy       # Deploy to Kubernetes
+make k8s-status       # Check status
+make k8s-down         # Tear down
+```
+
+---
+
+## Deployment Infrastructure
+
+### Azure VM (Staging/Demo)
+
+The application is automatically built and deployed to an Azure VM on every merge to main.
+
+**URLs:**
+- **Frontend:** https://client.9.223.113.24.nip.io
+- **API Gateway:** https://api.9.223.113.24.nip.io
+
+**How it works:**
+
+1. **Provisioning (one-time):**
+   - GitHub Actions → Provision Azure VM → Run workflow
+   - Terraform creates VM + Ansible configures Docker
+
+2. **Deployment (automatic on merge to main):**
+   - Build job: Creates 5 Docker images → pushes to ghcr.io
+   - Deploy job: Copies docker-compose to VM → starts services with Traefik for HTTPS
+
+**Stack on VM:**
+- Traefik (reverse proxy + Let's Encrypt HTTPS)
+- Postgres 16
+- All microservices
+
+**Setup Details (Reference Only):**
+- Azure Service Principal: For Terraform to provision VM
+- Terraform State Backend: Shared storage for team state
+- SSH Key Pair: For accessing VM
+- All configured in GitHub Secrets
+
+See [README.md section on Azure](README.md#azure-vm-stagingdemo) for detailed setup.
+
+### AET Kubernetes Cluster (Production)
+
+For deployment to the AET Kubernetes cluster used in the course:
+
+- See [DEPLOYMENT.md](DEPLOYMENT.md) for full instructions
+- Two deployment options: GitHub Actions (automatic) or manual Helm command
+- Supports multiple environments with Helm values files
+
+---
+
+## Required GitHub Secrets/Variables
+
+### For Azure VM
+| Name | Type | Description |
+|---|---|---|
+| `AZURE_PUBLIC_IP` | variable | Public IP of Azure VM |
+| `AZURE_USER` | variable | SSH username (`azureuser`) |
+| `AZURE_PRIVATE_KEY` | secret | SSH private key |
+| `ARM_CLIENT_ID` | secret | Azure service principal client ID |
+| `ARM_CLIENT_SECRET` | secret | Azure service principal client secret |
+| `ARM_SUBSCRIPTION_ID` | secret | Azure subscription ID |
+| `ARM_TENANT_ID` | secret | Azure tenant ID |
+| `PAT_TOKEN` | secret | GitHub PAT for updating AZURE_PUBLIC_IP |
+
+### For AET Kubernetes
+| Name | Type | Description |
+|---|---|---|
+| `KUBECONFIG` | secret | Kubeconfig for AET cluster access |
+| `POSTGRES_USER` | secret | Database username |
+| `POSTGRES_PASSWORD` | secret | Database password |
+| `K8S_NAMESPACE` | variable | Kubernetes namespace (`team-devvopps`) |
+
+---
+
+## Making Changes
+
+- **Code changes:** Commit to feature branches, open PR, merge to main
+- **Linting:** Automatically runs on PR
+- **Docker images:** Automatically built and pushed to ghcr.io on merge
+- **Deployments:** Automatic to Azure VM, manual/automatic to AET cluster

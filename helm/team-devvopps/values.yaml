@@ -19,9 +19,6 @@ postgres:
   version: "16"
   image: postgres:16
   storage: 1Gi
-  credentials:
-    username: postgres
-    password: postgres
 
 # Service ports (should not change)
 services:
@@ -37,3 +34,4 @@ services:
     port: 8080
   client:
     port: 80
+
