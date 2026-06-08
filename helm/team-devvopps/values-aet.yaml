@@ -4,7 +4,7 @@
 imageRegistry: ghcr.io/aet-devops26/team-devvopps
 imagePullPolicy: IfNotPresent
 
-replicas: 2
+replicas: 1
 
 ingressHost: team-devvopps.rancher.ase.cit.tum.de
 

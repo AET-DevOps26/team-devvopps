@@ -6,6 +6,10 @@ on:
       - main
   workflow_dispatch:
 
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'team-devvopps' }}
   HELM_RELEASE_NAME: team-devvopps
@@ -47,6 +51,13 @@ jobs:
             --set postgres.credentials.username="$POSTGRES_USER" \
             --set postgres.credentials.password="$POSTGRES_PASSWORD"
 
+      - name: Clean up failed deployments
+        run: |
+          echo "Cleaning up failed and unknown pods..."
+          kubectl delete pods -n "$K8S_NAMESPACE" --field-selector=status.phase=Failed 2>/dev/null || true
+          kubectl delete pods -n "$K8S_NAMESPACE" --field-selector=status.phase=Unknown 2>/dev/null || true
+          echo "Cleanup complete"
+
       - name: Deploy with Helm
         env:
           POSTGRES_USER: ${{ secrets.POSTGRES_USER || 'postgres' }}
@@ -78,6 +89,22 @@ jobs:
             --all \
             -n "$K8S_NAMESPACE" \
             --timeout=5m
+
+      - name: Verify pod health
+        run: |
+          echo "Checking for unhealthy pods..."
+          UNHEALTHY=$(kubectl get pods -n "$K8S_NAMESPACE" | grep -E "CrashLoopBackOff|Pending|Error")
+
+          if [ -n "$UNHEALTHY" ]; then
+            echo "ERROR: Found unhealthy pods:"
+            echo "$UNHEALTHY"
+            echo ""
+            echo "Pod details:"
+            kubectl describe pods -n "$K8S_NAMESPACE" | grep -A 5 "State:\|Last State:"
+            exit 1
+          fi
+
+          echo "✓ All pods are healthy"
 
       - name: Deployment Success
         run: |
