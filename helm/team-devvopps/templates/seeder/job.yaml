@@ -9,7 +9,7 @@ spec:
     spec:
       restartPolicy: OnFailure
       initContainers:
-        - name: wait-for-table
+        - name: wait-for-postgres
           image: {{ .Values.postgres.image }}
           resources:
             requests:
@@ -22,18 +22,12 @@ spec:
             - sh
             - -c
             - |
-              echo "Waiting for courses table to be created by course-service..."
-              until psql -h postgres -U postgres -d coursedb -c "SELECT 1 FROM courses LIMIT 1" > /dev/null 2>&1; do
-                echo "  courses table not ready yet, retrying in 5s..."
+              echo "Waiting for postgres to be ready..."
+              until pg_isready -h postgres -p 5432; do
+                echo "  postgres not ready yet, retrying in 5s..."
                 sleep 5
               done
-              echo "courses table is ready."
-          env:
-            - name: PGPASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: postgres-secret
-                  key: password
+              echo "postgres is ready."
       containers:
         - name: seeder
           image: {{ .Values.imageRegistry }}/course-seeder:{{ .Values.imageTag }}

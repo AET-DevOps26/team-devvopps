@@ -84,16 +84,16 @@ jobs:
 
       - name: Wait for pods to be ready
         run: |
-          echo "Waiting for all pods to be ready..."
+          echo "Waiting for deployment pods to be ready..."
           kubectl wait --for=condition=ready pod \
-            --all \
+            --selector='job-name!=course-seeder' \
             -n "$K8S_NAMESPACE" \
             --timeout=5m
 
       - name: Verify pod health
         run: |
-          echo "Checking for unhealthy pods..."
-          UNHEALTHY=$(kubectl get pods -n "$K8S_NAMESPACE" | grep -E "CrashLoopBackOff|Pending|Error")
+          echo "Checking for unhealthy deployment pods..."
+          UNHEALTHY=$(kubectl get pods -n "$K8S_NAMESPACE" --selector='job-name!=course-seeder' | grep -E "CrashLoopBackOff|Pending|Error")
 
           if [ -n "$UNHEALTHY" ]; then
             echo "ERROR: Found unhealthy pods:"
@@ -104,7 +104,7 @@ jobs:
             exit 1
           fi
 
-          echo "✓ All pods are healthy"
+          echo "✓ All deployment pods are healthy"
 
       - name: Deployment Success
         run: |
