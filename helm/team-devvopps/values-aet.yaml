@@ -11,6 +11,12 @@ postgres:
   # Higher storage quota for production/staging workloads
   # Inherits postgres.replicas: 2 from values.yaml (HA setup same as local dev)
   storage: 10Gi
-
 # AET uses ingress for external access (not NodePort like local dev)
 ingressHost: team-devvopps.stud.k8s.aet.cit.tum.de
+
+
+prometheus:
+  retention: 30d
+
+grafana:
+  adminPassword: changeme
