@@ -39,7 +39,13 @@ jobs:
           echo "kubectl configured successfully"
 
       - name: Lint Helm chart
-        run: helm lint helm/team-devvopps/
+        env:
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER || 'postgres' }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD || 'postgres' }}
+        run: |
+          helm lint helm/team-devvopps/ \
+            --set postgres.credentials.username="$POSTGRES_USER" \
+            --set postgres.credentials.password="$POSTGRES_PASSWORD"
 
       - name: Deploy with Helm
         env:
