@@ -10,3 +10,9 @@ ingressHost: team-devvopps.rancher.ase.cit.tum.de
 
 postgres:
   storage: 10Gi
+
+prometheus:
+  retention: 30d
+
+grafana:
+  adminPassword: changeme
