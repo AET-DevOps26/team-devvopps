@@ -39,6 +39,7 @@ spec:
           volumeMounts:
             - name: postgres-storage
               mountPath: /var/lib/postgresql/data
+              subPath: data
             - name: init-sql
               mountPath: /docker-entrypoint-initdb.d
           readinessProbe:
