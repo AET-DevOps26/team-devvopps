@@ -64,7 +64,7 @@ helm-install-aet:
 		-f helm/team-devvopps/values-aet.yaml \
 		--set postgres.credentials.username=$(POSTGRES_USER) \
 		--set postgres.credentials.password=$(POSTGRES_PASSWORD) \
-		-n team-devvopps --create-namespace
+		-n team-devvopps
 	@echo ""
 	@echo "Deployment complete!"
 	@echo "Check status with: kubectl get pods -n team-devvopps"
