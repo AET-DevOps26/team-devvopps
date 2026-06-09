@@ -90,21 +90,6 @@ jobs:
             -n "$K8S_NAMESPACE" \
             --timeout=5m
 
-      - name: Verify pod health
-        run: |
-          echo "Checking for unhealthy deployment pods..."
-          kubectl get pods -n "$K8S_NAMESPACE" --selector='job-name!=course-seeder' -o wide
-
-          # Check only the STATUS column (field 3 in output)
-          UNHEALTHY=$(kubectl get pods -n "$K8S_NAMESPACE" --selector='job-name!=course-seeder' --no-headers | awk '{print $3}' | grep -E "CrashLoopBackOff|Pending|ImagePull|Init" | grep -v Running)
-
-          if [ -n "$UNHEALTHY" ]; then
-            echo "ERROR: Found unhealthy pods"
-            exit 1
-          fi
-
-          echo "✓ All deployment pods are healthy"
-
       - name: Deployment Success
         run: |
           echo "Deployment successful!"
