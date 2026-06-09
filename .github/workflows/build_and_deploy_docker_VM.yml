@@ -69,6 +69,14 @@ jobs:
           push: true
           tags: ghcr.io/aet-devops26/team-devvopps/client:latest
 
+      - name: Build and Push course-seeder
+        uses: docker/build-push-action@v5
+        with:
+          context: ./server/course-service
+          file: ./server/course-service/Dockerfile.seeder
+          push: true
+          tags: ghcr.io/aet-devops26/team-devvopps/course-seeder:latest
+
   deploy:
     needs: build
     runs-on: ubuntu-latest
