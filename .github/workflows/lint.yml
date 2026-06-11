@@ -73,7 +73,10 @@ jobs:
           version: 'latest'
 
       - name: Lint Helm chart
-        run: helm lint helm/team-devvopps/ --set postgres.credentials.username="testuser" --set postgres.credentials.password="testpass123"
+        run: |
+          helm lint "helm/team-devvopps/" \
+            --set "postgres.credentials.username=testuser" \
+            --set "postgres.credentials.password=testpass123"
   
   lint-openapi:
     name: Lint OpenAPI Specs
@@ -96,5 +99,5 @@ jobs:
           for file in api/*.yaml
           do
             echo "Linting $file"
-            redocly lint $file
+            redocly lint "$file"
           done
