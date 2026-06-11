@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-service
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app: llm-service
+  template:
+    metadata:
+      labels:
+        app: llm-service
+        monitoring: "true"
+    spec:
+      containers:
+        - name: llm-service
+          image: {{ .Values.imageRegistry }}/llm-service:{{ .Values.imageTag }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.services.llmService.port }}
+          resources:
+            requests:
+              cpu: 150m
+              memory: 256Mi
+            limits:
+              cpu: 200m
+              memory: 512Mi
+            - name: COURSE_SERVICE_HOST
+              value: course-service
+            - name: LLM_API_URL
+              value: http://llm-backend:1234/v1/chat/completions
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: {{ .Values.services.llmService.port }}
+            initialDelaySeconds: 30
+            periodSeconds: 10

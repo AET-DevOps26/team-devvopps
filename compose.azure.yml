@@ -67,6 +67,7 @@ services:
       DB_USER: postgres
       DB_PASSWORD: postgres
       USER_SERVICE_HOST: user-service
+      LLM_SERVICE_HOST: llm-service
     depends_on:
       postgres:
         condition: service_healthy
@@ -107,6 +108,17 @@ services:
       - "traefik.http.routers.client.tls.certresolver=letsencrypt"
       - "traefik.http.middlewares.client-compress.compress=true"
       - "traefik.http.routers.client.middlewares=client-compress"
+  
+  llm-service:
+    image: ghcr.io/aet-devops26/team-devvopps/llm-service:latest
+    environment:
+      LLM_API_URL: http://llm-backend:1234/v1/chat/completions
+      COURSE_SERVICE_HOST: course-service
+    depends_on:
+      - course-service
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=false"
 
 volumes:
   postgres_data:

@@ -1,5 +1,9 @@
 package com.tum.roadmap.service;
 
+import com.tum.roadmap.dto.MilestoneDto;
+import com.tum.roadmap.dto.RoadmapRequest;
+import com.tum.roadmap.dto.RoadmapResponse;
+import com.tum.roadmap.dto.TaskDto;
 import com.tum.roadmap.model.*;
 import com.tum.roadmap.repository.GoalRepository;
 import com.tum.roadmap.repository.RoadmapRepository;
@@ -11,6 +15,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Service layer for Roadmap-related business logic.
@@ -23,8 +29,22 @@ public class RoadmapService {
     private final GoalRepository goalRepository;
     private final RestTemplate restTemplate;
 
-    @Value("${user.service.url:http://localhost:8081}/users/")
-    private String USER_URL;
+    @Value("${llm.service.host:llm-service}")
+    private String llmHost;
+
+    @Value("${llm.service.port:8084}")
+    private String llmPort;
+
+    @Value("${llm.service.host:user-service}")
+    private String userHost;
+
+    @Value("${llm.service.port:8081}")
+    private String userPort;
+    
+
+    private String USER_URL = "http://" + userHost + ":" + userPort + "/users/";
+    
+    private String LLM_URL = "http://" + llmHost + ":" + llmPort;;
 
     /**
      * Calls user-service to verify that the user exists.
@@ -44,65 +64,50 @@ public class RoadmapService {
 
         // Verify user exists via user-service
         Object user = getUser(userId);
-
-        Roadmap roadmap = new Roadmap();
-
+        
+        // Create Goal
         Goal goal = new Goal();
         goal.setCreated_date(LocalDateTime.now());
         goal.setDescription(user_goal);
         goalRepository.save(goal);
 
+        // Create Roadmap
+        Roadmap roadmap = new Roadmap();
         roadmap.setGoal(goal);
         roadmap.setCreated_date(LocalDateTime.now());
 
-        /*
-         * FUTURE AI SERVICE COMMUNICATION
-         *
-         * The roadmap-service should send the user's goal to the AI microservice.
-         * Example: POST http://localhost:8084/ai/generate
-         *
-         * Request body:
-         * {
-         *   "goal": "Learn Machine Learning"
-         * }
-         *
-         * The AI service should:
-         *
-         * 1. Extract keywords from the goal
-         *    Example:
-         *    ["machine learning", "python", "statistics"]
-         *
-         * 2. Search matching courses from course-service
-         *
-         * 3. Generate milestones and tasks
-         *
-         * 4. Return structured roadmap data
-         *
-         * Example response:
-         * {
-         *   "milestones": [...],
-         *   "tasks": [...],
-         *   "recommendedCourses": [...]
-         * }
-         *
-         */
+        // Call LLM
+        RoadmapResponse llmResponse = callLLM(user_goal);
 
-        /*
-         * TODO:
-         * Add generated milestones
-         *
-         * roadmap.setMilestones(...)
-         */
+        List<Milestone> milestones = new ArrayList<>();
+        
+        if (llmResponse != null && llmResponse.milestones() != null) {
+            
+            for (MilestoneDto m : llmResponse.milestones()) {
+                Milestone milestone = new Milestone();
+                milestone.setTitle(m.title());
+                milestone.setDescription(m.description());
+                milestone.setRoadmap(roadmap);
 
-        /*
-         * TODO:
-         * Add generated tasks
-         */
+                List<Task> tasks = new ArrayList<>();
+                
+                if (m.tasks() != null) {
+                    for (TaskDto t : m.tasks()) {
+                        Task task = new Task();
+                        task.setTitle(t.title());
+                        task.setCompleted(false);
+                        task.setMilestone(milestone);
 
-        /*
-         * TODO:
-         * Add recommended courses 
-         */
+                        tasks.add(task);
+                    }
+                }
+
+                milestone.setTasks(tasks);
+                milestones.add(milestone);
+            }
+        }
+
+        roadmap.setMilestones(milestones);
 
         return roadmapRepository.save(roadmap);
     }
@@ -113,5 +118,22 @@ public class RoadmapService {
     public Roadmap getRoadmap(Long id) {
 
         return roadmapRepository.findById(id).orElseThrow(() -> new RuntimeException("Roadmap not found"));
+    }
+
+    // Private Helper
+    private RoadmapResponse callLLM(String goal) {
+        try {
+            RestTemplate rt = new RestTemplate();
+
+            return rt.postForObject(
+                    LLM_URL + "/generate",
+                    new RoadmapRequest(goal),
+                    RoadmapResponse.class
+            );
+
+        } catch (Exception e) {
+            System.err.println("LLM service not reachable: " + e.getMessage());
+            return null;
+        }
     }
 }

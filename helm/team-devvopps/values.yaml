@@ -34,4 +34,6 @@ services:
     port: 8080
   client:
     port: 80
+  llmService:
+    port: 8084
 

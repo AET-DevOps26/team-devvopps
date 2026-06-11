@@ -37,6 +37,8 @@ spec:
                   key: password
             - name: USER_SERVICE_HOST
               value: user-service
+            - name: LLM_SERVICE_HOST
+              value: llm-service
           readinessProbe:
             httpGet:
               path: /actuator/health
