@@ -1,0 +1,103 @@
+openapi: 3.0.3
+info:
+  title: Course Service API
+  description: Read-only TUM course database
+  version: 1.0.0
+
+servers:
+  - url: /api/v1
+    description: Via API Gateway
+
+tags:
+  - name: courses
+    description: Course catalogue
+
+paths:
+  /courses:
+    get:
+      tags: [courses]
+      summary: Get all courses
+      operationId: getAllCourses
+      responses:
+        '200':
+          description: List of all courses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Course'
+
+  /courses/{id}:
+    get:
+      tags: [courses]
+      summary: Get a course by ID
+      operationId: getCourse
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Matching course
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Course'
+        '404':
+          description: Course not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /courses/search:
+    get:
+      tags: [courses]
+      summary: Search for a course by title
+      operationId: searchCourses
+      parameters:
+        - name: title
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Full or partial course title (case-insensitive)
+      responses:
+        '200':
+          description: Matching course
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Course'
+        '404':
+          description: No course found for the given title
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    Course:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          readOnly: true
+        title:
+          type: string
+        description:
+          type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string

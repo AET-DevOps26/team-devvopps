@@ -77,3 +77,27 @@ jobs:
           helm lint helm/team-devvopps/ \
             --set postgres.credentials.username="testuser" \
             --set postgres.credentials.password="testpass123"
+  
+  lint-openapi:
+    name: Lint OpenAPI Specs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Redocly CLI
+        run: npm install -g @redocly/cli
+
+      - name: Lint OpenAPI files
+        run: |
+          for file in api/*.yaml
+          do
+            echo "Linting $file"
+            redocly lint $file
+          done
