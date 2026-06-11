@@ -1,21 +1,79 @@
 # team-devvopps
 
+TUMgoal is a DevOps course project for helping TUM Computer Science students turn academic or career goals into structured learning roadmaps. Students enter a goal, choose whether it is a career goal or university course goal, and receive milestones, tasks, course recommendations, and progress tracking.
+
+## Project Deliverables
+
+This repository currently includes:
+
+- Local, Docker Compose, Kubernetes, Helm, Azure VM, and AET cluster setup instructions.
+- Architecture documentation for the React client, API gateway, Spring Boot microservices, PostgreSQL databases, and GenAI integration.
+- OpenAPI specifications for the service APIs in `api/`.
+- CI/CD pipelines for linting, image builds, Azure VM deployment, AET Kubernetes deployment, and Azure VM provisioning.
+- Operational instructions for logs, Kubernetes status checks, Helm release checks, and deployment troubleshooting.
+- A student responsibilities section explaining how team members should contribute, test, document, and operate the project.
+
 ## System Architecture
 
-### Microservices
-The backend consists of **3 independent Spring Boot microservices** behind an API Gateway:
+The application uses a microservice-based client-server architecture.
 
-- **api-gateway** (port 8080): Routes all incoming requests to the appropriate service
+### Components
+The backend consists of **3 independent Spring Boot microservices and 1 Python service** behind an API Gateway:
+
+**api-gateway** (port 8080): Routes all incoming requests to the appropriate service
 - **user-service** (port 8081): User management
 - **course-service** (port 8082): Mock TUM course database (source of truth for university courses)
 - **roadmap-service** (port 8083): Personalized learning roadmap generation and tracking
+- **llm-service** (port 8084): Responsible for all AI-driven logic 
 
 Each service has:
 - Its own PostgreSQL database (userdb, coursedb, roadmapdb)
 - Independent entity models with auto-created schema
 - REST API endpoints
 
-**Entity Relationships:** See the UML diagram in `/server/docs/` for complete data model and relationships.
+Architecture diagrams and product context are in `docs/system_overview/`, including:
+
+- `docs/system_overview/problem_statement.md`
+- `docs/system_overview/initial_system_structure.md`
+- `docs/system_overview/first_product_backlog.md`
+- `docs/system_overview/diagrams/system_architecture.png`
+
+## Repository Structure
+
+```text
+.
+├── .github/workflows/      # GitHub Actions CI/CD pipelines
+├── ansible/                # Azure VM configuration
+├── api/                    # OpenAPI service specifications
+├── client/                 # React frontend
+├── docs/                   # Product docs, diagrams, backlog, UI mockup
+├── helm/team-devvopps/     # Helm chart for Kubernetes deployments
+├── infra/
+│   ├── docker-compose.yml  # Local full-stack Docker Compose setup
+│   └── k8s/                # Raw Kubernetes manifests
+├── server/                 # Spring Boot backend services
+│   ├── api-gateway/
+│   │   └── Dockerfile
+│   ├── user-service/
+│   │   └── Dockerfile
+│   ├── course-service/
+│   │   └── Dockerfile
+│   ├── roadmap-service/
+│   │   └── Dockerfile
+│   ├── llm-service/        # GenAI/LLM service
+│   │   └── Dockerfile
+│   ├── compose.yaml        # Backend-only PostgreSQL setup for local development
+│   ├── build.gradle        # Shared Gradle build configuration
+│   ├── init-databases.sql  # Creates userdb, coursedb, and roadmapdb
+│   └── settings.gradle     # Gradle multi-project settings
+├── terraform/              # Azure infrastructure provisioning
+├── compose.azure.yml       # Azure VM Docker Compose deployment
+├── DEPLOYMENT.md           # AET deployment instructions
+├── environment.yml         # Conda environment for local development
+├── Makefile                # Common local/deployment commands
+├── redocly.yaml            # Redocly OpenAPI lint configuration
+└── README.md
+```
 
 ---
 
@@ -28,50 +86,48 @@ Each service has:
 
 ---
 
-## Running Locally (Development)
+## Setup Instructions
 
-For active development without Docker for the services.
+### Running Locally (Development)
 
-### Prerequisites
+Use this path when actively developing the services without running every app in containers.
+
+Prerequisites:
 - **Docker Desktop** (for PostgreSQL only)
 - **Miniconda** or **Anaconda**
 - **Java 25** (included in conda environment)
 
-### Setup
-
 ```bash
-# 1. Create conda environment
 conda env create -f environment.yml
 conda activate team-devvopps
 
-# 2. Start PostgreSQL in Docker
 cd server
 docker-compose up
+```
 
-# 3. In another terminal, start all Spring Boot services
+In another terminal:
+
+```bash
 make dev
+```
 
-# 4. In another terminal, start frontend (optional)
+In another terminal, start the frontend:
+
+```bash
 cd client
 npm install
 npm run dev
 ```
 
-**Services available at:**
-- API Gateway: http://localhost:8080
-- user-service: http://localhost:8081
-- course-service: http://localhost:8082
-- roadmap-service: http://localhost:8083
+Local URLs:
 - Frontend: http://localhost:3000
+- API Gateway: http://localhost:8080
+- User-service: http://localhost:8081
+- Course-service: http://localhost:8082
+- Roadmap-service: http://localhost:8083
+- Llm-service: http://localhost:8084
 
-### Viewing Logs
-
-```bash
-tail -f logs/user-service.log
-tail -f logs/api-gateway.log
-```
-
-### Populate Course Database (First Time)
+To seed course data for the first time:
 
 ```bash
 cd server/course-service
@@ -79,13 +135,14 @@ python3 fetch_and_seed_courses.py   # macOS/Linux
 python fetch_and_seed_courses.py    # Windows
 ```
 
-### Stop & Cleanup
+To stop local Spring Boot services:
 
 ```bash
-# Stop services
 make dev-stop
+```
 
-# Reset database
+And to reset the database:
+```bash
 cd server
 docker-compose down
 docker volume rm server_postgres_data
@@ -93,14 +150,14 @@ docker volume rm server_postgres_data
 
 ---
 
-## Running with Docker Compose
+### Running with Docker Compose
 
 Runs the full stack with a single command. No Kubernetes or local Java installation required.
 
-### Prerequisites
+Prerequisites:
 - **Docker Desktop** (must be open and running)
 
-### Commands
+Commands:
 
 ```bash
 make docker-up      # Start full stack
@@ -108,24 +165,25 @@ make docker-down    # Stop stack
 make docker-reset   # Stop and delete all data
 ```
 
-### Access
+Access:
 - **React Client:** http://localhost:3000
 - **API Gateway:** http://localhost:8080
 
 ---
 
-## Running with Kubernetes
+### Running with Kubernetes
+
+#### Local Kubernetes With Helm
 
 The fastest containerized way to run the entire stack.
 
-### Prerequisites
+Prerequisites:
 - **Docker Desktop** with **Kubernetes enabled**
   - Settings → Kubernetes → Enable Kubernetes → Apply & Restart
 - **Helm 3.x** (install from https://helm.sh/docs/intro/install/)
 
-### Local Development (Docker Desktop)
 
-**First time setup:**
+First time setup:
 
 1. Copy the example secrets file:
 ```bash
@@ -145,18 +203,18 @@ postgres:
 make helm-install
 ```
 
-**Access:**
+Access:
 - React Client: http://localhost:30000
 - API Gateway: http://localhost:30080
 
-**Manage deployment:**
+Manage deployment:
 ```bash
 make helm-upgrade    # Update existing deployment
 make helm-delete     # Remove deployment
 make k8s-status      # Check pod status
 ```
 
-### AET Kubernetes Cluster
+#### AET Kubernetes Cluster
 
 For deployment to the AET cluster, see [DEPLOYMENT.md](DEPLOYMENT.md)
 
@@ -164,7 +222,7 @@ For deployment to the AET cluster, see [DEPLOYMENT.md](DEPLOYMENT.md)
 make helm-install-aet    # Deploy to AET (uses GitHub Secrets)
 ```
 
-### Legacy kubectl (Not Recommended)
+#### Legacy kubectl (Not Recommended)
 
 ```bash
 make k8s-build        # Build all Docker images
@@ -175,7 +233,77 @@ make k8s-down         # Tear down
 
 ---
 
-## Deployment Infrastructure
+## API Documentation
+
+OpenAPI specifications are maintained in `api/`:
+
+- `api/user-service.yaml`
+- `api/course-service.yaml`
+- `api/roadmap-service.yaml`
+- `api/genai-service.yaml`
+
+The API Gateway exposes the current implemented service routes:
+
+| Gateway Route | Target Service | Notes |
+|---|---|---|
+| `/users/**` | `user-service` | Create and fetch users |
+| `/courses/**` | `course-service` | List courses, fetch course by ID, search by title |
+| `/roadmaps/**` | `roadmap-service` | Generate and retrieve roadmaps |
+
+Current implemented endpoints include:
+
+- `POST /users`
+- `GET /users`
+- `GET /users/{id}`
+- `GET /courses`
+- `GET /courses/{id}`
+- `GET /courses/search?title=<title>`
+- `POST /roadmaps/generate?userId=<id>&goal=<goal>`
+- `GET /roadmaps/{id}`
+
+OpenAPI linting runs in CI with Redocly:
+
+```bash
+redocly lint api/user-service.yaml
+redocly lint api/course-service.yaml
+redocly lint api/roadmap-service.yaml
+redocly lint api/genai-service.yaml
+```
+
+## CI/CD
+
+GitHub Actions workflows are defined in `.github/workflows/`.
+
+| Workflow | Trigger | Purpose |
+|---|---|---|
+| `lint.yml` | Pull requests to `main`, pushes to non-`main` branches | Runs frontend ESLint, Java checks, actionlint, Helm lint, and OpenAPI lint |
+| `build_and_deploy_docker_VM.yml` | Push to `main` | Builds Docker images, pushes them to GHCR, and deploys to the Azure VM with Docker Compose |
+| `deploy-k8s.yml` | Push to `main`, manual dispatch | Deploys the Helm chart to the AET Kubernetes cluster |
+| `provision.yml` | Manual dispatch | Provisions or imports Azure resources with Terraform, configures the VM with Ansible, and updates the Azure public IP GitHub variable |
+
+Required GitHub configuration:
+
+For Azure VM:
+
+| Name | Type | Description |
+|---|---|---|
+| `AZURE_PUBLIC_IP` | variable | Public IP of Azure VM |
+| `AZURE_USER` | variable | SSH username (`azureuser`) |
+| `AZURE_PRIVATE_KEY` | secret | SSH private key |
+| `ARM_CLIENT_ID` | secret | Azure service principal client ID |
+| `ARM_CLIENT_SECRET` | secret | Azure service principal client secret |
+| `ARM_SUBSCRIPTION_ID` | secret | Azure subscription ID |
+| `ARM_TENANT_ID` | secret | Azure tenant ID |
+| `PAT_TOKEN` | secret | GitHub PAT for updating AZURE_PUBLIC_IP |
+
+For AET Kubernetes:
+
+| Name | Type | Description |
+|---|---|---|
+| `KUBECONFIG` | secret | Kubeconfig for AET cluster access |
+| `POSTGRES_USER` | secret | Database username |
+| `POSTGRES_PASSWORD` | secret | Database password |
+| `K8S_NAMESPACE` | variable | Kubernetes namespace (`team-devvopps`) |
 
 ### Azure VM (Staging/Demo)
 
@@ -216,31 +344,31 @@ For deployment to the AET Kubernetes cluster used in the course:
 - Two deployment options: GitHub Actions (automatic) or manual Helm command
 - Supports multiple environments with Helm values files
 
----
+## Monitoring And Operations
 
-## Required GitHub Secrets/Variables
+### Local Logs
 
-### For Azure VM
-| Name | Type | Description |
-|---|---|---|
-| `AZURE_PUBLIC_IP` | variable | Public IP of Azure VM |
-| `AZURE_USER` | variable | SSH username (`azureuser`) |
-| `AZURE_PRIVATE_KEY` | secret | SSH private key |
-| `ARM_CLIENT_ID` | secret | Azure service principal client ID |
-| `ARM_CLIENT_SECRET` | secret | Azure service principal client secret |
-| `ARM_SUBSCRIPTION_ID` | secret | Azure subscription ID |
-| `ARM_TENANT_ID` | secret | Azure tenant ID |
-| `PAT_TOKEN` | secret | GitHub PAT for updating AZURE_PUBLIC_IP |
+`make dev` writes Spring Boot logs to `logs/`:
 
-### For AET Kubernetes
-| Name | Type | Description |
-|---|---|---|
-| `KUBECONFIG` | secret | Kubeconfig for AET cluster access |
-| `POSTGRES_USER` | secret | Database username |
-| `POSTGRES_PASSWORD` | secret | Database password |
-| `K8S_NAMESPACE` | variable | Kubernetes namespace (`team-devvopps`) |
+```bash
+tail -f logs/api-gateway.log
+tail -f logs/user-service.log
+tail -f logs/course-service.log
+tail -f logs/roadmap-service.log
+```
 
----
+## Student Responsibilities
+
+Every student contributor is responsible for keeping the project runnable, documented, and reviewable.
+
+- Work on feature branches and open pull requests into `main`.
+- Keep changes small enough to review and describe the tested behavior in the PR.
+- Run relevant local checks before requesting review.
+- Update OpenAPI specs in `api/` whenever service endpoints or request/response shapes change.
+- Update this README or `DEPLOYMENT.md` whenever setup, deployment, ports, secrets, or operational commands change.
+- Keep Docker, Kubernetes, Helm, Terraform, and Ansible files aligned with the services they deploy.
+- Do not commit real credentials, kubeconfig files, private keys, or production secrets.
+- Monitor GitHub Actions after pushing or merging and fix failing pipelines quickly.
 
 ## Making Changes
 
