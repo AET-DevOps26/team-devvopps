@@ -27,6 +27,7 @@ spec:
             limits:
               cpu: 200m
               memory: 512Mi
+          env:
             - name: COURSE_SERVICE_HOST
               value: course-service
             - name: LLM_API_URL
