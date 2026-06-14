@@ -32,7 +32,7 @@ export default function RoadmapChat() {
     setRoadmap(null);
 
     try {
-      const res = await fetch(`${LLM_SERVICE_URL}/generate`, {
+      const res = await fetch(`${LLM_SERVICE_URL}/recommend`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ goal }),

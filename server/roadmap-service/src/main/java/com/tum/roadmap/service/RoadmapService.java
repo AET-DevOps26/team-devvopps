@@ -126,7 +126,7 @@ public class RoadmapService {
             RestTemplate rt = new RestTemplate();
 
             return rt.postForObject(
-                    LLM_URL + "/generate",
+                    LLM_URL + "/recommend",
                     new RoadmapRequest(goal),
                     RoadmapResponse.class
             );

@@ -275,8 +275,8 @@ async def health_check():
     return {"status": "healthy", "service": "LLM Roadmap Generation Service", "model": MODEL_NAME}
 
 
-@app.post("/generate", response_model=RoadmapResponse)
-async def generate(req: RoadmapRequest) -> RoadmapResponse:
+@app.post("/recommend", response_model=RoadmapResponse)
+async def recommend(req: RoadmapRequest) -> RoadmapResponse:
     if not req.goal.strip():
         raise HTTPException(status_code=422, detail="goal cannot be empty")
 
@@ -304,7 +304,7 @@ async def root():
         "description": "Generates personalized roadmaps using TF-IDF filtering + LLM.",
         "endpoints": {
             "health": "/health",
-            "generate": "/generate",
+            "recommend": "/recommend",
         }
     }
 
