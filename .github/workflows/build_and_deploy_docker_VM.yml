@@ -72,8 +72,8 @@ jobs:
       - name: Build and Push llm-service
         uses: docker/build-push-action@v5
         with:
-          context: ./llm-service
-          file: ./llm-service/Dockerfile
+          context: ./server/llm-service
+          file: ./server/llm-service/Dockerfile
           push: true
           tags: ghcr.io/aet-devops26/team-devvopps/llm-service:latest
 
