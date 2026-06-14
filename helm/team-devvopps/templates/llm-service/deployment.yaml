@@ -28,13 +28,25 @@ spec:
               cpu: 200m
               memory: 512Mi
           env:
-            - name: COURSE_SERVICE_HOST
-              value: course-service
-            - name: LLM_API_URL
-              value: http://llm-backend:1234/v1/chat/completions
+            - name: COURSE_SERVICE_URL
+              value: http://course-service:8082/courses
+            - name: PORT
+              value: "{{ .Values.services.llmService.port }}"
+            - name: GROQ_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: llm-secret
+                  key: groq-api-key
+                  optional: true
+            - name: LOGOS_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: llm-secret
+                  key: logos-api-key
+                  optional: true
           readinessProbe:
             httpGet:
-              path: /actuator/health
+              path: /health
               port: {{ .Values.services.llmService.port }}
             initialDelaySeconds: 30
             periodSeconds: 10

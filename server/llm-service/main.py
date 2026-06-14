@@ -1,12 +1,18 @@
 import os
 import json
 import requests
-from typing import Dict, Any, List, Optional
+import uvicorn
+from typing import Any, List, Optional
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from langchain_core.prompts import PromptTemplate
 from langchain_core.language_models.llms import LLM
 from langchain_core.callbacks.manager import CallbackManagerForLLMRun
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
 
 # Environment configuration: pick the upstream provider based on env.
 #
@@ -16,6 +22,8 @@ from langchain_core.callbacks.manager import CallbackManagerForLLMRun
 # macOS/Windows) with gemma-4-e2b. The LM Studio path can still be
 # overridden by setting LLM_API_URL / LLM_MODEL explicitly.
 LOGOS_API_KEY = os.getenv("LOGOS_API_KEY")
+GROQ_API_KEY  = os.getenv("GROQ_API_KEY")
+
 if LOGOS_API_KEY:
     # Logos profile: TUM-hosted gpt-oss-120b. Off-campus needs eduVPN.
     # Hardcoded so a single LOGOS_API_KEY in .env is the only switch
@@ -23,6 +31,11 @@ if LOGOS_API_KEY:
     API_URL = "https://logos.aet.cit.tum.de/v1/chat/completions"
     MODEL_NAME = "openai/gpt-oss-120b"
     LLM_API_KEY = LOGOS_API_KEY
+elif GROQ_API_KEY:
+    # Groq profile: free tier, llama-3.3-70b-versatile.
+    API_URL = "https://api.groq.com/openai/v1/chat/completions"
+    MODEL_NAME = "llama-3.3-70b-versatile"
+    LLM_API_KEY = GROQ_API_KEY
 else:
     # LM Studio profile: local model on host. Defaults match compose.yml
     # so both `docker compose up` and `python main.py` work.
@@ -32,12 +45,85 @@ else:
     LLM_API_KEY = os.getenv("LLM_API_KEY") or os.getenv("CHAIR_API_KEY")
 
 COURSE_SERVICE_URL = os.getenv("COURSE_SERVICE_URL", "http://course-service:8082/courses")
+TOP_K = int(os.getenv("TOP_K", "30"))
+
+# ---------------------------------------------------------------------------
+# TF-IDF index: built once at startup, held in memory.
+# Replaces keyword search — finds the TOP_K most relevant courses
+# for a given goal without burning LLM tokens on all 929 courses.
+# ---------------------------------------------------------------------------
+_courses: List[dict] = []
+_vectorizer: Optional[TfidfVectorizer] = None
+_matrix = None
+
+
+def build_index() -> int:
+    global _courses, _vectorizer, _matrix
+    try:
+        resp = requests.get(COURSE_SERVICE_URL, timeout=15)
+        resp.raise_for_status()
+        _courses = resp.json()
+    except Exception as e:
+        print(f"[RAG] Could not fetch courses: {e}")
+        return 0
+
+    documents = []
+    for c in _courses:
+        title = c.get("title", "")
+        objective = (c.get("objective") or c.get("content") or "")[:300]
+        documents.append(f"{title} {objective}")
+
+    _vectorizer = TfidfVectorizer(stop_words="english", ngram_range=(1, 2))
+    _matrix = _vectorizer.fit_transform(documents)
+    print(f"[RAG] Indexed {len(_courses)} courses with TF-IDF.")
+    return len(_courses)
+
+
+def filter_courses(goal: str, k: int = TOP_K) -> str:
+    """Return the top-k most relevant courses for the given goal as a formatted string."""
+    if _vectorizer is None or _matrix is None or not _courses:
+        return "- No matching courses found"
+
+    query_vec = _vectorizer.transform([goal])
+    scores = cosine_similarity(query_vec, _matrix).flatten()
+    top_idx = np.argsort(scores)[::-1][:k]
+
+    lines = []
+    for i in top_idx:
+        if scores[i] > 0:
+            c = _courses[i]
+            code = c.get("tum_number", "")
+            title = c.get("title", "")
+            objective = (c.get("objective") or c.get("content") or "")[:200]
+            lines.append(f"- [{code}] {title} | {objective}")
+
+    return "\n".join(lines) if lines else "- No matching courses found"
+
+
+# ---------------------------------------------------------------------------
+# App lifecycle
+# ---------------------------------------------------------------------------
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print(f"[RAG] Building TF-IDF index... (model: {MODEL_NAME})")
+    count = build_index()
+    print(f"[RAG] Ready — {count} courses indexed.")
+    yield
+
 
 # Create FastAPI application instance
 app = FastAPI(
     title="LLM Recommendation Service",
-    description="Service that generates personalized food recommendations using an LLM",
-    version="1.0.0"
+    description="Service that generates personalized learning roadmaps using an LLM",
+    version="2.0.0",
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -52,8 +138,7 @@ class RoadmapResponse(BaseModel):
     """
     Response schema for generate endpoint.
     """
-    milestones: List[str] = Field(default=[], description="Learning milestones")
-    tasks:      List[str] = Field(default=[], description="Concrete tasks to complete the milestones")
+    milestones: List[Any] = Field(default=[], description="Learning milestones")
 
 
 class OpenAICompatibleLLM(LLM):
@@ -82,106 +167,74 @@ class OpenAICompatibleLLM(LLM):
         }
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
-        
+
         # Build messages for chat completion
         messages = [
             {"role": "user", "content": prompt}
         ]
-        
+
         payload = {
             "model": self.model_name,
             "messages": messages,
         }
-        
+
         try:
             response = requests.post(
                 self.api_url,
                 headers=headers,
                 json=payload,
-                timeout=30
+                timeout=120
             )
             response.raise_for_status()
-            
+
             result = response.json()
-            
+
             # Extract the response content
             if "choices" in result and len(result["choices"]) > 0:
                 content = result["choices"][0]["message"]["content"]
                 return content.strip()
             else:
                 raise ValueError("Unexpected response format from API")
-                
+
         except requests.RequestException as e:
             raise Exception(f"API request failed: {str(e)}")
         except (KeyError, IndexError, ValueError) as e:
             raise Exception(f"Failed to parse API response: {str(e)}")
 
 
-# Initialize the LLM
-KEYWORD_PROMPT = """
-You are a keyword extraction engine for an academic course recommendation system.
-
-Extract the most relevant search keywords from the student's learning goal.
-
-Rules:
-- Return ONLY valid JSON
-- No markdown, no explanation
-- Keywords should be short (1–3 words)
-- Focus on technical concepts, skills, and domains
-- Do NOT repeat stopwords or generic words like "learn", "study"
-
-Student goal:
-{goal}
-
-Return format:
-{
-  "keywords": [
-    "keyword 1",
-    "keyword 2",
-    "keyword 3"
-  ]
-}
-"""
-
-
 _PROMPT = """You are an expert academic advisor creating a personalised learning roadmap.
- 
+
 Student's learning goal: {goal}
- 
+
 Available courses in the catalogue:
 {courses}
- 
+
 Instructions:
 1. Select the most relevant courses from the list above to reach the student's goal.
 2. Break the journey into clear milestones (e.g. "Complete foundational mathematics"). Also include external milestones that are not courses.
-3. For each milestone, define concrete tasks the student should do (e.g. "Take course: Linear Algebra").
+3. For each milestone, define concrete tasks the student should do. For course tasks, include the course code in brackets (e.g. "Enroll in [IN2064] Machine Learning").
 4. Each milestone MUST contain at least 2–4 tasks. Tasks MUST belong to their milestone (nested structure)
 5. Respond with ONLY valid JSON.
- 
+
 Required JSON format:
 
-{
+{{
   "milestones": [
-    {
+    {{
       "title": "Milestone name",
       "description": "What this milestone achieves",
       "tasks": [
-        {
+        {{
           "title": "Task description",
           "completed": false
-        }
+        }}
       ]
-    }
+    }}
   ]
-}
+}}
 
 JSON response:
 """
-
-keyword_chain = PromptTemplate(
-    input_variables=["goal"],
-    template=KEYWORD_PROMPT,
-) | OpenAICompatibleLLM()
 
 chain = PromptTemplate(
     input_variables=["goal", "courses"],
@@ -191,49 +244,6 @@ chain = PromptTemplate(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-def parse_keywords(raw: str) -> List[str]:
-    try:
-        cleaned = (
-            raw.strip()
-            .removeprefix("```json")
-            .removeprefix("```")
-            .removesuffix("```")
-            .strip()
-        )
-
-        data = json.loads(cleaned)
-        keywords = data.get("keywords", [])
-
-        if not isinstance(keywords, list):
-            return []
-
-        return [k.strip() for k in keywords if isinstance(k, str) and k.strip()]
-
-    except Exception:
-        return []
-    
-async def extract_keywords_llm(goal: str) -> List[str]:
-    raw = await keyword_chain.ainvoke({"goal": goal})
-    return parse_keywords(raw)
-
-def search_course_by_keyword(keyword: str) -> List[Dict[str, Any]]:
-    try:
-        resp = requests.get(
-            f"{COURSE_SERVICE_URL}/search",
-            params={"title": keyword},
-            timeout=10
-        )
-        resp.raise_for_status()
-        data = resp.json()
-
-        # backend returns single Course → wrap into list
-        return [data] if isinstance(data, dict) else []
-
-    except Exception as e:
-        print(f"Warning: search failed for '{keyword}': {e}")
-        return []
- 
- 
 def parse_llm_response(raw: str) -> RoadmapResponse:
     """
     Parses the LLM JSON output into a RoadmapResponse.
@@ -262,7 +272,7 @@ def parse_llm_response(raw: str) -> RoadmapResponse:
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    return {"status": "healthy", "service": "LLM Roadmap Generation Service"}
+    return {"status": "healthy", "service": "LLM Roadmap Generation Service", "model": MODEL_NAME}
 
 
 @app.post("/generate", response_model=RoadmapResponse)
@@ -270,29 +280,8 @@ async def generate(req: RoadmapRequest) -> RoadmapResponse:
     if not req.goal.strip():
         raise HTTPException(status_code=422, detail="goal cannot be empty")
 
-    # Extract keywords
-    keywords = await extract_keywords_llm(req.goal)
-
-    # Search courses from course-service
-    all_courses = []
-    for kw in keywords:
-        results = search_course_by_keyword(kw)
-        all_courses.extend(results)
-
-    # Deduplicate by course_id
-    unique_courses = {
-        c["course_id"]: c for c in all_courses if "course_id" in c
-    }.values()
-
-    # Convert enriched course data into LLM input
-    courses_str = "\n".join(
-        f"- {c.get('title')} | {c.get('content','')[:200]}"
-        for c in unique_courses
-    )
-
-    # fallback if nothing found
-    if not courses_str.strip():
-        courses_str = "- No matching courses found"
+    # Use TF-IDF to find the most relevant courses (replaces keyword search)
+    courses_str = filter_courses(req.goal)
 
     # Call LLM
     try:
@@ -311,8 +300,8 @@ async def root():
     """Root endpoint with service information."""
     return {
         "service": "LLM Roadmap Service",
-        "version": "1.0.0",
-        "description": "Generates personalized roadmaps using LangChain against an OpenAI-compatible LLM endpoint (e.g. LM Studio).",
+        "version": "2.0.0",
+        "description": "Generates personalized roadmaps using TF-IDF filtering + LLM.",
         "endpoints": {
             "health": "/health",
             "generate": "/generate",
