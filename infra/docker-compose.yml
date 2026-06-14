@@ -52,6 +52,7 @@ services:
       DB_USER: postgres
       DB_PASSWORD: postgres
       USER_SERVICE_HOST: user-service
+      LLM_SERVICE_HOST: llm-service
     depends_on:
       postgres:
         condition: service_healthy
@@ -83,6 +84,29 @@ services:
       - "3000:80"
     depends_on:
       - api-gateway
+
+  # ── LLM Service ────────────────────────────────────────────────────────────
+  llm-service:
+    image: ghcr.io/aet-devops26/w06-template/llm:latest
+    build:
+      context: ../server
+      dockerfile: llm-service/Dockerfile
+    ports:
+      - "8084:8084"
+    environment:
+      # LM Studio on the host machine. host.docker.internal works on
+      # Docker Desktop (macOS/Windows) out of the box; extra_hosts below
+      # extends the same name to Linux hosts.
+      - LLM_API_URL=${LLM_API_URL:-http://host.docker.internal:1234/v1/chat/completions}
+      - LLM_MODEL=${LLM_MODEL:-gemma-4-e2b}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      # Set LOGOS_API_KEY in .env to switch to the TUM-hosted Logos
+      # endpoint (openai/gpt-oss-120b). When set, it overrides the
+      # LM Studio defaults above. Unset = LM Studio.
+      - LOGOS_API_KEY=${LOGOS_API_KEY:-}
+      - COURSE_SERVICE_HOST: course-service
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 volumes:
   postgres_data:
