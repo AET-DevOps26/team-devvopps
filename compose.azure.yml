@@ -1,4 +1,6 @@
 services:
+  # Traefik acts as a reverse proxy and handles TLS termination.
+  # It automatically obtains Let's Encrypt certificates via HTTP challenge and redirects all HTTP traffic to HTTPS.
   reverse-proxy:
     image: traefik:v3.6.15
     command:
@@ -17,9 +19,11 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./letsencrypt:/letsencrypt
+      - /var/run/docker.sock:/var/run/docker.sock   # Needed for Traefik to discover services
+      - ./letsencrypt:/letsencrypt                  # Persists TLS certificates across restarts
 
+  # Shared PostgreSQL instance for all services.
+  # Each service uses its own database (userdb, coursedb, roadmapdb) created by init-databases.sql.
   postgres:
     image: postgres:16
     environment:
@@ -27,7 +31,7 @@ services:
       POSTGRES_PASSWORD: postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init-databases.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./init-databases.sql:/docker-entrypoint-initdb.d/init.sql # Runs once on first start
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres"]
       interval: 5s
@@ -44,7 +48,7 @@ services:
       DB_PASSWORD: postgres
     depends_on:
       postgres:
-        condition: service_healthy
+        condition: service_healthy    # Wait for postgres to be ready before starting
     restart: unless-stopped
 
   course-service:
@@ -75,6 +79,9 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  # The API gateway is the single entry point for all frontend requests.
+  # It proxies /users/**, /courses/**, /roadmaps/** to the respective services.
+  # Traefik routes external HTTPS traffic to this container on port 8080.
   api-gateway:
     image: ghcr.io/aet-devops26/team-devvopps/api-gateway:latest
     environment:
@@ -93,6 +100,8 @@ services:
       - "traefik.http.routers.api-gateway.entrypoints=websecure"
       - "traefik.http.routers.api-gateway.tls.certresolver=letsencrypt"
 
+  # The React frontend. Traefik routes traffic and applies gzip compression
+  # via the client-compress middleware to reduce transfer size.
   client:
     image: ghcr.io/aet-devops26/team-devvopps/client:latest
     environment:
@@ -109,6 +118,8 @@ services:
       - "traefik.http.middlewares.client-compress.compress=true"
       - "traefik.http.routers.client.middlewares=client-compress"
   
+  # LLM service is internal only: Traefik is explicitly disabled.
+  # It is only reachable by other services within the Docker network.
   llm-service:
     image: ghcr.io/aet-devops26/team-devvopps/llm-service:latest
     environment:

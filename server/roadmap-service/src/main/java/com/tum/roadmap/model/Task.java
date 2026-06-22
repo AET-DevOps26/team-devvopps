@@ -3,7 +3,11 @@ package com.tum.roadmap.model;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
+import lombok.ToString;
 
 /**
  * Task entity representing an individual action item within a milestone.
@@ -12,9 +16,12 @@ import lombok.NoArgsConstructor;
  */
 @Entity
 @Table(name = "tasks")
-@Data
+@Getter 
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
+@ToString(exclude = "milestone")
+@EqualsAndHashCode(exclude = "milestone")
 public class Task {
 
     /** Unique identifier for the task (auto-generated) */

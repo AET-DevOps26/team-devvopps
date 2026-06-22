@@ -1,5 +1,7 @@
 name: Lint Code
 
+# Runs on PRs to main and on any branch push except main.
+# Acts as a quality gate before code is merged.
 on:
   pull_request:
     branches:
@@ -9,6 +11,7 @@ on:
       - main
 
 jobs:
+  # Lints the React frontend using ESLint.
   lint-client:
     name: Lint React Client (ESLint)
     runs-on: ubuntu-latest
@@ -30,6 +33,8 @@ jobs:
         run: npm run lint
         working-directory: client
 
+  # Lints all Java services using SpotBugs via Gradle.
+  # -x test skips unit tests; --scan uploads a build scan for inspection.
   lint-java:
     name: Lint Java Services (SpotBugs)
     runs-on: ubuntu-latest
@@ -48,6 +53,8 @@ jobs:
         run: ./gradlew check -x test --scan
         working-directory: server
 
+  # Validates GitHub Actions workflow files themselves for correctness.
+  # Catches common mistakes like invalid expressions or missing required fields.
   lint-actions:
     name: Lint GitHub Actions Workflows
     runs-on: ubuntu-latest
@@ -59,6 +66,8 @@ jobs:
       - name: Run actionlint
         uses: devops-actions/actionlint@v0.1.12
 
+  # Validates the Helm chart template rendering and value schema.
+  # Uses dummy credentials so required secret values don't block CI.
   lint-helm:
     name: Lint Helm Chart
     runs-on: ubuntu-latest

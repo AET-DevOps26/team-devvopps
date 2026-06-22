@@ -1,8 +1,9 @@
 - name: Configure Azure VM
   hosts: all
-  become: true
+  become: true # Run all tasks as root (sudo)
 
   tasks:
+    # Install prerequisites needed to add the Docker apt repository.
     - name: Install required packages
       apt:
         name:
@@ -11,18 +12,21 @@
         state: present
         update_cache: true
 
+    # Docker's GPG key will be stored here to verify package authenticity.
     - name: Create Docker keyring directory
       file:
         path: /etc/apt/keyrings
         state: directory
         mode: '0755'
 
+    # Download Docker's official GPG key so apt can verify packages from the Docker repo.
     - name: Add Docker GPG key
       get_url:
         url: https://download.docker.com/linux/ubuntu/gpg
         dest: /etc/apt/keyrings/docker.asc
         mode: '0644'
 
+    # Add the official Docker apt repository for Ubuntu Noble.
     - name: Add Docker repository
       apt_repository:
         repo: >
@@ -30,6 +34,7 @@
           https://download.docker.com/linux/ubuntu noble stable
         state: present
 
+    # Install Docker Engine and the Compose plugin.
     - name: Install Docker
       apt:
         name:
@@ -41,12 +46,14 @@
         state: present
         update_cache: true
 
+    # Allow azureuser to run Docker commands without sudo.
     - name: Add azureuser to docker group
       user:
         name: azureuser
         groups: docker
         append: true
 
+    # Ensure Docker starts on boot and is running now.
     - name: Start and enable Docker
       systemd:
         name: docker

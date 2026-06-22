@@ -3,7 +3,12 @@ package com.tum.roadmap.model;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
+import lombok.ToString;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -15,9 +20,12 @@ import java.util.List;
  */
 @Entity
 @Table(name = "milestones")
-@Data
+@Getter 
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
+@ToString(exclude = {"roadmap", "tasks"})
+@EqualsAndHashCode(exclude = {"roadmap", "tasks"})
 public class Milestone {
 
     /** Unique identifier for the milestone (auto-generated) */

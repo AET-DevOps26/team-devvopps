@@ -1,7 +1,9 @@
 name: Provision Azure VM
 
+# Manual trigger only.
+# Run this once to set up the VM, or again to apply Terraform changes.
 on:
-  workflow_dispatch:  # manual trigger only 
+  workflow_dispatch:  
 
 jobs:
   provision:
@@ -16,6 +18,8 @@ jobs:
         with:
           terraform_wrapper: false
 
+      # Initialise Terraform with the Azure backend.
+      # State is stored remotely in Azure Blob Storage so the team shares the same state.
       - name: Terraform Init
         working-directory: ./terraform
         env:
@@ -25,6 +29,8 @@ jobs:
           ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
         run: terraform init
 
+      # Import pre-existing Azure resources into Terraform state so they are managed
+      # without being recreated. The || true prevents failure if already imported.
       - name: Terraform Import Existing Resources
         working-directory: ./terraform
         env:
@@ -38,6 +44,8 @@ jobs:
           terraform import -var="ssh_public_key=${{ secrets.AZURE_SSH_PUBLIC_KEY }}" azurerm_network_security_group.main /subscriptions/${{ secrets.ARM_SUBSCRIPTION_ID }}/resourceGroups/team-devvopps/providers/Microsoft.Network/networkSecurityGroups/team-devvopps-nsg || true
           terraform import -var="ssh_public_key=${{ secrets.AZURE_SSH_PUBLIC_KEY }}" azurerm_subnet.main /subscriptions/${{ secrets.ARM_SUBSCRIPTION_ID }}/resourceGroups/team-devvopps/providers/Microsoft.Network/virtualNetworks/team-devvopps-vnet/subnets/internal || true
 
+      # Apply the Terraform plan without interactive confirmation (-auto-approve).
+      # Creates or updates the VM, networking, and NSG rules.
       - name: Terraform Apply
         working-directory: ./terraform
         env:
@@ -47,6 +55,7 @@ jobs:
           ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
         run: terraform apply -auto-approve -var="ssh_public_key=${{ secrets.AZURE_SSH_PUBLIC_KEY }}"
 
+      # Capture the VM's public IP from Terraform output for use in later steps.
       - name: Get VM IP
         working-directory: ./terraform
         env:
@@ -60,14 +69,19 @@ jobs:
       - name: Install Ansible
         run: pip install ansible
 
+      # Write the SSH private key to a temp file so Ansible can connect to the VM.
+      # chmod 400 prevents SSH from rejecting the key due to loose permissions.
       - name: Write SSH private key
         run: |
           echo "${{ secrets.AZURE_PRIVATE_KEY }}" > /tmp/azure_key.pem
           chmod 400 /tmp/azure_key.pem
 
+      # Give the VM time to finish booting before Ansible tries to connect.
       - name: Wait for VM to be ready
         run: sleep 30
 
+      # Run the Ansible playbook to install Docker and configure the VM.
+      # StrictHostKeyChecking=no skips the host fingerprint prompt for new VMs.
       - name: Run Ansible Playbook
         run: |
           ansible-playbook -i "${{ env.VM_IP }}," \
@@ -76,6 +90,8 @@ jobs:
             --ssh-extra-args="-o StrictHostKeyChecking=no" \
             ansible/playbook.yml
 
+      # Update the AZURE_PUBLIC_IP Actions variable so the deploy workflow
+      # always has the correct IP, even after VM reprovisioning.
       - name: Update GitHub Variable AZURE_PUBLIC_IP
         run: |
           curl -X PATCH \

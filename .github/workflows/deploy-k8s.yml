@@ -1,5 +1,8 @@
 name: Deploy to AET Kubernetes Cluster
 
+# Can be triggered manually via workflow_dispatch, or automatically on every push to main.
+# concurrency ensures only one deploy runs at a time per branch
+# if a new push comes in while deploying, the in-progress deploy is cancelled.
 on:
   push:
     branches:
@@ -26,6 +29,8 @@ jobs:
         with:
           version: 'latest'
 
+      # Write the kubeconfig from secrets so kubectl and Helm can reach the cluster.
+      # Fails early with a clear message if the secret is missing.
       - name: Configure kubectl
         env:
           KUBECONFIG_CONTENT: ${{ secrets.KUBECONFIG }}
@@ -42,6 +47,8 @@ jobs:
 
           echo "kubectl configured successfully"
 
+      # Validate the Helm chart before attempting a deploy.
+      # Catches templating errors and missing required values early.
       - name: Lint Helm chart
         env:
           POSTGRES_USER: ${{ secrets.POSTGRES_USER || 'postgres' }}
@@ -51,6 +58,7 @@ jobs:
             --set postgres.credentials.username="$POSTGRES_USER" \
             --set postgres.credentials.password="$POSTGRES_PASSWORD"
 
+      # Remove pods stuck in Failed/Unknown state that would block the Helm rollout.
       - name: Clean up failed deployments
         run: |
           echo "Cleaning up failed and unknown pods..."
@@ -58,6 +66,9 @@ jobs:
           kubectl delete pods -n "$K8S_NAMESPACE" --field-selector=status.phase=Unknown 2>/dev/null || true
           echo "Cleanup complete"
 
+      # helm upgrade --install: creates the release if it doesn't exist, upgrades if it does.
+      # Sensitive values (DB credentials, API keys) are passed at deploy time, not stored in values files.
+      # --wait blocks until all pods are ready or the timeout is hit.
       - name: Deploy with Helm
         env:
           POSTGRES_USER: ${{ secrets.POSTGRES_USER || 'postgres' }}
@@ -75,6 +86,7 @@ jobs:
             --wait \
             --timeout 5m
 
+      # Quick sanity check — prints pod/service/ingress state immediately after deploy.
       - name: Verify deployment
         run: |
           echo "Checking pod status..."
@@ -86,6 +98,8 @@ jobs:
           echo "Release status:"
           helm status "$HELM_RELEASE_NAME" -n "$K8S_NAMESPACE"
 
+      # Exclude the course-seeder job from readiness check (it is a one-off job
+      # that runs to completion and exits, so it will never reach Ready state).
       - name: Wait for pods to be ready
         run: |
           echo "Waiting for deployment pods to be ready..."
