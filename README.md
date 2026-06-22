@@ -242,6 +242,15 @@ OpenAPI specifications are maintained in `api/`:
 - `api/roadmap-service.yaml`
 - `api/genai-service.yaml`
 
+Swagger UI is available at `/swagger-ui.html` on each service:
+
+| Service | Local URL |
+|---|---|
+| User Service | http://localhost:8081/swagger-ui.html |
+| Course Service | http://localhost:8082/swagger-ui.html |
+| Roadmap Service | http://localhost:8083/swagger-ui.html |
+| LLM Service | http://localhost:8084/swagger-ui.html |
+
 The API Gateway exposes the current implemented service routes:
 
 | Gateway Route | Target Service | Notes |
