@@ -24,7 +24,11 @@ public class GatewayController {
     @Value("${services.roadmap.url}")
     private String roadmapServiceUrl;
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final RestTemplate restTemplate;
+
+    public GatewayController(RestTemplate restTemplate) {
+    this.restTemplate = restTemplate;
+}
 
     @RequestMapping("/users/**")
     public ResponseEntity<byte[]> forwardUser(HttpServletRequest request, HttpEntity<byte[]> entity) {

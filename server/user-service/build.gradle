@@ -1,0 +1,3 @@
+springBoot {
+    mainClass = 'com.tum.user.UserApplication'
+}

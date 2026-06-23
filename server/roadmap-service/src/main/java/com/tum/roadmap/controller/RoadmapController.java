@@ -23,8 +23,9 @@ public class RoadmapController {
      * Receives a user goal from the frontend and generates a personalized roadmap.
      */
     @PostMapping("/generate")
-    public ResponseEntity<Roadmap> generateRoadmap(@RequestParam Long userId, @RequestParam String goal) {
-        
+    public ResponseEntity<Roadmap> generateRoadmap(
+            @RequestParam("userId") Long userId,
+            @RequestParam("goal") String goal) {
         Roadmap roadmap = roadmapService.generateRoadmap(userId, goal);
         return ResponseEntity.ok(roadmap);
     }
@@ -35,10 +36,8 @@ public class RoadmapController {
      * Returns a roadmap by ID.
      */
     @GetMapping("/{id}")
-    public ResponseEntity<Roadmap> getRoadmap(@PathVariable Long id) {
-
+    public ResponseEntity<Roadmap> getRoadmap(@PathVariable("id") Long id) {
         Roadmap roadmap = roadmapService.getRoadmap(id);
-
         return ResponseEntity.ok(roadmap);
     }
 }

@@ -5,7 +5,9 @@ import com.tum.course.repository.CourseRepository;
 
 import lombok.AllArgsConstructor;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -38,7 +40,7 @@ public class CourseService {
      */
     public Course getCourse(Long id) {
         return repo.findById(id)
-                .orElseThrow(() -> new RuntimeException("Course not found"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
     }
 
     /**
