@@ -16,6 +16,13 @@ spec:
                 name: api-gateway
                 port:
                   number: {{ .Values.services.apiGateway.port }}
+          - path: /llm
+            pathType: Prefix
+            backend:
+              service:
+                name: llm-service
+                port:
+                  number: {{ .Values.services.llmService.port }}
           - path: /
             pathType: Prefix
             backend:

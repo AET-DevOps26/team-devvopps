@@ -68,6 +68,14 @@ jobs:
           file: ./client/Dockerfile
           push: true
           tags: ghcr.io/aet-devops26/team-devvopps/client:latest
+      
+      - name: Build and Push llm-service
+        uses: docker/build-push-action@v5
+        with:
+          context: ./server/llm-service
+          file: ./server/llm-service/Dockerfile
+          push: true
+          tags: ghcr.io/aet-devops26/team-devvopps/llm-service:latest
 
       - name: Build and Push course-seeder
         uses: docker/build-push-action@v5

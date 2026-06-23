@@ -34,4 +34,10 @@ services:
     port: 8080
   client:
     port: 80
+  llmService:
+    port: 8084
 
+# LLM Service API keys (override in values-aet.yaml or via --set)
+llmService:
+  groqApiKey: ""
+  logosApiKey: ""

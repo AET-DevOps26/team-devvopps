@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-service
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app: llm-service
+  template:
+    metadata:
+      labels:
+        app: llm-service
+        monitoring: "true"
+    spec:
+      containers:
+        - name: llm-service
+          image: {{ .Values.imageRegistry }}/llm-service:{{ .Values.imageTag }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.services.llmService.port }}
+          resources:
+            requests:
+              cpu: 150m
+              memory: 256Mi
+            limits:
+              cpu: 200m
+              memory: 512Mi
+          env:
+            - name: COURSE_SERVICE_URL
+              value: http://course-service:8082/courses
+            - name: PORT
+              value: "{{ .Values.services.llmService.port }}"
+            - name: GROQ_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: llm-secret
+                  key: groq-api-key
+                  optional: true
+            - name: LOGOS_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: llm-secret
+                  key: logos-api-key
+                  optional: true
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.services.llmService.port }}
+            initialDelaySeconds: 30
+            periodSeconds: 10
