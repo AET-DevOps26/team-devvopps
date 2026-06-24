@@ -1,0 +1,126 @@
+openapi: 3.0.3
+info:
+  title: Roadmap Service API
+  description: Generates and retrieves roadmaps. Calls user-service to verify users and the GenAI service to generate roadmap content.
+  version: 1.0.0
+
+servers:
+  - url: /api/v1
+    description: Via API Gateway
+
+tags:
+  - name: roadmaps
+    description: Roadmap management
+
+paths:
+  /roadmaps/generate:
+    post:
+      tags: [roadmaps]
+      summary: Generate a roadmap for a user
+      operationId: generateRoadmap
+      description: >
+        Verifies the user via user-service, then generates a roadmap for the
+        given goal. This endpoint calls the GenAI service to produce AI-generated 
+        milestones, tasks, and recommended courses.
+      parameters:
+        - name: userId
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: goal
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The user's goal in natural language
+      responses:
+        '200':
+          description: Generated roadmap
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Roadmap'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: User service unreachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /roadmaps/{id}:
+    get:
+      tags: [roadmaps]
+      summary: Get a roadmap by ID
+      operationId: getRoadmap
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Roadmap details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Roadmap'
+        '404':
+          description: Roadmap not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    Roadmap:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          readOnly: true
+        goal:
+          $ref: '#/components/schemas/Goal'
+        milestones:
+          type: array
+          items:
+            type: string
+        tasks:
+          type: array
+          items:
+            type: string
+        createdDate:
+          type: string
+          format: date-time
+
+    Goal:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          readOnly: true
+        description:
+          type: string
+        createdDate:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string

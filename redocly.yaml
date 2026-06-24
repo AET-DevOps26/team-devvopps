@@ -1,0 +1,4 @@
+rules:
+  security-defined: off
+  info-license: off
+  operation-4xx-response: off
