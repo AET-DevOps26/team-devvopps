@@ -6,7 +6,7 @@ namespace: team-devvopps
 # Image configuration
 imageRegistry: team-devvopps
 imageTag: latest
-imagePullPolicy: Never
+imagePullPolicy: Always
 
 # Replicas (High Availability)
 replicas: 1
