@@ -1,0 +1,363 @@
+"""
+Unit tests for the LLM Roadmap Generation Service (main.py).
+
+Tests cover the critical GenAI logic:
+- parse_llm_response: JSON parsing and fallback behaviour
+- filter_courses: TF-IDF course retrieval
+- build_index: course indexing from the course service
+- /recommend endpoint: input validation and response structure
+- /health endpoint: service health check
+"""
+
+import json
+import pytest
+from unittest.mock import patch, MagicMock, AsyncMock
+from fastapi.testclient import TestClient
+
+from main import app, parse_llm_response, filter_courses, build_index, RoadmapResponse
+
+client = TestClient(app)
+
+# ---------------------------------------------------------------------------
+# parse_llm_response
+# ---------------------------------------------------------------------------
+
+class TestParseLlmResponse:
+    """Test for the LLM JSON output parser."""
+
+    def test_parse_valid_json(self):
+        """Valid JSON with milestones is parsed into a RoadmapResponse."""
+        raw = json.dumps({
+            "milestones": [
+                {
+                    "title": "Learn Basics of Machine Learning",
+                    "description": "Foundation", 
+                    "tasks": [
+                        {"title": "Read intro", "completed": False}
+                    ]
+                }
+            ]
+        })
+
+        result = parse_llm_response(raw)
+
+        assert isinstance(result, RoadmapResponse)
+        assert len(result.milestones) == 1
+        assert result.milestones[0]["title"] == "Learn Basics of Machine Learning"
+
+    def test_strips_markdown_code_fences(self):
+        """JSON wrapped in ```json ...``` fences is parsed correctly in case LLM outputs this format."""
+        raw = "```json\n{\"milestones\":[]}\n```"
+
+        result = parse_llm_response(raw)
+
+        assert isinstance(result, RoadmapResponse)
+        assert result.milestones == []
+
+    def test_strips_plain_code_fences(self):
+        """JSON wrapped in plain ``` ... ``` fences is parsed correctly in case LLM outputs this format."""
+        raw = "```\n{\"milestones\": []}\n```"
+
+        result = parse_llm_response(raw)
+
+        assert result.milestones == []
+
+    def test_returns_empty_milestones_on_invalid_json(self):
+        """Malformed JSON falls back to an empty milestones list rather than crashing."""
+        raw = "this is not json at all"
+
+        result = parse_llm_response(raw)
+
+        assert isinstance(result, RoadmapResponse)
+        assert result.milestones == []
+
+    def test_returns_empty_milestones_on_empty_string(self):
+        """Empty string input falls back to empty milestones list."""
+        result = parse_llm_response("")
+
+        assert result.milestones == []
+    
+    def test_returns_empty_milestones_on_missing_milestones_key(self):
+        """JSON without the milestones key falls back to empty milestones list."""
+        raw = json.dumps({"something_else": "value"})
+
+        result = parse_llm_response(raw)
+
+        assert result.milestones == []
+    
+    def test_parses_multiple_milestones(self):
+        """Multiple milestones with multiple tasks are all parsed."""
+        raw = json.dumps({
+            "milestones": [
+                {
+                    "title": "Step 1",
+                    "description": "First",
+                    "tasks": [
+                        {"title": "Task A", "completed": False},
+                        {"title": "Task B", "completed": False},
+                    ]
+                },
+                {
+                    "title": "Step 2",
+                    "description": "Second",
+                    "tasks": [
+                        {"title": "Task C", "completed": False}
+                    ]
+                }
+            ]
+        })
+
+        result = parse_llm_response(raw)
+
+        assert len(result.milestones) == 2
+        assert len(result.milestones[0]["tasks"]) == 2
+
+
+# ---------------------------------------------------------------------------
+# filter_courses (TF-IDF retrieval)
+# ---------------------------------------------------------------------------
+
+class TestFilterCourses:
+    """Tests for the TF-IDF course filtering logic."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        """Runs automatically before each test in this class to build a small in-memory index."""
+        import main
+        main._courses = [
+            {"tum_number": "IN2064", "title": "Machine Learning", "objective": "Learn ML algorithms"},
+            {"tum_number": "IN0015", "title": "Databases", "objective": "SQL and relational databases"},
+            {"tum_number": "IN2346", "title": "Deep Learning", "objective": "Neural networks and deep learning"},
+        ]
+
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        documents = [
+            f"{c['title']} {c.get('objective', '')}"
+            for c in main._courses
+        ]
+
+        main._vectorizer = TfidfVectorizer(stop_words="english", ngram_range=(1,2))
+        main._matrix = main._vectorizer.fit_transform(documents)
+
+        yield
+
+        # Reset state after each test
+        main._courses = []
+        main._vectorizer = None
+        main._matrix = None
+
+    def test_returns_relevant_courses_for_goal(self):
+        """Courses relevant to the goal appear in the output."""
+        result = filter_courses("machine learning")
+
+        assert "Machine Learning" in result or "Deep Learning" in result
+
+    def test_returns_string(self):
+        """filter_courses always returns a string."""
+        result = filter_courses("machine learning")
+
+        assert isinstance(result, str)
+
+    def test_returns_fallback_when_no_index(self):
+        """Returns flabback message when the index has not been built."""
+        import main
+        main._vectorizer = None
+        main._matrix = None
+        main._courses = []
+
+        result = filter_courses("machine learning")
+
+        assert result == "- No matching courses found"
+    
+    def test_returns_fallback_when_no_matching_courses(self):
+        """Returns fallback messae when no courses match the query."""
+        result = filter_courses("quantun physics advanced theoretical")
+
+        # Either fallback or empty string result, but no crash
+        assert isinstance(result, str)
+    
+    def test_respects_top_k_limit(self):
+        """Never returns more than k courses."""
+        result = filter_courses("learning", k=1)
+
+        # At most 1 course entry (each starts with "-[")
+        lines = [l for l in result.splitlines() if l.startswith("-[")]
+        assert len(lines) <= 1
+    
+    def test_includes_course_code_in_output(self):
+        """Course codes are included in the formatted output."""
+        result = filter_courses("machine learning")
+
+        assert "IN2064" in result or "IN2346" in result
+
+
+# ---------------------------------------------------------------------------
+# build_index
+# ---------------------------------------------------------------------------
+
+class TestBuildIndex:
+    """Tests for the TF-IDF index builder."""
+
+    def test_returns_zero_when_course_service_unreachable(self):
+        """Returns 0 and does not crash when the course service is down."""
+        with patch("main.requests.get", side_effect=Exception("Connection refused")):
+            count = build_index()
+        
+        assert count == 0
+    
+    def test_returns_course_count_on_success(self):
+        """Returns the number of indexed courses when th service responds."""
+        mock_courses = [
+            {"tum_number": "IN2064", "title": "Machine Learning", "objective": "ML"},
+            {"tum_number": "IN0015", "title": "Databases", "objective": "SQL"},
+        ]
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = mock_courses
+        mock_response.raise_for_status = MagicMock()
+
+        with patch("main.requests.get", return_value=mock_response):
+            count = build_index()
+        
+        assert count == 2
+    
+    def test_builds_vectorizer_and_matrix(self):
+        """After a successful build, the vectorizer and matrix are set."""
+        import main
+        mock_courses = [
+            {"tum_number": "IN2064", "title": "Machine Learning", "objective": "ML"},
+        ]
+        mock_response = MagicMock()
+        mock_response.json.return_value = mock_courses
+        mock_response.raise_for_status = MagicMock()
+
+        with patch("main.requests.get", return_value=mock_response):
+            build_index()
+        
+        assert main._vectorizer is not None
+        assert main._matrix is not None
+
+
+# ---------------------------------------------------------------------------
+# /health endpoint
+# ---------------------------------------------------------------------------
+
+class TestHealthEndpoint:
+    """Tests for the /health endpoint."""
+
+    def test_returns_200(self):
+        """Health endpoint returns 200."""
+        response = client.get("/health")
+
+        assert response.status_code == 200
+    
+    def test_returns_healthy_status(self):
+        """Health endpoint report healthy status."""
+        response = client.get("/health")
+
+        assert response.json()["status"] == "healthy"
+    
+
+    def test_returns_model_name(self):
+        """Health endpoint includes the active model name."""
+        response = client.get("/health")
+
+        assert "model" in response.json()
+    
+
+# ---------------------------------------------------------------------------
+# /recommend endpoint
+# ---------------------------------------------------------------------------
+
+class TestRecommendEndpoint:
+    """Tests for the /recommend endpoint."""
+
+    def test_returns_422_when_goal_is_empty_string(self):
+        """Empty goal string is rejected with 422 Unprocessable Entity."""
+        response = client.post("/recommend", json={"goal": "   "})
+
+        assert response.status_code == 422
+    
+    def test_returns_422_when_goal_is_missing(self):
+        """Missing goal field is rejected with 422 Unprocessable Entity."""
+        response = client.post("/recommend", json={})
+
+        assert response.status_code == 422
+    
+    def test_returns_200_with_valid_goal(self):
+        """Valid goal returns 200 with milestones list."""
+        mock_llm_output = json.dumps({
+            "milestones": [
+                {
+                    "title": "Learn ML",
+                    "description": "Start with basics",
+                    "tasks": [
+                        {"title": "Study linear algebra", "completed": False}
+                    ]
+                }
+            ]
+        })
+
+        mock_chain = MagicMock()
+        mock_chain.ainvoke = AsyncMock(return_value=mock_llm_output)
+
+        with patch("main.chain", mock_chain):
+            response = client.post("/recommend", json={"goal": "Learn machine learning"})
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert "milestones" in data
+        assert len(data["milestones"]) == 1
+    
+    def test_returns_empty_milestones_when_llm_returns_invalid_json(self):
+        """Malformed LLM output falls back to empty milestones rather than 500 Internal Server Error."""
+        mock_chain = MagicMock()
+        mock_chain.ainvoke = AsyncMock(return_value="not valid json")
+        
+        with patch("main.chain", mock_chain):
+            response = client.post("/recommend", json={"goal": "Learn something"})
+        
+        assert response.status_code == 200
+        assert response.json()["milestones"] == []
+    
+    def test_returns_503_when_llm_raises_runtime_error(self):
+        """RuntimeError from the LLM chain returns 503 Service Unavailable."""
+        mock_chain = MagicMock()
+        mock_chain.ainvoke = AsyncMock(side_effect=RuntimeError("LLM unreachable"))
+        
+        with patch("main.chain", mock_chain):
+            response = client.post("/recommend", json={"goal": "Learn something"})
+        
+        assert response.status_code == 503
+    
+    def test_milestone_structure(self):
+        """Each milestone in the response has title, description, and tasks."""
+        mock_llm_output = json.dumps({
+            "milestones": [
+                {
+                    "title": "Foundation",
+                    "description": "Build the base",
+                    "tasks": [
+                        {"title": "Read textbook", "completed": False},
+                        {"title": "Do exercises", "completed": False},
+                    ]
+                }
+            ]
+        })
+        mock_chain = MagicMock()
+        mock_chain.ainvoke = AsyncMock(return_value=mock_llm_output)
+
+        with patch("main.chain", mock_chain):
+            response = client.post("/recommend", json={"goal": "Learn math"})
+        
+        milestones = response.json()["milestones"][0]
+        assert "title" in milestones
+        assert "description" in milestones
+        assert "tasks" in milestones
+        assert len(milestones["tasks"]) == 2
+
+
+
+
+
+    
