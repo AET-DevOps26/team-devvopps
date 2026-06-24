@@ -44,17 +44,14 @@ helm-install:
 
 helm-install-aet:
 	@echo "Installing Helm chart to AET Kubernetes cluster..."
-	@if [ -z "$(POSTGRES_USER)" ] || [ -z "$(POSTGRES_PASSWORD)" ]; then \
+	@if [ -z "$(POSTGRES_USER)" ] || [ -z "$(POSTGRES_PASSWORD)" ] || [ -z "$(POSTGRES_REPLICATION_USER)" ] || [ -z "$(POSTGRES_REPLICATION_PASSWORD)" ]; then \
 		echo ""; \
 		echo "ERROR: Database credentials required"; \
 		echo ""; \
-		echo "Usage: POSTGRES_USER=<user> POSTGRES_PASSWORD=<pass> make helm-install-aet"; \
-		echo ""; \
-		echo "Example:"; \
-		echo "  POSTGRES_USER=postgres POSTGRES_PASSWORD=postgres make helm-install-aet"; \
+		echo "Usage: POSTGRES_USER=<user> POSTGRES_PASSWORD=<pass> POSTGRES_REPLICATION_USER=<user> POSTGRES_REPLICATION_PASSWORD=<pass> make helm-install-aet"; \
 		echo ""; \
 		echo "OR use GitHub Actions (recommended):"; \
-		echo "  1. Set GitHub Secrets: POSTGRES_USER and POSTGRES_PASSWORD"; \
+		echo "  1. Set GitHub Secrets: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_REPLICATION_USER, POSTGRES_REPLICATION_PASSWORD"; \
 		echo "  2. Push to main or trigger workflow manually"; \
 		echo ""; \
 		exit 1; \
@@ -64,6 +61,8 @@ helm-install-aet:
 		-f helm/team-devvopps/values-aet.yaml \
 		--set postgres.credentials.username=$(POSTGRES_USER) \
 		--set postgres.credentials.password=$(POSTGRES_PASSWORD) \
+		--set postgres.replicationUser=$(POSTGRES_REPLICATION_USER) \
+		--set postgres.replicationPassword=$(POSTGRES_REPLICATION_PASSWORD) \
 		-n team-devvopps
 	@echo ""
 	@echo "Deployment complete!"

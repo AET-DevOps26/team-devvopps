@@ -5,6 +5,18 @@ metadata:
   namespace: {{ .Values.namespace }}
 data:
   init.sql: |
+    -- Application databases (created only on primary, auto-replicated to replicas via streaming replication)
     CREATE DATABASE userdb;
     CREATE DATABASE coursedb;
     CREATE DATABASE roadmapdb;
+
+    -- Create replication-only user for database cloning and streaming replication
+    -- Limited permissions: can only stream WAL (write-ahead logs), cannot modify application data
+    -- Used by pg_basebackup on replica pods to authenticate and clone the database
+    CREATE ROLE {{ .Values.postgres.replicationUser }} LOGIN REPLICATION ENCRYPTED PASSWORD '{{ .Values.postgres.replicationPassword }}';
+
+    -- Configure primary PostgreSQL node for replication
+    -- These settings define max concurrent replication connections allowed
+    ALTER SYSTEM SET max_wal_senders = 10;       -- Maximum concurrent replication connections
+    ALTER SYSTEM SET max_replication_slots = 10; -- Maximum logical replication slots (one per replica)
+    ALTER SYSTEM SET wal_level = replica;        -- Write-ahead log level (required for replication)

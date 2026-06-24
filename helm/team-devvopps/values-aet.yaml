@@ -1,12 +1,16 @@
 # Values for AET Kubernetes Cluster (Staging/Production)
-# These override the defaults in values.yaml
+# Overrides specific values from values.yaml for the AET environment
+# Credentials (postgres credentials, API keys) are passed via --set at deploy time
 
 imageRegistry: ghcr.io/aet-devops26/team-devvopps
-imagePullPolicy: IfNotPresent
+# Always pull ensures fresh images (not cached stale versions on nodes)
+imagePullPolicy: Always
 
-replicas: 1
-
-ingressHost: team-devvopps.rancher.ase.cit.tum.de
-
+# PostgreSQL configuration for AET
 postgres:
+  # Higher storage quota for production/staging workloads
+  # Inherits postgres.replicas: 2 from values.yaml (HA setup same as local dev)
   storage: 10Gi
+
+# AET uses ingress for external access (not NodePort like local dev)
+ingressHost: team-devvopps.rancher.ase.cit.tum.de

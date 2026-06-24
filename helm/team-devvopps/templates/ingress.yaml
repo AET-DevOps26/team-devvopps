@@ -4,25 +4,44 @@ kind: Ingress
 metadata:
   name: team-devvopps-ingress
   namespace: {{ .Values.namespace }}
+  annotations:
+    # nginx.ingress.kubernetes.io/rewrite-target enables path rewriting
+    # Strips the matched path prefix before sending request to backend service
+    # Example: /api/users → backend receives /users (not /api/users)
+    # This allows backends to handle clean paths without prefix logic
+    nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
   rules:
     - host: {{ .Values.ingressHost }}
       http:
         paths:
-          - path: /api
-            pathType: Prefix
+          # API Gateway routes
+          # Regex: /api(/|$)(.*) matches:
+          #   /api          → captured as /api
+          #   /api/         → captured as /api/
+          #   /api/users    → captured as /api/users
+          # All get rewritten to / + path (e.g., /api/users → /users)
+          - path: /api(/|$)(.*)
+            pathType: ImplementationSpecific
             backend:
               service:
                 name: api-gateway
                 port:
                   number: {{ .Values.services.apiGateway.port }}
-          - path: /llm
-            pathType: Prefix
+
+          # LLM Service routes
+          # Same regex pattern: /llm/models → backend receives /models
+          - path: /llm(/|$)(.*)
+            pathType: ImplementationSpecific
             backend:
               service:
                 name: llm-service
                 port:
                   number: {{ .Values.services.llmService.port }}
+
+          # Frontend (React client) routes
+          # Catch-all for remaining paths (root / and anything not matching /api or /llm)
+          # No rewriting needed since frontend handles all paths
           - path: /
             pathType: Prefix
             backend:

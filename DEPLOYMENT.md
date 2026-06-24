@@ -23,12 +23,15 @@ Done!
 
 1. Contact the team to get:
    - kubeconfig file (stud.yaml)
-   - Database credentials (username/password)
+   - PostgreSQL superuser credentials (username/password)
+   - PostgreSQL replication credentials (username/password for streaming replication)
 
 2. Deploy:
 ```bash
 export KUBECONFIG=~/path/to/stud.yaml
-POSTGRES_USER=<username> POSTGRES_PASSWORD=<password> make helm-install-aet
+POSTGRES_USER=<username> POSTGRES_PASSWORD=<password> \
+POSTGRES_REPLICATION_USER=<rep_username> POSTGRES_REPLICATION_PASSWORD=<rep_password> \
+make helm-install-aet
 ```
 
 3. Verify (after namespace is created):
@@ -36,6 +39,8 @@ POSTGRES_USER=<username> POSTGRES_PASSWORD=<password> make helm-install-aet
 kubectl get pods -n team-devvopps
 kubectl get services -n team-devvopps
 ```
+
+Expected: postgres-0 and postgres-1 pods (primary + replica with streaming replication)
 
 ---
 
@@ -45,14 +50,6 @@ kubectl get services -n team-devvopps
 - Method 2 (Manual): Need `kubectl` and `helm` installed locally
 
 ---
-
-## Troubleshooting
-
-**Namespace doesn't exist:**
-→ Ask instructors to create `team-devvopps` namespace in Rancher
-
-**Pods stuck in Pending:**
-→ Run: `kubectl describe namespace team-devvopps` to check resources
 
 
 

@@ -1,23 +1,36 @@
-# Default values for team-devvopps Helm chart (Local Development)
-# This is a YAML-formatted file for local docker-desktop Kubernetes
+# Default values for team-devvopps Helm chart
+# Used for all deployments (local, AET staging, production)
+# Environment-specific values overridden by:
+#   - values-aet.yaml (for AET cluster)
+#   - values-secrets.yaml (for credentials, gitignored)
 
 namespace: team-devvopps
 
 # Image configuration
 imageRegistry: team-devvopps
+# imageTag: latest means always use the latest built image
 imageTag: latest
+# Always pull ensures replicas get fresh images even if already cached
 imagePullPolicy: Always
 
 # Replicas (High Availability)
+# Top-level replicas kept for backward compatibility, but postgres uses postgres.replicas
 replicas: 1
 
 # Ingress configuration (empty = use NodePort for local dev)
 ingressHost: ""
 
 # PostgreSQL Configuration
+# Implements Primary-Replica streaming replication for data safety
+# - postgres-0 = Primary (accepts reads/writes, sends WAL to replicas)
+# - postgres-1 = Replica (read-only, synced via streaming replication)
 postgres:
+  # Number of replicas: 2 = 1 primary + 1 replica (each gets separate storage)
+  replicas: 2
   version: "16"
   image: postgres:16
+  # Storage per pod (StatefulSet creates separate PVC for each: postgres-storage-postgres-0, postgres-storage-postgres-1)
+  # Total storage used = 2 × storage value
   storage: 1Gi
 
 # Service ports (should not change)

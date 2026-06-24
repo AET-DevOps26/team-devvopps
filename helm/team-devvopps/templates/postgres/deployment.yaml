@@ -1,10 +1,13 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: postgres
   namespace: {{ .Values.namespace }}
 spec:
-  replicas: {{ .Values.replicas }}
+  # Link to headless service for pod DNS discovery (postgres-0.postgres.namespace, postgres-1.postgres.namespace)
+  # Required for StatefulSet pods to discover each other for replication
+  serviceName: postgres
+  replicas: {{ .Values.postgres.replicas }}
   selector:
     matchLabels:
       app: postgres
@@ -13,6 +16,83 @@ spec:
       labels:
         app: postgres
     spec:
+      # Init container runs BEFORE main postgres container
+      # Purpose: Set up storage (primary pod) or clone from primary (replica pods)
+      initContainers:
+        - name: init-postgres
+          image: {{ .Values.postgres.image }}
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: username
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: password
+            # Replication credentials for pg_basebackup on replica pods
+            - name: REPLICATION_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: replication-user
+            # REPLICATION_PASSWORD used with PGPASSWORD env var for pg_basebackup authentication
+            - name: REPLICATION_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: replication-password
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            # Extract pod ordinal (0 for postgres-0, 1 for postgres-1, etc.)
+            - name: POD_ORDINAL
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+
+              # Determine if primary (postgres-0) or replica (postgres-1+)
+              ORDINAL=${POD_ORDINAL##*-}
+
+              if [ "$ORDINAL" -eq "0" ]; then
+                # Primary pod: initialize fresh database
+                echo "Initializing primary postgres-0..."
+                if [ ! -f "$PGDATA/PG_VERSION" ]; then
+                  initdb --username=$POSTGRES_USER
+                fi
+              else
+                # Replica pod: clone database from primary using pg_basebackup
+                echo "Setting up replica from postgres-0..."
+                if [ ! -f "$PGDATA/PG_VERSION" ]; then
+                  mkdir -p "$PGDATA"
+                  chmod 700 "$PGDATA"
+
+                  # Wait for primary to be ready before attempting clone
+                  echo "Waiting for primary postgres-0 to be ready..."
+                  until pg_isready -h postgres-0.postgres.{{ .Values.namespace }}.svc.cluster.local -U $POSTGRES_USER; do
+                    echo "Primary not ready, waiting..."
+                    sleep 2
+                  done
+
+                  # Clone entire database from primary (includes all tables and data)
+                  echo "Cloning database from primary..."
+                  PGPASSWORD=$REPLICATION_PASSWORD pg_basebackup -h postgres-0.postgres.{{ .Values.namespace }}.svc.cluster.local \
+                    -U $REPLICATION_USER \
+                    -D "$PGDATA" \
+                    -v -P --wal-method=stream
+                fi
+              fi
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
+              subPath: data
+      # Main postgres container
       containers:
         - name: postgres
           image: {{ .Values.postgres.image }}
@@ -36,10 +116,17 @@ spec:
                 secretKeyRef:
                   name: postgres-secret
                   key: password
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            - name: POD_ORDINAL
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
           volumeMounts:
             - name: postgres-storage
               mountPath: /var/lib/postgresql/data
               subPath: data
+            # Init scripts from configmap (database creation, replication setup)
             - name: init-sql
               mountPath: /docker-entrypoint-initdb.d
           readinessProbe:
@@ -48,9 +135,16 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 5
       volumes:
-        - name: postgres-storage
-          persistentVolumeClaim:
-            claimName: postgres-pvc
         - name: init-sql
           configMap:
             name: postgres-init
+  # Each StatefulSet pod gets its own PVC (postgres-0, postgres-1, etc.)
+  # This is essential for multiple postgres instances to have separate storage
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-storage
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: {{ .Values.postgres.storage }}
