@@ -11,8 +11,11 @@ import com.tum.roadmap.repository.RoadmapRepository;
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -35,25 +38,31 @@ public class RoadmapService {
     @Value("${llm.service.port:8084}")
     private String llmPort;
 
-    @Value("${llm.service.host:user-service}")
+    @Value("${user.service.host:user-service}")
     private String userHost;
 
-    @Value("${llm.service.port:8081}")
+    @Value("${user.service.port:8081}")
     private String userPort;
     
 
-    private String USER_URL = "http://" + userHost + ":" + userPort + "/users/";
-    
-    private String LLM_URL = "http://" + llmHost + ":" + llmPort;;
+    private String getUserUrl(Long userId) {
+        return "http://" + userHost + ":" + userPort + "/users/" + userId;
+    }
+
+    private String getLlmUrl() {
+        return "http://" + llmHost + ":" + llmPort;
+    }
 
     /**
      * Calls user-service to verify that the user exists.
      */
     private Object getUser(Long userId) {
         try {
-            return restTemplate.getForObject(USER_URL + userId, Object.class);
+            return restTemplate.getForObject(getUserUrl(userId), Object.class);
+        } catch (HttpClientErrorException.NotFound e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User " + userId + " not found");
         } catch (Exception e) {
-            throw new RuntimeException("User service not reachable");
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "User service not reachable");
         }
     }
 
@@ -116,24 +125,22 @@ public class RoadmapService {
      * Returns roadmap by ID.
      */
     public Roadmap getRoadmap(Long id) {
-
-        return roadmapRepository.findById(id).orElseThrow(() -> new RuntimeException("Roadmap not found"));
+        return roadmapRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Roadmap not found"));
     }
 
     // Private Helper
     private RoadmapResponse callLLM(String goal) {
         try {
-            RestTemplate rt = new RestTemplate();
-
-            return rt.postForObject(
-                    LLM_URL + "/recommend",
+            return restTemplate.postForObject(  // ← use injected restTemplate, not new RestTemplate()
+                    getLlmUrl() + "/recommend",
                     new RoadmapRequest(goal),
                     RoadmapResponse.class
             );
-
+        } catch (HttpClientErrorException e) {
+            throw new ResponseStatusException(e.getStatusCode(), "LLM service returned an error: " + e.getMessage());
         } catch (Exception e) {
-            System.err.println("LLM service not reachable: " + e.getMessage());
-            return null;
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "LLM service not reachable");
         }
     }
 }

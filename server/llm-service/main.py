@@ -14,13 +14,15 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 
-# Environment configuration: pick the upstream provider based on env.
-#
-# If LOGOS_API_KEY is set we point at the TUM Logos endpoint and default
-# to the openai/gpt-oss-120b model. Otherwise we default to LM Studio
-# running on the host (host.docker.internal:1234 from inside Docker on
-# macOS/Windows) with gemma-4-e2b. The LM Studio path can still be
-# overridden by setting LLM_API_URL / LLM_MODEL explicitly.
+# ---------------------------------------------------------------------------
+# LLM provider selection
+# ---------------------------------------------------------------------------
+# The service supports three LLM backends, selected by environment variables:
+#   1. Logos (TUM-hosted GPT): set LOGOS_API_KEY. Requires eduVPN off-campus.
+#   2. Groq (free cloud API):  set GROQ_API_KEY. Uses llama-3.3-70b.
+#   3. LM Studio (local):      set neither. Defaults to localhost:1234.
+#      Override with LLM_API_URL and LLM_MODEL for a different local model.
+# ---------------------------------------------------------------------------
 LOGOS_API_KEY = os.getenv("LOGOS_API_KEY")
 GROQ_API_KEY  = os.getenv("GROQ_API_KEY")
 
@@ -44,7 +46,10 @@ else:
     # LM Studio doesn't require a key; CHAIR_API_KEY is left for back-compat.
     LLM_API_KEY = os.getenv("LLM_API_KEY") or os.getenv("CHAIR_API_KEY")
 
+# URL of the course-service REST API used to fetch the course catalogue.
 COURSE_SERVICE_URL = os.getenv("COURSE_SERVICE_URL", "http://course-service:8082/courses")
+
+# Number of courses passed to the LLM after TF-IDF filtering.
 TOP_K = int(os.getenv("TOP_K", "30"))
 
 # ---------------------------------------------------------------------------
@@ -67,6 +72,7 @@ def build_index() -> int:
         print(f"[RAG] Could not fetch courses: {e}")
         return 0
 
+    # Build a document per course combining title and objective for better matching.
     documents = []
     for c in _courses:
         title = c.get("title", "")
@@ -119,6 +125,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Allow all origins so the frontend and API gateway can call this service freely.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

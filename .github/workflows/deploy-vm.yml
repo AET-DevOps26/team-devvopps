@@ -1,0 +1,63 @@
+name: Deploy Docker Images (on VM)
+
+# Runs automatically after the Build workflow completes successfully on main.
+# Copies the compose file to the Azure VM and restarts all services via Docker Compose.
+on:
+  workflow_run:
+    workflows:
+      - Build Docker Images
+    types:
+      - completed
+    branches:
+      - main
+  
+      
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Copy the Docker Compose file and database init script to the VM.
+      # These are the only files needed on the VM; images are pulled from GHCR.
+      - name: Copy Files to VM
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ vars.AZURE_PUBLIC_IP }}
+          username: ${{ vars.AZURE_USER }}
+          key: ${{ secrets.AZURE_PRIVATE_KEY }}
+          source: "compose.azure.yml,server/init-databases.sql"
+          target: /home/${{ vars.AZURE_USER }}
+
+      # Write a .env.prod file on the VM with hostnames derived from the public IP.
+      # nip.io provides free wildcard DNS so we don't need a custom domain.
+      - name: SSH to VM and Create .env.prod
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ vars.AZURE_PUBLIC_IP }}
+          username: ${{ vars.AZURE_USER }}
+          key: ${{ secrets.AZURE_PRIVATE_KEY }}
+          script: |
+            rm -f .env.prod
+            touch .env.prod
+            echo "CLIENT_HOST=client.${{ vars.AZURE_PUBLIC_IP }}.nip.io" >> .env.prod
+            echo "SERVER_HOST=api.${{ vars.AZURE_PUBLIC_IP }}.nip.io" >> .env.prod
+            echo "PUBLIC_API_URL=https://api.${{ vars.AZURE_PUBLIC_IP }}.nip.io" >> .env.prod
+
+      # Pull the latest images from GHCR and restart all services.
+      - name: SSH to VM and Execute Docker-Compose Up
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ vars.AZURE_PUBLIC_IP }}
+          username: ${{ vars.AZURE_USER }}
+          key: ${{ secrets.AZURE_PRIVATE_KEY }}
+          command_timeout: 5m
+          script: |
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker compose -f compose.azure.yml --env-file=.env.prod up --pull=always -d

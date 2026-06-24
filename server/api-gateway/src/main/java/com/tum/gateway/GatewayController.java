@@ -11,6 +11,18 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestTemplate;
 
+/**
+ * API Gateway controller that proxies all incoming requests to the appropriate downstream service.
+ *
+ * Routes:
+ *   /users/**    → user-service
+ *   /courses/**  → course-service
+ *   /roadmaps/** → roadmap-service
+ *
+ * The full request (method, headers, body, query params) is forwarded as-is.
+ * Responses are passed back to the caller unchanged, except Transfer-Encoding
+ * which is stripped to avoid chunked-encoding conflicts with Spring's response writing.
+ */
 @RestController
 @CrossOrigin
 public class GatewayController {
@@ -41,11 +53,25 @@ public class GatewayController {
         return forward(request, entity, roadmapServiceUrl);
     }
 
+    /**
+     * Forwards the incoming HTTP request to the target service and returns its response.
+     *
+     * Transfer-Encoding is removed from the response headers because Spring sets its own
+     * transfer encoding when writing the response body, and keeping the upstream value
+     * causes encoding conflicts on the client side.
+     *
+     * @param request       the original incoming HTTP request
+     * @param entity        the request body and headers
+     * @param targetBaseUrl the base URL of the downstream service to forward to
+     */
     private ResponseEntity<byte[]> forward(HttpServletRequest request, HttpEntity<byte[]> entity, String targetBaseUrl) {
         String path = request.getRequestURI();
         String query = request.getQueryString();
         String url = targetBaseUrl + path + (query != null ? "?" + query : "");
         ResponseEntity<byte[]> response = restTemplate.exchange(url, HttpMethod.valueOf(request.getMethod()), entity, byte[].class);
+        
+        // Copy response headers, excluding Transfer-Encoding to avoid chunked encoding conflicts.
+
         HttpHeaders headers = new HttpHeaders();
         response.getHeaders().forEach((key, values) -> {
             if (!key.equalsIgnoreCase("Transfer-Encoding")) {

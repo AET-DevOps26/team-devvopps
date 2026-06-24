@@ -1,10 +1,15 @@
-name: Build and Deploy Docker Images (on VM)
+name: Build Docker Images
+
+# Triggered on every push to main.
+# Builds all service images and pushes them to GitHub Container Registry (GHCR).
+# The deploy workflow listens for this workflow's completion before deploying.
 
 on:
   push:
     branches:
-      - main
-      
+    - main
+
+# Read access to repo contents; write access to push images to GHCR.      
 permissions:
   contents: read
   packages: write
@@ -16,6 +21,8 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      # Authenticate with GHCR so we can push images.
+      # GITHUB_TOKEN is automatically provided by GitHub Actions.
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -23,12 +30,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # QEMU enables building images for non-native architectures.
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
+      # Buildx is required for advanced build features including GHA layer caching.
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # Each service uses a separate cache scope so they don't overwrite each other.
+      # cache-from: restores cached layers from the previous build.
+      # cache-to mode=max: saves all intermediate layers, not just the final image.
       - name: Build and Push api-gateway
         uses: docker/build-push-action@v5
         with:
@@ -36,6 +48,8 @@ jobs:
           file: ./server/api-gateway/Dockerfile
           push: true
           tags: ghcr.io/aet-devops26/team-devvopps/api-gateway:latest
+          cache-from: type=gha,scope=api-gateway
+          cache-to: type=gha,scope=api-gateway,mode=max
 
       - name: Build and Push user-service
         uses: docker/build-push-action@v5
@@ -44,6 +58,8 @@ jobs:
           file: ./server/user-service/Dockerfile
           push: true
           tags: ghcr.io/aet-devops26/team-devvopps/user-service:latest
+          cache-from: type=gha,scope=user-service
+          cache-to: type=gha,scope=user-service,mode=max
 
       - name: Build and Push course-service
         uses: docker/build-push-action@v5
@@ -52,6 +68,8 @@ jobs:
           file: ./server/course-service/Dockerfile
           push: true
           tags: ghcr.io/aet-devops26/team-devvopps/course-service:latest
+          cache-from: type=gha,scope=course-service
+          cache-to: type=gha,scope=course-service,mode=max
 
       - name: Build and Push roadmap-service
         uses: docker/build-push-action@v5
@@ -60,6 +78,8 @@ jobs:
           file: ./server/roadmap-service/Dockerfile
           push: true
           tags: ghcr.io/aet-devops26/team-devvopps/roadmap-service:latest
+          cache-from: type=gha,scope=roadmap-service
+          cache-to: type=gha,scope=roadmap-service,mode=max
 
       - name: Build and Push client
         uses: docker/build-push-action@v5
@@ -68,6 +88,8 @@ jobs:
           file: ./client/Dockerfile
           push: true
           tags: ghcr.io/aet-devops26/team-devvopps/client:latest
+          cache-from: type=gha,scope=client
+          cache-to: type=gha,scope=client,mode=max
       
       - name: Build and Push llm-service
         uses: docker/build-push-action@v5
@@ -76,6 +98,8 @@ jobs:
           file: ./server/llm-service/Dockerfile
           push: true
           tags: ghcr.io/aet-devops26/team-devvopps/llm-service:latest
+          cache-from: type=gha,scope=llm-service
+          cache-to: type=gha,scope=llm-service,mode=max
 
       - name: Build and Push course-seeder
         uses: docker/build-push-action@v5
@@ -84,44 +108,5 @@ jobs:
           file: ./server/course-service/Dockerfile.seeder
           push: true
           tags: ghcr.io/aet-devops26/team-devvopps/course-seeder:latest
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Copy Files to VM
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ vars.AZURE_PUBLIC_IP }}
-          username: ${{ vars.AZURE_USER }}
-          key: ${{ secrets.AZURE_PRIVATE_KEY }}
-          source: "compose.azure.yml,server/init-databases.sql"
-          target: /home/${{ vars.AZURE_USER }}
-
-      - name: SSH to VM and Create .env.prod
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ vars.AZURE_PUBLIC_IP }}
-          username: ${{ vars.AZURE_USER }}
-          key: ${{ secrets.AZURE_PRIVATE_KEY }}
-          script: |
-            rm -f .env.prod
-            touch .env.prod
-            echo "CLIENT_HOST=client.${{ vars.AZURE_PUBLIC_IP }}.nip.io" >> .env.prod
-            echo "SERVER_HOST=api.${{ vars.AZURE_PUBLIC_IP }}.nip.io" >> .env.prod
-            echo "PUBLIC_API_URL=https://api.${{ vars.AZURE_PUBLIC_IP }}.nip.io" >> .env.prod
-
-      - name: SSH to VM and Execute Docker-Compose Up
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ vars.AZURE_PUBLIC_IP }}
-          username: ${{ vars.AZURE_USER }}
-          key: ${{ secrets.AZURE_PRIVATE_KEY }}
-          command_timeout: 5m
-          script: |
-            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            docker compose -f compose.azure.yml --env-file=.env.prod up --pull=always -d
+          cache-from: type=gha,scope=course-seeder
+          cache-to: type=gha,scope=course-seeder,mode=max
