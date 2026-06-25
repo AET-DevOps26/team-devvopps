@@ -7,6 +7,9 @@ import lombok.NoArgsConstructor;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 /**
  * Milestone entity representing a node in a roadmap.
  * Each milestone is either a recommended TUM course or a generic learning recommendation.
@@ -26,6 +29,7 @@ public class Milestone {
     private Long milestone_id;
 
     /** The roadmap this milestone belongs to (required) */
+    @JsonIgnore
     @ManyToOne
     @JoinColumn(name = "roadmap_id", nullable = false)
     private Roadmap roadmap;

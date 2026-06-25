@@ -84,6 +84,8 @@ public class RoadmapService {
         Roadmap roadmap = new Roadmap();
         roadmap.setGoal(goal);
         roadmap.setCreated_date(LocalDateTime.now());
+        roadmap.setUser_id(userId);
+        roadmap.setTitle("Roadmap for " + user_goal);
 
         // Call LLM
         RoadmapResponse llmResponse = callLLM(user_goal);
@@ -97,6 +99,7 @@ public class RoadmapService {
                 milestone.setTitle(m.title());
                 milestone.setDescription(m.description());
                 milestone.setRoadmap(roadmap);
+                milestone.setStatus(Status.NOT_STARTED);
 
                 List<Task> tasks = new ArrayList<>();
                 
