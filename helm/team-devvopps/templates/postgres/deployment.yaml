@@ -83,10 +83,12 @@ spec:
                 echo "Initializing primary postgres-0..."
                 if [ ! -f "$PGDATA/PG_VERSION" ]; then
                   initdb --username=$POSTGRES_USER
-                  # Copy pg_hba.conf from ConfigMap for replication authentication
-                  cp /docker-entrypoint-initdb.d/pg_hba.conf "$PGDATA/pg_hba.conf"
-                  chmod 600 "$PGDATA/pg_hba.conf"
                 fi
+                # Always copy pg_hba.conf (even on subsequent starts)
+                # Needed for replication authentication to work
+                echo "Configuring pg_hba.conf for replication..."
+                cp /docker-entrypoint-initdb.d/pg_hba.conf "$PGDATA/pg_hba.conf"
+                chmod 600 "$PGDATA/pg_hba.conf"
               else
                 # Replica pod: clone database from primary using pg_basebackup
                 echo "Setting up replica from postgres-0..."
