@@ -21,6 +21,15 @@ spec:
       initContainers:
         - name: init-postgres
           image: {{ .Values.postgres.image }}
+          # Resource limits required by AET cluster ResourceQuota
+          # init-postgres only runs once during pod initialization (brief, light workload)
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
           env:
             - name: POSTGRES_USER
               valueFrom:
