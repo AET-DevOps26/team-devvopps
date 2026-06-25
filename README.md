@@ -196,6 +196,9 @@ postgres:
   credentials:
     username: your_username
     password: your_password
+  # Replication credentials for PostgreSQL high availability (streaming replication)
+  replicationUser: your_replication_username
+  replicationPassword: your_replication_password
 ```
 
 3. Deploy:
@@ -351,6 +354,9 @@ For deployment to the AET Kubernetes cluster used in the course:
 
 - See [DEPLOYMENT.md](DEPLOYMENT.md) for full instructions
 - Two deployment options: GitHub Actions (automatic) or manual Helm command
+- **PostgreSQL High Availability:** postgres-0 (primary) + postgres-1 (replica) with streaming replication
+  - Replicas stay in sync automatically
+  - On primary failure, Kubernetes restarts it and replication resumes
 - Supports multiple environments with Helm values files
 
 ## Monitoring And Operations
@@ -359,12 +365,15 @@ For deployment to the AET Kubernetes cluster used in the course:
 
 `make dev` writes Spring Boot logs to `logs/`:
 
-```bash
-tail -f logs/api-gateway.log
-tail -f logs/user-service.log
-tail -f logs/course-service.log
-tail -f logs/roadmap-service.log
-```
+### For AET Kubernetes
+| Name | Type | Description |
+|---|---|---|
+| `KUBECONFIG` | secret | Kubeconfig for AET cluster access |
+| `POSTGRES_USER` | secret | PostgreSQL superuser username |
+| `POSTGRES_PASSWORD` | secret | PostgreSQL superuser password |
+| `POSTGRES_REPLICATION_USER` | secret | PostgreSQL replication user (for HA streaming replication) |
+| `POSTGRES_REPLICATION_PASSWORD` | secret | PostgreSQL replication user password |
+| `K8S_NAMESPACE` | variable | Kubernetes namespace (`team-devvopps`) |
 
 ## Student Responsibilities
 
