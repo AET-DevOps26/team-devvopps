@@ -86,6 +86,9 @@ spec:
                   mkdir -p "$PGDATA"
                   chmod 700 "$PGDATA"
                 fi
+                # Copy pg_hba.conf before postgres starts so it uses our replication rules
+                cp /docker-entrypoint-initdb.d/pg_hba.conf "$PGDATA/pg_hba.conf"
+                chmod 600 "$PGDATA/pg_hba.conf"
               else
                 # Replica pod: clone database from primary using pg_basebackup
                 echo "Setting up replica from postgres-0..."
