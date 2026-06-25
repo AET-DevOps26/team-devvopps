@@ -51,7 +51,7 @@ subprojects {
         testAnnotationProcessor 'org.projectlombok:lombok'
     }
 
-    tasks.named(Test) {
+    tasks.named('test') {
         useJUnitPlatform()
     }
 }
