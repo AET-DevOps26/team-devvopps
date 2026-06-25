@@ -21,6 +21,16 @@ data:
     ALTER SYSTEM SET max_replication_slots = 10; -- Maximum logical replication slots (one per replica)
     ALTER SYSTEM SET wal_level = replica;        -- Write-ahead log level (required for replication)
 
+  setup-pg-hba.sh: |
+    #!/bin/bash
+    # Copy custom pg_hba.conf for replication authentication
+    # Runs after postgres initializes via Docker entrypoint
+    if [ -f /docker-entrypoint-initdb.d/pg_hba.conf ]; then
+      cp /docker-entrypoint-initdb.d/pg_hba.conf /var/lib/postgresql/data/pgdata/pg_hba.conf
+      chmod 600 /var/lib/postgresql/data/pgdata/pg_hba.conf
+      echo "pg_hba.conf configured for replication"
+    fi
+
   pg_hba.conf: |
     # PostgreSQL Host Based Authentication Configuration
     # Allow replication connections from replica pods to primary
