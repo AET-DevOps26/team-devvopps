@@ -83,6 +83,9 @@ spec:
                 echo "Initializing primary postgres-0..."
                 if [ ! -f "$PGDATA/PG_VERSION" ]; then
                   initdb --username=$POSTGRES_USER
+                  # Copy pg_hba.conf from ConfigMap for replication authentication
+                  cp /docker-entrypoint-initdb.d/pg_hba.conf "$PGDATA/pg_hba.conf"
+                  chmod 600 "$PGDATA/pg_hba.conf"
                 fi
               else
                 # Replica pod: clone database from primary using pg_basebackup
@@ -110,6 +113,9 @@ spec:
             - name: postgres-storage
               mountPath: /var/lib/postgresql/data
               subPath: data
+            # Init scripts and pg_hba.conf from ConfigMap
+            - name: init-sql
+              mountPath: /docker-entrypoint-initdb.d
       # Main postgres container
       containers:
         - name: postgres
@@ -147,30 +153,21 @@ spec:
             # Init scripts from configmap (database creation, replication setup)
             - name: init-sql
               mountPath: /docker-entrypoint-initdb.d
-            # Host-based authentication for replication connections
-            - name: pg-hba-conf
-              mountPath: /var/lib/postgresql/data/pgdata/pg_hba.conf
-              subPath: pg_hba.conf
           readinessProbe:
             exec:
               command: ["pg_isready", "-U", "postgres"]
             initialDelaySeconds: 5
             periodSeconds: 5
       volumes:
-        # Init scripts from configmap (configmap.yaml)
-        # Mounted to /docker-entrypoint-initdb.d so postgres auto-runs SQL on initialization
+        # Init scripts and pg_hba.conf from configmap (configmap.yaml)
+        # init.sql: database creation and replication setup (postgres auto-runs)
+        # pg_hba.conf: copied by init container to pgdata for replication authentication
         - name: init-sql
           configMap:
             name: postgres-init
             items:
               - key: init.sql
                 path: init.sql
-        # PostgreSQL host-based authentication config (pg_hba.conf)
-        # Allows replication connections from replica pods to primary
-        - name: pg-hba-conf
-          configMap:
-            name: postgres-init
-            items:
               - key: pg_hba.conf
                 path: pg_hba.conf
   # Each StatefulSet pod gets its own PVC (postgres-0, postgres-1, etc.)
