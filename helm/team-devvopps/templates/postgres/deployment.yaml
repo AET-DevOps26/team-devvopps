@@ -82,7 +82,8 @@ spec:
                 # Primary pod: initialize fresh database
                 echo "Initializing primary postgres-0..."
                 if [ ! -f "$PGDATA/PG_VERSION" ]; then
-                  initdb --username=$POSTGRES_USER
+                  # Always create postgres superuser (postgres doesn't support other superuser names)
+                  initdb --username=postgres
                 fi
                 # Always copy pg_hba.conf (even on subsequent starts)
                 # Needed for replication authentication to work
