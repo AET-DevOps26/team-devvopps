@@ -21,6 +21,12 @@ spec:
       initContainers:
         - name: init-postgres
           image: {{ .Values.postgres.image }}
+          # Run as postgres user (UID 999) to allow initdb execution
+          # postgres image is designed to run as non-root for security
+          securityContext:
+            runAsUser: 999
+            runAsGroup: 999
+            fsGroup: 999
           # Resource limits required by AET cluster ResourceQuota
           # init-postgres only runs once during pod initialization (brief, light workload)
           resources:
