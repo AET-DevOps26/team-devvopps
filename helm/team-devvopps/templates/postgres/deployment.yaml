@@ -16,11 +16,20 @@ spec:
       labels:
         app: postgres
     spec:
+      # Pod-level security context (applies to all containers in the pod)
+      # fsGroup ensures all processes can access volumes mounted with postgres group permissions
+      securityContext:
+        fsGroup: 999
       # Init container runs BEFORE main postgres container
       # Purpose: Set up storage (primary pod) or clone from primary (replica pods)
       initContainers:
         - name: init-postgres
           image: {{ .Values.postgres.image }}
+          # Run as postgres user (UID 999) to allow initdb execution
+          # postgres image is designed to run as non-root for security
+          securityContext:
+            runAsUser: 999
+            runAsGroup: 999
           # Resource limits required by AET cluster ResourceQuota
           # init-postgres only runs once during pod initialization (brief, light workload)
           resources:
