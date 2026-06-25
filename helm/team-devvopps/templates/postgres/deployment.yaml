@@ -147,15 +147,32 @@ spec:
             # Init scripts from configmap (database creation, replication setup)
             - name: init-sql
               mountPath: /docker-entrypoint-initdb.d
+            # Host-based authentication for replication connections
+            - name: pg-hba-conf
+              mountPath: /var/lib/postgresql/data/pgdata/pg_hba.conf
+              subPath: pg_hba.conf
           readinessProbe:
             exec:
               command: ["pg_isready", "-U", "postgres"]
             initialDelaySeconds: 5
             periodSeconds: 5
       volumes:
+        # Init scripts from configmap (configmap.yaml)
+        # Mounted to /docker-entrypoint-initdb.d so postgres auto-runs SQL on initialization
         - name: init-sql
           configMap:
             name: postgres-init
+            items:
+              - key: init.sql
+                path: init.sql
+        # PostgreSQL host-based authentication config (pg_hba.conf)
+        # Allows replication connections from replica pods to primary
+        - name: pg-hba-conf
+          configMap:
+            name: postgres-init
+            items:
+              - key: pg_hba.conf
+                path: pg_hba.conf
   # Each StatefulSet pod gets its own PVC (postgres-0, postgres-1, etc.)
   # This is essential for multiple postgres instances to have separate storage
   volumeClaimTemplates:

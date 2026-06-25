@@ -20,3 +20,13 @@ data:
     ALTER SYSTEM SET max_wal_senders = 10;       -- Maximum concurrent replication connections
     ALTER SYSTEM SET max_replication_slots = 10; -- Maximum logical replication slots (one per replica)
     ALTER SYSTEM SET wal_level = replica;        -- Write-ahead log level (required for replication)
+
+  pg_hba.conf: |
+    # PostgreSQL Host Based Authentication Configuration
+    # Allow replication connections from replica pods to primary
+    host replication {{ .Values.postgres.replicationUser }} 0.0.0.0/0 md5
+    # Standard local and network connections
+    local   all             all                                     trust
+    host    all             all             127.0.0.1/32            trust
+    host    all             all             ::1/128                 trust
+    host    all             all             0.0.0.0/0               md5
