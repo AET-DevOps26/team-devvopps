@@ -156,17 +156,16 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 5
       volumes:
-        # Init scripts and pg_hba.conf from configmap (configmap.yaml)
-        # init.sql: database creation and replication setup (postgres auto-runs)
-        # pg_hba.conf: copied by init container to pgdata for replication authentication
+        # Init scripts from configmap
         - name: init-sql
           configMap:
             name: postgres-init
             items:
               - key: init.sql
                 path: init.sql
-              - key: pg_hba.conf
-                path: pg_hba.conf
+              - key: 99-replication.sh
+                path: 99-replication.sh
+            defaultMode: 0755
   # Each StatefulSet pod gets its own PVC (postgres-0, postgres-1, etc.)
   # This is essential for multiple postgres instances to have separate storage
   volumeClaimTemplates:
