@@ -13,4 +13,4 @@ postgres:
   storage: 10Gi
 
 # AET uses ingress for external access (not NodePort like local dev)
-ingressHost: team-devvopps.rancher.ase.cit.tum.de
+ingressHost: team-devvopps.stud.k8s.aet.cit.tum.de
