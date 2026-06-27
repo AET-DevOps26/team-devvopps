@@ -1,8 +1,9 @@
 {{- if .Values.ingressHost }}
+# API ingress — rewrites /api/foo → /foo and /llm/foo → /foo
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: team-devvopps-ingress
+  name: team-devvopps-ingress-api
   namespace: {{ .Values.namespace }}
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
@@ -18,12 +19,6 @@ spec:
     - host: {{ .Values.ingressHost }}
       http:
         paths:
-          # API Gateway routes
-          # Regex: /api(/|$)(.*) matches:
-          #   /api          → captured as /api
-          #   /api/         → captured as /api/
-          #   /api/users    → captured as /api/users
-          # All get rewritten to / + path (e.g., /api/users → /users)
           - path: /api(/|$)(.*)
             pathType: ImplementationSpecific
             backend:
@@ -32,8 +27,6 @@ spec:
                 port:
                   number: {{ .Values.services.apiGateway.port }}
 
-          # LLM Service routes
-          # Same regex pattern: /llm/models → backend receives /models
           - path: /llm(/|$)(.*)
             pathType: ImplementationSpecific
             backend:
@@ -41,10 +34,26 @@ spec:
                 name: llm-service
                 port:
                   number: {{ .Values.services.llmService.port }}
-
-          # Frontend (React client) routes
-          # Catch-all for remaining paths (root / and anything not matching /api or /llm)
-          # No rewriting needed since frontend handles all paths
+---
+# Frontend ingress — no rewrite, serves React SPA
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: team-devvopps-ingress-client
+  namespace: {{ .Values.namespace }}
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - {{ .Values.ingressHost }}
+      secretName: team-devvopps-tls
+  rules:
+    - host: {{ .Values.ingressHost }}
+      http:
+        paths:
           - path: /
             pathType: Prefix
             backend:
