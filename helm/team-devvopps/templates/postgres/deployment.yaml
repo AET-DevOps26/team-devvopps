@@ -50,13 +50,11 @@ spec:
                 secretKeyRef:
                   name: postgres-secret
                   key: password
-            # Replication credentials for pg_basebackup on replica pods
             - name: REPLICATION_USER
               valueFrom:
                 secretKeyRef:
                   name: postgres-secret
                   key: replication-user
-            # REPLICATION_PASSWORD used with PGPASSWORD env var for pg_basebackup authentication
             - name: REPLICATION_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -79,10 +77,12 @@ spec:
               ORDINAL=${POD_ORDINAL##*-}
 
               if [ "$ORDINAL" -eq "0" ]; then
-                # Primary pod: initialize fresh database
-                echo "Initializing primary postgres-0..."
-                if [ ! -f "$PGDATA/PG_VERSION" ]; then
-                  initdb --username=$POSTGRES_USER
+                # Primary pod: prepare data directory for initialization
+                # Let the main postgres container's entrypoint handle initdb, password setting, and init.sql
+                echo "Preparing data directory for postgres-0..."
+                if [ ! -d "$PGDATA" ]; then
+                  mkdir -p "$PGDATA"
+                  chmod 700 "$PGDATA"
                 fi
               else
                 # Replica pod: clone database from primary using pg_basebackup
@@ -98,9 +98,9 @@ spec:
                     sleep 2
                   done
 
-                  # Clone entire database from primary (includes all tables and data)
+                  # Clone database from primary (no password needed - trust auth within cluster)
                   echo "Cloning database from primary..."
-                  PGPASSWORD=$REPLICATION_PASSWORD pg_basebackup -h postgres-0.postgres.{{ .Values.namespace }}.svc.cluster.local \
+                  pg_basebackup -h postgres-0.postgres.{{ .Values.namespace }}.svc.cluster.local \
                     -U $REPLICATION_USER \
                     -D "$PGDATA" \
                     -v -P --wal-method=stream
@@ -110,6 +110,9 @@ spec:
             - name: postgres-storage
               mountPath: /var/lib/postgresql/data
               subPath: data
+            # Init scripts and pg_hba.conf from ConfigMap
+            - name: init-sql
+              mountPath: /docker-entrypoint-initdb.d
       # Main postgres container
       containers:
         - name: postgres
@@ -153,9 +156,16 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 5
       volumes:
+        # Init scripts from configmap
         - name: init-sql
           configMap:
             name: postgres-init
+            items:
+              - key: init.sql
+                path: init.sql
+              - key: 99-replication.sh
+                path: 99-replication.sh
+            defaultMode: 0755
   # Each StatefulSet pod gets its own PVC (postgres-0, postgres-1, etc.)
   # This is essential for multiple postgres instances to have separate storage
   volumeClaimTemplates:

@@ -39,3 +39,9 @@ spec:
               port: {{ .Values.services.apiGateway.port }}
             initialDelaySeconds: 20
             periodSeconds: 10
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

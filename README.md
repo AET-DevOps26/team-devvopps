@@ -194,11 +194,11 @@ cp helm/team-devvopps/values-secrets.example.yaml helm/team-devvopps/values-secr
 ```yaml
 postgres:
   credentials:
-    username: your_username
-    password: your_password
-  # Replication credentials for PostgreSQL high availability (streaming replication)
-  replicationUser: your_replication_username
-  replicationPassword: your_replication_password
+    username: postgres
+    password: your_secure_password_here
+  # Replication uses trust auth (no password needed within cluster)
+  replicationUser: replication
+  replicationPassword: replication
 ```
 
 3. Deploy:
@@ -369,10 +369,8 @@ For deployment to the AET Kubernetes cluster used in the course:
 | Name | Type | Description |
 |---|---|---|
 | `KUBECONFIG` | secret | Kubeconfig for AET cluster access |
-| `POSTGRES_USER` | secret | PostgreSQL superuser username |
+| `POSTGRES_USER` | secret | PostgreSQL superuser name (typically "postgres") |
 | `POSTGRES_PASSWORD` | secret | PostgreSQL superuser password |
-| `POSTGRES_REPLICATION_USER` | secret | PostgreSQL replication user (for HA streaming replication) |
-| `POSTGRES_REPLICATION_PASSWORD` | secret | PostgreSQL replication user password |
 | `K8S_NAMESPACE` | variable | Kubernetes namespace (`team-devvopps`) |
 
 ## Student Responsibilities

@@ -24,13 +24,11 @@ Done!
 1. Contact the team to get:
    - kubeconfig file (stud.yaml)
    - PostgreSQL superuser credentials (username/password)
-   - PostgreSQL replication credentials (username/password for streaming replication)
 
 2. Deploy:
 ```bash
 export KUBECONFIG=~/path/to/stud.yaml
 POSTGRES_USER=<username> POSTGRES_PASSWORD=<password> \
-POSTGRES_REPLICATION_USER=<rep_username> POSTGRES_REPLICATION_PASSWORD=<rep_password> \
 make helm-install-aet
 ```
 

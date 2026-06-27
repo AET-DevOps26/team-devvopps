@@ -48,3 +48,9 @@ spec:
               port: {{ .Values.services.userService.port }}
             initialDelaySeconds: 30
             periodSeconds: 10
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
