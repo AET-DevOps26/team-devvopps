@@ -5,16 +5,27 @@ metadata:
   namespace: {{ .Values.namespace }}
 data:
   prometheus.yml: |
+    # Global settings applied to all scrape jobs and alert evaluations
     global:
+      # collects metrics from targets
       scrape_interval: 15s
+      # How often alert rules are evaluated
       evaluation_interval: 15s
+      # Labels added to all metrics
       external_labels:
         monitor: 'team-devvopps'
 
+    # Load alert rules that trigger notifications
     rule_files:
       - '/etc/prometheus/alerts/alerts.yaml'
 
+    # Define which services to monitor and where to find their metrics
     scrape_configs:
+      # Monitor Prometheus itself for health and performance
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+          
       - job_name: 'user-service'
         static_configs:
           - targets: ['user-service:{{ .Values.services.userService.port }}']

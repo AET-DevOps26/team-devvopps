@@ -12,4 +12,21 @@ data:
         access: proxy
         url: http://prometheus:9090
         isDefault: true
-        editable: true
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: {{ .Values.namespace }}
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: "team-devvopps-dashboards"
+        orgId: 1
+        folder: ""
+        type: file
+        disableDeletion: false
+        options:
+          path: /etc/grafana/provisioning/dashboards

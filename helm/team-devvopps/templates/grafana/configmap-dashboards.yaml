@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards-content
+  namespace: {{ .Values.namespace }}
+binaryData:
+  request-metrics.json: {{ .Files.Get "../../grafana-dashboards/dashboard-request-metrics.json" | b64enc }}
+  system-health.json: {{ .Files.Get "../../grafana-dashboards/dashboard-system-health.json" | b64enc }}

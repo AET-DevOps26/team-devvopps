@@ -61,12 +61,16 @@ jobs:
           # Replication credentials: ensure they're set in GitHub Secrets for production
           POSTGRES_REPLICATION_USER: ${{ secrets.POSTGRES_REPLICATION_USER || 'replication' }}
           POSTGRES_REPLICATION_PASSWORD: ${{ secrets.POSTGRES_REPLICATION_PASSWORD || 'replication' }}
+          GRAFANA_ADMIN_USER: ${{ secrets.GRAFANA_ADMIN_USER || 'admin' }}
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD || 'admin' }}
         run: |
           helm lint helm/team-devvopps/ \
             --set postgres.credentials.username="$POSTGRES_USER" \
             --set postgres.credentials.password="$POSTGRES_PASSWORD" \
             --set postgres.replicationUser="$POSTGRES_REPLICATION_USER" \
-            --set postgres.replicationPassword="$POSTGRES_REPLICATION_PASSWORD"
+            --set postgres.replicationPassword="$POSTGRES_REPLICATION_PASSWORD" \
+            --set grafana.adminUser="$GRAFANA_ADMIN_USER" \
+            --set grafana.adminPassword="$GRAFANA_ADMIN_PASSWORD"
 
       # Remove pods stuck in Failed/Unknown state that would block the Helm rollout.
       # Also delete the course-seeder job: completed Jobs are immutable, so helm
@@ -83,6 +87,7 @@ jobs:
       # helm upgrade --install: creates the release if it doesn't exist, upgrades if it does.
       # Sensitive values (DB credentials, API keys) are passed at deploy time, not stored in values files.
       # PostgreSQL replication credentials enable primary-replica streaming replication for HA.
+      # Grafana credentials from GitHub Secrets ensure secure admin access.
       # --wait blocks until all pods are ready or the timeout is hit (ensures postgres starts).
       - name: Deploy with Helm
         env:
@@ -93,6 +98,8 @@ jobs:
           POSTGRES_REPLICATION_PASSWORD: ${{ secrets.POSTGRES_REPLICATION_PASSWORD || 'replication' }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           LOGOS_API_KEY: ${{ secrets.LOGOS_API_KEY }}
+          GRAFANA_ADMIN_USER: ${{ secrets.GRAFANA_ADMIN_USER || 'admin' }}
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD || 'admin' }}
         run: |
           helm upgrade --install "$HELM_RELEASE_NAME" helm/team-devvopps/ \
             -f helm/team-devvopps/values-aet.yaml \
@@ -102,6 +109,8 @@ jobs:
             --set postgres.replicationPassword="$POSTGRES_REPLICATION_PASSWORD" \
             --set llmService.groqApiKey="$GROQ_API_KEY" \
             --set llmService.logosApiKey="$LOGOS_API_KEY" \
+            --set grafana.adminUser="$GRAFANA_ADMIN_USER" \
+            --set grafana.adminPassword="$GRAFANA_ADMIN_PASSWORD" \
             -n "$K8S_NAMESPACE" \
             --wait \
             --timeout 5m

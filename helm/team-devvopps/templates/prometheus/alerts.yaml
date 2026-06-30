@@ -5,13 +5,16 @@ metadata:
   namespace: {{ .Values.namespace }}
 data:
   alerts.yaml: |
+    # Alert rule groups for team-devvopps services
     groups:
       - name: team-devvopps
         interval: 30s
         rules:
-          # Service downtime alert
+          # Critical: Service is completely down and unreachable
           - alert: ServiceDown
+            # Query: Check if any monitored service is down (up metric == 0)
             expr: up{job=~"user-service|course-service|roadmap-service|api-gateway"} == 0
+            # Wait 1 minute before alerting to avoid flapping on transient failures
             for: 1m
             labels:
               severity: critical
@@ -19,14 +22,16 @@ data:
               summary: "Service {{ "{{" }} $labels.job {{ "}}" }} is down"
               description: "Service {{ "{{" }} $labels.job {{ "}}" }} ({{ "{{" }} $labels.instance {{ "}}" }}) has been unavailable for more than 1 minute"
 
-          # High error rate alert
+          # Warning: Service is responding but with high error rate
           - alert: HighErrorRate
+            # Query: Calculate error rate = 5xx responses / total responses over last 5 minutes
             expr: |
               (
                 sum(rate(http_requests_total{status=~"5.."}[5m])) by (job)
                 /
                 sum(rate(http_requests_total[5m])) by (job)
               ) > 0.05
+            # Wait 2 minutes to allow transient spikes to resolve
             for: 2m
             labels:
               severity: warning
@@ -34,10 +39,12 @@ data:
               summary: "High error rate on {{ "{{" }} $labels.job {{ "}}" }}"
               description: "Error rate is above 5% for {{ "{{" }} $labels.job {{ "}}" }}"
 
-          # High latency alert
+          # Warning: Service is responding slowly (high latency)
           - alert: HighLatency
+            # Query: Calculate 95th percentile (p95) latency over last 5 minutes
             expr: |
               histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, job)) > 1
+            # Wait 2 minutes to avoid alerting on temporary slowdowns
             for: 2m
             labels:
               severity: warning

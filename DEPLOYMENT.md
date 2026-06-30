@@ -24,11 +24,13 @@ Done!
 1. Contact the team to get:
    - kubeconfig file (stud.yaml)
    - PostgreSQL superuser credentials (username/password)
+   - Grafana admin credentials (username/password)
 
 2. Deploy:
 ```bash
 export KUBECONFIG=~/path/to/stud.yaml
 POSTGRES_USER=<username> POSTGRES_PASSWORD=<password> \
+GRAFANA_ADMIN_USER=<username> GRAFANA_ADMIN_PASSWORD=<password> \
 make helm-install-aet
 ```
 
@@ -44,10 +46,8 @@ Expected: postgres-0 and postgres-1 pods (primary + replica with streaming repli
 
 ## Prerequisites
 
-- Method 1 (GitHub Actions): No setup needed ✅
+- Method 1 (GitHub Actions): Credentials stored in GitHub Secrets 
 - Method 2 (Manual): Need `kubectl` and `helm` installed locally
-
----
 
 
 

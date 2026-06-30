@@ -32,6 +32,14 @@ postgres:
   # Storage per pod (StatefulSet creates separate PVC for each: postgres-storage-postgres-0, postgres-storage-postgres-1)
   # Total storage used = 2 × storage value
   storage: 1Gi
+  # Superuser credentials (overridden by values-secrets.yaml or --set)
+  credentials:
+    username: postgres
+    password: postgres
+  # Replication user credentials for primary-replica streaming replication
+  # Limited permissions: can only stream WAL, cannot modify data
+  replicationUser: replication
+  replicationPassword: replication
 
 # Service ports (should not change)
 services:
@@ -70,6 +78,7 @@ prometheus:
 
 # Grafana Configuration
 grafana:
+  adminUser: admin
   adminPassword: admin
   replicas: 1
   resources:
