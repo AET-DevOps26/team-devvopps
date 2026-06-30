@@ -289,7 +289,8 @@ GitHub Actions workflows are defined in `.github/workflows/`.
 | Workflow | Trigger | Purpose |
 |---|---|---|
 | `lint.yml` | Pull requests to `main`, pushes to non-`main` branches | Runs frontend ESLint, Java checks, actionlint, Helm lint, and OpenAPI lint |
-| `build_and_deploy_docker_VM.yml` | Push to `main` | Builds Docker images, pushes them to GHCR, and deploys to the Azure VM with Docker Compose |
+| `build.yml` | Push to `main` | Builds Docker images for all services and pushes them to GHRC |
+| `deploy-vm.yml` | Automatically after `build.yml` completes successfully on `main` (via `workflow_run`) | Temporarily opens SSH access for the runner's IP, deploys the latest images to the Azure VM with Docker Compose, then closes SSH access again |
 | `deploy-k8s.yml` | Push to `main`, manual dispatch | Deploys the Helm chart to the AET Kubernetes cluster |
 | `provision.yml` | Manual dispatch | Provisions or imports Azure resources with Terraform, configures the VM with Ansible, and updates the Azure public IP GitHub variable |
 
@@ -302,7 +303,7 @@ For Azure VM:
 | `AZURE_PUBLIC_IP` | variable | Public IP of Azure VM |
 | `AZURE_USER` | variable | SSH username (`azureuser`) |
 | `AZURE_PRIVATE_KEY` | secret | SSH private key |
-| `ARM_CLIENT_ID` | secret | Azure service principal client ID |
+| `ARM_CLIENT_ID` | secret | Azure service principal client ID *(has Network Contributor role on the NSG to manage the temporary CI SSH rule)* |
 | `ARM_CLIENT_SECRET` | secret | Azure service principal client secret |
 | `ARM_SUBSCRIPTION_ID` | secret | Azure subscription ID |
 | `ARM_TENANT_ID` | secret | Azure tenant ID |
@@ -332,8 +333,8 @@ The application is automatically built and deployed to an Azure VM on every merg
    - Terraform creates VM + Ansible configures Docker
 
 2. **Deployment (automatic on merge to main):**
-   - Build job: Creates 5 Docker images → pushes to ghcr.io
-   - Deploy job: Copies docker-compose to VM → starts services with Traefik for HTTPS
+   - `build.yml`: Creates 5 Docker images → pushes to ghcr.io
+   - `deploy-vm.yml`: Temporarily allows the runner's IP through the VM's NSG → Copies docker-compose to VM → starts services with Traefik for HTTPS
 
 **Stack on VM:**
 - Traefik (reverse proxy + Let's Encrypt HTTPS)
@@ -345,6 +346,13 @@ The application is automatically built and deployed to an Azure VM on every merg
 - Terraform State Backend: Shared storage for team state
 - SSH Key Pair: For accessing VM
 - All configured in GitHub Secrets
+
+**Network Security:**
+- SSH (port 22) on the Azure VM's Network Security Group is restricted to the MWN (Münchner Wissenschaftsnetz) range `129.187.0.0/16`, which covers TUM, LMU, BADW, and LRZ.
+- To SSH into the VM, connect to TUM's eduVPN first.
+- The allowed range is set via the `allowed_ssh_eduVPN` Terraform variable in `terraform/` and defaults to `129.187.0.0/16`. Update it there (and re-run `terraform apply` or the `provision.yml` workflow) if the MWN allocation changes.
+- HTTP (80) and HTTPS (443) remain open to all sources, since the application's frontend/API are intended to be publicly available. Only SSH is access-restricted.
+- **CI/CD SSH access**: Since the GitHub Actions runners don't have IPs within the MWN range, `deploy-vm.yml` temporarily adds a `/32` NSG rule for the runner's own public IP just before SSHing in to deploy, then deletes that rule immediately afterward (even on failure, via `if: always()`). This keeps the NSG cloded to the public internet while still allowing automated deploys.
 
 See [README.md section on Azure](README.md#azure-vm-stagingdemo) for detailed setup.
 
