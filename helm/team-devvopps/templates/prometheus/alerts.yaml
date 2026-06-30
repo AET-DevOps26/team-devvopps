@@ -16,8 +16,8 @@ data:
             labels:
               severity: critical
             annotations:
-              summary: "Service {{ $labels.job }} is down"
-              description: "Service {{ $labels.job }} has been unavailable for more than 1 minute"
+              summary: "Service {{ "{{" }} $labels.job {{ "}}" }} is down"
+              description: "Service {{ "{{" }} $labels.job {{ "}}" }} ({{ "{{" }} $labels.instance {{ "}}" }}) has been unavailable for more than 1 minute"
 
           # High error rate alert
           - alert: HighErrorRate
@@ -31,8 +31,8 @@ data:
             labels:
               severity: warning
             annotations:
-              summary: "High error rate on {{ $labels.job }}"
-              description: "Error rate is above 5% for {{ $labels.job }}"
+              summary: "High error rate on {{ "{{" }} $labels.job {{ "}}" }}"
+              description: "Error rate is above 5% for {{ "{{" }} $labels.job {{ "}}" }}"
 
           # High latency alert
           - alert: HighLatency
@@ -42,5 +42,5 @@ data:
             labels:
               severity: warning
             annotations:
-              summary: "High latency on {{ $labels.job }}"
-              description: "p95 latency is above 1s for {{ $labels.job }}"
+              summary: "High latency on {{ "{{" }} $labels.job {{ "}}" }}"
+              description: "p95 latency is above 1s for {{ "{{" }} $labels.job {{ "}}" }}"
