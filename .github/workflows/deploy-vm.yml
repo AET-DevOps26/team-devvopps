@@ -3,6 +3,7 @@ name: Deploy Docker Images (on VM)
 # Runs automatically after the Build workflow completes successfully on main.
 # Copies the compose file to the Azure VM and restarts all services via Docker Compose.
 on:
+  workflow_dispatch:
   workflow_run:
     workflows:
       - Build Docker Images
