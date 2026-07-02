@@ -57,11 +57,7 @@ spec:
             # Auto-provision Prometheus datasource on startup
             - name: grafana-datasources
               mountPath: /etc/grafana/provisioning/datasources
-            # Dashboard provisioning config (which dashboards to load)
-            - name: grafana-dashboards-config
-              mountPath: /etc/grafana/provisioning/dashboards/dashboards.yaml
-              subPath: dashboards.yaml
-            # Dashboard JSON files (auto-loaded on startup)
+            # Dashboard provisioning config and dashboard JSON files (auto-loaded on startup)
             - name: grafana-dashboards-content
               mountPath: /etc/grafana/provisioning/dashboards
       # Define volumes referenced above
@@ -75,11 +71,7 @@ spec:
         - name: grafana-datasources
           configMap:
             name: grafana-datasources
-        # Volume 3: Dashboard provisioning config from ConfigMap
-        - name: grafana-dashboards-config
-          configMap:
-            name: grafana-dashboards
-        # Volume 4: Dashboard JSON files from ConfigMap
+        # Volume 3: Dashboard provisioning config and dashboard JSON files from ConfigMap
         - name: grafana-dashboards-content
           configMap:
             name: grafana-dashboards-content
