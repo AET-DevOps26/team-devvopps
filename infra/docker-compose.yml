@@ -84,6 +84,7 @@ services:
       - "3000:80"
     depends_on:
       - api-gateway
+      - llm-service
 
   # ── LLM Service ────────────────────────────────────────────────────────────
   llm-service:
@@ -92,7 +93,7 @@ services:
       context: ../server
       dockerfile: llm-service/Dockerfile
     ports:
-      - "8084:8084"
+      - "8084:8004"
     environment:
       # LM Studio on the host machine. host.docker.internal works on
       # Docker Desktop (macOS/Windows) out of the box; extra_hosts below
@@ -103,8 +104,9 @@ services:
       # Set LOGOS_API_KEY in .env to switch to the TUM-hosted Logos
       # endpoint (openai/gpt-oss-120b). When set, it overrides the
       # LM Studio defaults above. Unset = LM Studio.
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
       - LOGOS_API_KEY=${LOGOS_API_KEY:-}
-      - COURSE_SERVICE_HOST: course-service
+      - COURSE_SERVICE_HOST=course-service
     extra_hosts:
       - "host.docker.internal:host-gateway"
 

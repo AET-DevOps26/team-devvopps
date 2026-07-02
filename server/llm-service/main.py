@@ -26,18 +26,16 @@ import numpy as np
 LOGOS_API_KEY = os.getenv("LOGOS_API_KEY")
 GROQ_API_KEY  = os.getenv("GROQ_API_KEY")
 
-if LOGOS_API_KEY:
-    # Logos profile: TUM-hosted gpt-oss-120b. Off-campus needs eduVPN.
-    # Hardcoded so a single LOGOS_API_KEY in .env is the only switch
-    # students need to flip.
-    API_URL = "https://logos.aet.cit.tum.de/v1/chat/completions"
-    MODEL_NAME = "openai/gpt-oss-120b"
-    LLM_API_KEY = LOGOS_API_KEY
-elif GROQ_API_KEY:
+if GROQ_API_KEY:
     # Groq profile: free tier, llama-3.3-70b-versatile.
     API_URL = "https://api.groq.com/openai/v1/chat/completions"
     MODEL_NAME = "llama-3.3-70b-versatile"
     LLM_API_KEY = GROQ_API_KEY
+elif LOGOS_API_KEY:
+    # Logos profile: TUM-hosted gpt-oss-120b. Off-campus needs eduVPN.
+    API_URL = "https://logos.aet.cit.tum.de/v1/chat/completions"
+    MODEL_NAME = "openai/gpt-oss-120b"
+    LLM_API_KEY = LOGOS_API_KEY
 else:
     # LM Studio profile: local model on host. Defaults match compose.yml
     # so both `docker compose up` and `python main.py` work.
@@ -78,6 +76,10 @@ def build_index() -> int:
         title = c.get("title", "")
         objective = (c.get("objective") or c.get("content") or "")[:300]
         documents.append(f"{title} {objective}")
+
+    if not documents:
+        print("[RAG] No documents to index (empty course list).")
+        return 0
 
     _vectorizer = TfidfVectorizer(stop_words="english", ngram_range=(1, 2))
     _matrix = _vectorizer.fit_transform(documents)
