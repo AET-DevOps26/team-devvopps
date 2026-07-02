@@ -63,7 +63,7 @@ spec:
               subPath: dashboards.yaml
             # Dashboard JSON files (auto-loaded on startup)
             - name: grafana-dashboards-content
-              mountPath: /etc/grafana/provisioning/dashboards/dashboards
+              mountPath: /etc/grafana/provisioning/dashboards
       # Define volumes referenced above
       volumes:
         # Volume 1: Persistent storage for Grafana data (survives pod restarts)
