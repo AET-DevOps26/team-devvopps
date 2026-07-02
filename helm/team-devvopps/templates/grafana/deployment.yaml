@@ -14,6 +14,11 @@ spec:
       labels:
         app: grafana
     spec:
+      # Security context for Grafana container
+      # fsGroup: 472 ensures the mounted PVC is writable by Grafana (UID 472)
+      # Without this, Grafana crashes with "is not writable" permission errors
+      securityContext:
+        fsGroup: 472
       containers:
         - name: grafana
           image: grafana/grafana:10.2.3
