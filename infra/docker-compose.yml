@@ -101,9 +101,10 @@ services:
       - LLM_API_URL=${LLM_API_URL:-http://host.docker.internal:1234/v1/chat/completions}
       - LLM_MODEL=${LLM_MODEL:-gemma-4-e2b}
       - LLM_API_KEY=${LLM_API_KEY:-}
-      # Set LOGOS_API_KEY in .env to switch to the TUM-hosted Logos
-      # endpoint (openai/gpt-oss-120b). When set, it overrides the
-      # LM Studio defaults above. Unset = LM Studio.
+      # Provider precedence (mirrors main.py logic):
+      #   1. GROQ_API_KEY set → Groq (llama-3.3-70b-versatile)
+      #   2. LOGOS_API_KEY set → TUM Logos (openai/gpt-oss-120b)
+      #   3. Neither set → LM Studio (LLM_API_URL above)
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - LOGOS_API_KEY=${LOGOS_API_KEY:-}
       - COURSE_SERVICE_HOST=course-service

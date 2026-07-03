@@ -28,8 +28,6 @@ jobs:
         uses: azure/setup-helm@v3
         with:
           version: 'latest'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Write the kubeconfig from secrets so kubectl and Helm can reach the cluster.
       # Fails early with a clear message if the secret is missing.
