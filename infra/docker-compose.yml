@@ -88,10 +88,9 @@ services:
 
 # ── LLM Service ────────────────────────────────────────────────────────────
   llm-service:
-    image: ghcr.io/aet-devops26/w06-template/llm:latest
     build:
-      context: ../server
-      dockerfile: llm-service/Dockerfile
+      context: ../server/llm-service
+      dockerfile: Dockerfile
     ports:
       - "8084:8084"
     depends_on:
