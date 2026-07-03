@@ -83,9 +83,6 @@ components:
           readOnly: true
         name:
           type: string
-        email:
-          type: string
-          format: email
 
     ErrorResponse:
       type: object
