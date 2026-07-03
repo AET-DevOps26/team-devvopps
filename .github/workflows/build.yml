@@ -8,6 +8,7 @@ on:
   push:
     branches:
     - main
+    - fix/llm
 
 # Read access to repo contents; write access to push images to GHCR.      
 permissions:
