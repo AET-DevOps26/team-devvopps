@@ -82,20 +82,25 @@ public class RoadmapService {
 
         // Create Roadmap
         Roadmap roadmap = new Roadmap();
+        roadmap.setUser_id(userId);
         roadmap.setGoal(goal);
+        roadmap.setTitle(user_goal);
+        roadmap.setProgress(0);
         roadmap.setCreated_date(LocalDateTime.now());
 
         // Call LLM
         RoadmapResponse llmResponse = callLLM(user_goal);
 
         List<Milestone> milestones = new ArrayList<>();
-        
+
         if (llmResponse != null && llmResponse.milestones() != null) {
-            
+            int index = 0;
             for (MilestoneDto m : llmResponse.milestones()) {
                 Milestone milestone = new Milestone();
                 milestone.setTitle(m.title());
                 milestone.setDescription(m.description());
+                milestone.setStatus(Status.NOT_STARTED);
+                milestone.setOrderIndex(index++);
                 milestone.setRoadmap(roadmap);
 
                 List<Task> tasks = new ArrayList<>();

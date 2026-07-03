@@ -289,6 +289,11 @@ async def recommend(req: RoadmapRequest) -> RoadmapResponse:
     if not req.goal.strip():
         raise HTTPException(status_code=422, detail="goal cannot be empty")
 
+    # Retry index build if startup fetch failed (e.g. course-service was not ready yet)
+    if not _courses:
+        print("[RAG] Index empty, retrying course fetch...")
+        build_index()
+
     # Use TF-IDF to find the most relevant courses (replaces keyword search)
     courses_str = filter_courses(req.goal)
 
