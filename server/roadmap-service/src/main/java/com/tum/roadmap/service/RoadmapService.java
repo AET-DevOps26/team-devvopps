@@ -10,6 +10,8 @@ import com.tum.roadmap.repository.RoadmapRepository;
 
 import lombok.RequiredArgsConstructor;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -27,6 +29,8 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class RoadmapService {
+
+    private static final Logger log = LoggerFactory.getLogger(RoadmapService.class);
 
     private final RoadmapRepository roadmapRepository;
     private final GoalRepository goalRepository;
@@ -69,7 +73,13 @@ public class RoadmapService {
     /**
       * Generates a roadmap from a user request.
       */
+    public List<Roadmap> getAllRoadmaps() {
+        return roadmapRepository.findAll();
+    }
+
     public Roadmap generateRoadmap(Long userId, String user_goal) {
+        log.info("[Roadmap] generate — userId={} goal='{}'", userId, user_goal);
+        long t0 = System.currentTimeMillis();
 
         // Verify user exists via user-service
         Object user = getUser(userId);
@@ -89,7 +99,10 @@ public class RoadmapService {
         roadmap.setCreated_date(LocalDateTime.now());
 
         // Call LLM
+        log.info("[LLM] Calling llm-service at {} for goal='{}'", getLlmUrl(), user_goal);
+        long tLlm = System.currentTimeMillis();
         RoadmapResponse llmResponse = callLLM(user_goal);
+        log.info("[LLM] Response received in {}ms", System.currentTimeMillis() - tLlm);
 
         List<Milestone> milestones = new ArrayList<>();
 
@@ -123,7 +136,10 @@ public class RoadmapService {
 
         roadmap.setMilestones(milestones);
 
-        return roadmapRepository.save(roadmap);
+        Roadmap saved = roadmapRepository.save(roadmap);
+        log.info("[Roadmap] Saved roadmapId={} in {}ms — {} milestones",
+                saved.getRoadmap_id(), System.currentTimeMillis() - t0, saved.getMilestones().size());
+        return saved;
     }
     
     /**
@@ -137,14 +153,16 @@ public class RoadmapService {
     // Private Helper
     private RoadmapResponse callLLM(String goal) {
         try {
-            return restTemplate.postForObject(  // ← use injected restTemplate, not new RestTemplate()
+            return restTemplate.postForObject(
                     getLlmUrl() + "/recommend",
                     new RoadmapRequest(goal),
                     RoadmapResponse.class
             );
         } catch (HttpClientErrorException e) {
+            log.error("[LLM] HTTP error {}: {}", e.getStatusCode(), e.getMessage());
             throw new ResponseStatusException(e.getStatusCode(), "LLM service returned an error: " + e.getMessage());
         } catch (Exception e) {
+            log.error("[LLM] Unreachable: {}", e.getMessage());
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "LLM service not reachable");
         }
     }

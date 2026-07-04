@@ -15,12 +15,31 @@ interface Course {
   offered_in: string;
 }
 
-type Tab = "users" | "courses";
+interface LlmLog {
+  timestamp: string;
+  level: string;
+  message: string;
+  goal?: string;
+  llm_ms?: number;
+  total_ms?: number;
+}
+
+interface RoadmapLog {
+  id: number;
+  title: string;
+  created_date: string;
+  progress: number;
+  milestones: { title: string }[];
+}
+
+type Tab = "users" | "courses" | "logs";
 
 export default function AdminPanel() {
   const [tab, setTab] = useState<Tab>("users");
   const [users, setUsers] = useState<User[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [llmLogs, setLlmLogs] = useState<LlmLog[]>([]);
+  const [roadmapLogs, setRoadmapLogs] = useState<RoadmapLog[]>([]);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [search, setSearch] = useState("");
@@ -37,6 +56,20 @@ export default function AdminPanel() {
       setLoading(false);
     });
   }, []);
+
+  const fetchLogs = () => {
+    fetch("/llm/logs").then((r) => r.json()).then((d) => setLlmLogs(d.logs || [])).catch(() => {});
+    fetch(`${API}/roadmaps`).then((r) => r.json()).then((d) => {
+      const sorted = [...(Array.isArray(d) ? d : [])].sort(
+        (a, b) => new Date(b.created_date).getTime() - new Date(a.created_date).getTime()
+      );
+      setRoadmapLogs(sorted.slice(0, 50));
+    }).catch(() => {});
+  };
+
+  useEffect(() => {
+    if (tab === "logs") fetchLogs();
+  }, [tab]);
 
   const addUser = async () => {
     if (!name || !email) return;
@@ -77,6 +110,9 @@ export default function AdminPanel() {
           </button>
           <button style={tab === "courses" ? s.tabActive : s.tab} onClick={() => setTab("courses")}>
             Courses ({courses.length})
+          </button>
+          <button style={tab === "logs" ? s.tabActive : s.tab} onClick={() => setTab("logs")}>
+            Logs
           </button>
         </nav>
       </header>
@@ -151,6 +187,71 @@ export default function AdminPanel() {
                 )}
                 {filteredCourses.length === 0 && (
                   <tr><td colSpan={3} style={{ ...s.td, color: "#888", textAlign: "center" }}>No courses found.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </section>
+        )}
+
+        {tab === "logs" && (
+          <section>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <h2 style={s.sectionTitle}>Logs</h2>
+              <button style={s.btn} onClick={fetchLogs}>Refresh</button>
+            </div>
+
+            <h3 style={{ fontSize: 16, marginBottom: 12, color: "#444" }}>LLM Service Logs</h3>
+            <table style={{ ...s.table, marginBottom: 32 }}>
+              <thead>
+                <tr>
+                  <th style={s.th}>Time</th>
+                  <th style={s.th}>Level</th>
+                  <th style={s.th}>Message</th>
+                  <th style={s.th}>Goal</th>
+                  <th style={s.th}>LLM ms</th>
+                  <th style={s.th}>Total ms</th>
+                </tr>
+              </thead>
+              <tbody>
+                {llmLogs.map((l, i) => (
+                  <tr key={i} style={s.tr}>
+                    <td style={{ ...s.td, whiteSpace: "nowrap", color: "#888", fontSize: 12 }}>{new Date(l.timestamp).toLocaleTimeString()}</td>
+                    <td style={{ ...s.td, color: l.level === "ERROR" ? "#e53935" : l.level === "WARN" ? "#f57c00" : "#2e7d32", fontWeight: 600, fontSize: 12 }}>{l.level}</td>
+                    <td style={{ ...s.td, fontSize: 13 }}>{l.message}</td>
+                    <td style={{ ...s.td, fontSize: 12, color: "#555", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.goal || "—"}</td>
+                    <td style={{ ...s.td, textAlign: "right" }}>{l.llm_ms != null ? l.llm_ms : "—"}</td>
+                    <td style={{ ...s.td, textAlign: "right" }}>{l.total_ms != null ? l.total_ms : "—"}</td>
+                  </tr>
+                ))}
+                {llmLogs.length === 0 && (
+                  <tr><td colSpan={6} style={{ ...s.td, color: "#888", textAlign: "center" }}>No LLM logs yet.</td></tr>
+                )}
+              </tbody>
+            </table>
+
+            <h3 style={{ fontSize: 16, marginBottom: 12, color: "#444" }}>Roadmap History</h3>
+            <table style={s.table}>
+              <thead>
+                <tr>
+                  <th style={s.th}>ID</th>
+                  <th style={s.th}>Goal</th>
+                  <th style={s.th}>Created</th>
+                  <th style={s.th}>Milestones</th>
+                  <th style={s.th}>Progress</th>
+                </tr>
+              </thead>
+              <tbody>
+                {roadmapLogs.map((r) => (
+                  <tr key={r.id} style={s.tr}>
+                    <td style={{ ...s.td, color: "#888" }}>{r.id}</td>
+                    <td style={s.td}>{r.title}</td>
+                    <td style={{ ...s.td, whiteSpace: "nowrap", fontSize: 12, color: "#888" }}>{r.created_date ? new Date(r.created_date).toLocaleString() : "—"}</td>
+                    <td style={{ ...s.td, textAlign: "center" }}>{r.milestones?.length ?? 0}</td>
+                    <td style={{ ...s.td, textAlign: "center" }}>{r.progress ?? 0}%</td>
+                  </tr>
+                ))}
+                {roadmapLogs.length === 0 && (
+                  <tr><td colSpan={5} style={{ ...s.td, color: "#888", textAlign: "center" }}>No roadmaps yet.</td></tr>
                 )}
               </tbody>
             </table>

@@ -6,6 +6,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/roadmaps")
 @RequiredArgsConstructor
@@ -13,6 +15,11 @@ import org.springframework.web.bind.annotation.*;
 public class RoadmapController {
 
     private final RoadmapService roadmapService;
+
+    @GetMapping
+    public ResponseEntity<List<Roadmap>> getAllRoadmaps() {
+        return ResponseEntity.ok(roadmapService.getAllRoadmaps());
+    }
 
     @PostMapping("/generate")
     public ResponseEntity<Roadmap> generateRoadmap(
