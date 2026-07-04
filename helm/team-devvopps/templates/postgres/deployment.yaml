@@ -99,10 +99,13 @@ spec:
                   done
 
                   # Clone database from primary (no password needed - trust auth within cluster)
+                  # -R writes standby.signal + primary_conninfo so the replica starts
+                  # as a streaming standby that continuously follows the primary.
                   echo "Cloning database from primary..."
                   pg_basebackup -h postgres-0.postgres.{{ .Values.namespace }}.svc.cluster.local \
                     -U $REPLICATION_USER \
                     -D "$PGDATA" \
+                    -R \
                     -v -P --wal-method=stream
                 fi
               fi

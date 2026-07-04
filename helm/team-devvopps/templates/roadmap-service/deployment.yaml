@@ -29,7 +29,7 @@ spec:
               memory: 512Mi
           env:
             - name: DB_HOST
-              value: postgres
+              value: postgres-0.postgres
             - name: DB_NAME
               value: roadmapdb
             - name: DB_USER
