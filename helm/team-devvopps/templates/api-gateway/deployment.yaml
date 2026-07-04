@@ -13,6 +13,9 @@ spec:
       labels:
         app: api-gateway
     spec:
+      # Disable legacy Docker-link env injection (USER_SERVICE_PORT=tcp://... etc.)
+      # which collides with Spring relaxed binding of user.service.port properties.
+      enableServiceLinks: false
       containers:
         - name: api-gateway
           image: {{ .Values.imageRegistry }}/api-gateway:{{ .Values.imageTag }}

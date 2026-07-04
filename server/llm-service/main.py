@@ -293,7 +293,8 @@ def parse_llm_response(raw: str) -> RoadmapResponse:
 
         return RoadmapResponse.model_validate(data)
 
-    except Exception:
+    except Exception as e:
+        _log("ERROR", f"Failed to parse LLM response: {e}", raw_snippet=raw[:300])
         return RoadmapResponse(milestones=[])
 
 # ---------------------------------------------------------------------------

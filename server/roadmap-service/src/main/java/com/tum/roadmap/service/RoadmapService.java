@@ -134,6 +134,12 @@ public class RoadmapService {
             }
         }
 
+        if (milestones.isEmpty()) {
+            log.error("[LLM] Returned no milestones for goal='{}' — not saving roadmap", user_goal);
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "LLM returned no milestones — please try again");
+        }
+
         roadmap.setMilestones(milestones);
 
         Roadmap saved = roadmapRepository.save(roadmap);
