@@ -48,11 +48,11 @@ export default function AdminPanel() {
 
   useEffect(() => {
     Promise.all([
-      fetch(`${API}/users`).then((r) => r.json()),
-      fetch(`${API}/courses`).then((r) => r.json()),
+      fetch(`${API}/users`).then((r) => r.json()).catch(() => []),
+      fetch(`${API}/courses`).then((r) => r.json()).catch(() => []),
     ]).then(([u, c]) => {
-      setUsers(u);
-      setCourses(c);
+      setUsers(Array.isArray(u) ? u : []);
+      setCourses(Array.isArray(c) ? c : []);
       setLoading(false);
     });
   }, []);
@@ -280,5 +280,5 @@ const s: Record<string, React.CSSProperties> = {
   th: { textAlign: "left", padding: "12px 16px", background: "#f0f4ff", fontSize: 13, fontWeight: 600, color: "#444" },
   tr: { borderBottom: "1px solid #f0f0f0" },
   td: { padding: "10px 16px", fontSize: 14 },
-  center: { display: "flex", justifyContent: "center", alignItems: "center", height: "100vh", fontFamily: "sans-serif" },
+  center: { display: "flex", justifyContent: "center", alignItems: "center", height: "100vh", fontFamily: "sans-serif", background: "#f5f6fa", color: "#333" },
 };
