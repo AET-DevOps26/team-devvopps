@@ -4,13 +4,12 @@ metadata:
   name: prometheus
   namespace: {{ .Values.namespace }}
 spec:
-  # ClusterIP = accessible only within the cluster (no external access)
-  # Other services and pods can reach Prometheus at: http://prometheus:9090
-  type: ClusterIP
+  # NodePort = accessible externally on port 30090 across all cluster nodes
+  # For presentations: tutors can access directly at http://localhost:30090
+  type: NodePort
   selector:
     app: prometheus
   ports:
-    # Expose Prometheus HTTP API and UI on port 9090
     - port: 9090
-      # Forward traffic to pod's containerPort 9090
       targetPort: 9090
+      nodePort: 30090

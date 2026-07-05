@@ -4,12 +4,12 @@ metadata:
   name: grafana
   namespace: {{ .Values.namespace }}
 spec:
-  # ClusterIP = accessible only within the cluster (no external access)
-  # Other services can reach Grafana at: http://grafana:3000 (Kubernetes DNS)
-  type: ClusterIP
+  # NodePort = accessible externally on port 30001 across all cluster nodes
+  # For presentations: tutors can access directly at http://localhost:30001
+  type: NodePort
   selector:
     app: grafana
   ports:
     - port: 3000
-      # Forward traffic to pod's containerPort 3000
       targetPort: 3000
+      nodePort: 30001
