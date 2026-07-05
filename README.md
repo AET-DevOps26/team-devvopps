@@ -244,7 +244,7 @@ OpenAPI specifications are maintained in `api/`:
 - `api/user-service.yaml`
 - `api/course-service.yaml`
 - `api/roadmap-service.yaml`
-- `api/genai-service.yaml`
+- `api/llm-service.yaml`
 
 OpenAPI linting runs in CI with Redocly:
 
@@ -252,7 +252,7 @@ OpenAPI linting runs in CI with Redocly:
 redocly lint api/user-service.yaml
 redocly lint api/course-service.yaml
 redocly lint api/roadmap-service.yaml
-redocly lint api/genai-service.yaml
+redocly lint api/llm-service.yaml
 ```
 ### Swagger UI
 Swagger UI is available, for local development, at `/swagger-ui.html` on each service:
