@@ -276,8 +276,8 @@ The API Gateway exposes the current implemented service routes:
 ### Service Discovery
 Inter-service communication uses DNS-based service discovery, i.e., no hardcoded IPs or ports.
 
-- Docker Compose: Docker's internal DNS resolves service names (e.g., `http://llm-service:8084`)
-- Kubernetes: Cluster-internal DNS resolves service names within the namespace (e.g., `http://course-service:8082` resolves to the `course-service` ClusterIP Service)
+- Docker Compose: Docker's internal DNS resolves service names. Hostnames are set via environment variables (`USER_SERVICE_HOST`, `LLM_SERVICE_HOST` etc.) in `infra/docker-compose.yml`. Ports are externalised via `USER_SERVICE_PORT`, `LLM_SERVICE_PORT` etc. and centralised in `infra/docker-compose.yml`.
+- Kubernetes: Cluster-internal DNS resolves service names within the namespace. All ports are centralised in `helm/team-devvopps/values.yaml` under `services.*` and injected into each pod as environment variables via Helm templates (e.g., `http://course-service:{{ .Values.services.courseService.port }}`).
 
 All service URLs are externalized as environment variables and centralized in:
 - `infra/docker-compose.yml` for local Docker development
