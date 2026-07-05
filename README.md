@@ -173,37 +173,35 @@ Access:
 
 ### Running with Kubernetes
 
-#### Local Kubernetes With Helm
+#### Switching kubectl Contexts
 
-The fastest containerized way to run the entire stack.
+`kubectl` and `helm` always operate on the currently active context — check it before deploying anything:
+
+```bash
+kubectl config get-contexts                   # List all contexts (* = active)
+kubectl config use-context docker-desktop     # Local Kubernetes (Docker Desktop)
+kubectl config use-context stud               # AET cluster (server)
+```
+
+> ⚠️ `make k8s-deploy` refuses to run unless the context is `docker-desktop`,
+> so locally built images can never be deployed to the AET cluster by accident.
+
+#### Local Kubernetes (Recommended)
+
+Deploys the **same Helm chart used on the AET cluster** with local overrides
+(`helm/team-devvopps/values-local.yaml`: locally built images, NodePort instead of ingress, single postgres).
 
 Prerequisites:
 - **Docker Desktop** with **Kubernetes enabled**
   - Settings → Kubernetes → Enable Kubernetes → Apply & Restart
 - **Helm 3.x** (install from https://helm.sh/docs/intro/install/)
+- `infra/.env` containing `GROQ_API_KEY=...` (git-ignored; ask a teammate for the key)
 
+Deploy:
 
-First time setup:
-
-1. Copy the example secrets file:
 ```bash
-cp helm/team-devvopps/values-secrets.example.yaml helm/team-devvopps/values-secrets.yaml
-```
-
-2. Edit `helm/team-devvopps/values-secrets.yaml` with your database credentials:
-```yaml
-postgres:
-  credentials:
-    username: postgres
-    password: your_secure_password_here
-  # Replication uses trust auth (no password needed within cluster)
-  replicationUser: replication
-  replicationPassword: replication
-```
-
-3. Deploy:
-```bash
-make helm-install
+kubectl config use-context docker-desktop
+make k8s-deploy       # Builds all images, installs/upgrades the Helm release, restarts pods
 ```
 
 Access:
@@ -212,26 +210,35 @@ Access:
 
 Manage deployment:
 ```bash
-make helm-upgrade    # Update existing deployment
-make helm-delete     # Remove deployment
 make k8s-status      # Check pod status
+make k8s-seed        # Re-run the course seeder
+make k8s-down        # Tear down (deletes the namespace and all local data)
 ```
 
 #### AET Kubernetes Cluster
 
-For deployment to the AET cluster, see [DEPLOYMENT.md](DEPLOYMENT.md)
+Deployed via GitHub Actions: run **Build Docker Images**, then **Deploy to AET Kubernetes Cluster**.
+The workflow connects to the cluster with its own credentials, so your local kubectl context does not matter for this path. For details see [DEPLOYMENT.md](DEPLOYMENT.md).
+
+To inspect the server or deploy manually, switch your context to the AET cluster first:
 
 ```bash
-make helm-install-aet    # Deploy to AET (uses GitHub Secrets)
+kubectl config use-context stud
+
+kubectl get pods -n team-devvopps       # Inspect what is running on the server
+make helm-install-aet                   # Manual deploy fallback (requires credentials)
 ```
 
-#### Legacy kubectl (Not Recommended)
+> ⚠️ Remember to switch back with `kubectl config use-context docker-desktop`
+> before working locally again.
+
+#### Old Plain-YAML Manifests (Fallback Only)
+
+The original hand-written manifests in `infra/k8s/` are kept as a fallback.
+Do **not** mix with the Helm-based deploy — run `make k8s-down` before switching methods.
 
 ```bash
-make k8s-build        # Build all Docker images
-make k8s-deploy       # Deploy to Kubernetes
-make k8s-status       # Check status
-make k8s-down         # Tear down
+make k8s-deploy-old   # Build images and deploy using infra/k8s/ manifests
 ```
 
 ---
