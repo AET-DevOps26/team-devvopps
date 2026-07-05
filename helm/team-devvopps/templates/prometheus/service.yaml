@@ -4,12 +4,12 @@ metadata:
   name: prometheus
   namespace: {{ .Values.namespace }}
 spec:
-  # NodePort = accessible externally on port 30090 across all cluster nodes
-  # For presentations: tutors can access directly at http://localhost:30090
-  type: NodePort
+  # ClusterIP = accessible only within the cluster (no external access)
+  # Use kubectl port-forward for external access: kubectl port-forward -n team-devvopps svc/prometheus 9090:9090
+  # Then access at http://localhost:9090
+  type: ClusterIP
   selector:
     app: prometheus
   ports:
     - port: 9090
       targetPort: 9090
-      nodePort: 30090
