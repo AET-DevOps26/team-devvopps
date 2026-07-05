@@ -115,11 +115,12 @@ services:
 
   # ── Monitoring ────────────────────────────────────────────────────────────
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.52.0
     ports:
       - "9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/alerts.yaml:/etc/prometheus/alerts.yaml
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -131,7 +132,7 @@ services:
       - api-gateway
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:10.2.3
     ports:
       - "3001:3000"
     environment:
@@ -139,6 +140,10 @@ services:
       GF_SECURITY_ADMIN_USER: admin
     volumes:
       - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning/datasources/prometheus.yaml:/etc/grafana/provisioning/datasources/prometheus.yaml
+      - ./grafana/provisioning/dashboards/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml
+      - ../helm/team-devvopps/grafana-dashboards/dashboard-request-metrics.json:/etc/grafana/provisioning/dashboards/request-metrics.json
+      - ../helm/team-devvopps/grafana-dashboards/dashboard-system-health.json:/etc/grafana/provisioning/dashboards/system-health.json
     depends_on:
       - prometheus
 

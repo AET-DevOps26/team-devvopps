@@ -127,7 +127,7 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "count(up{job=~\"user-service|course-service|roadmap-service|api-gateway\"} == 0)",
+          "expr": "count(up{job=~\"user-service|course-service|roadmap-service|api-gateway\"} == 0) or vector(0)",
           "refId": "A"
         }
       ],
@@ -188,7 +188,7 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "(sum(rate(http_requests_total{status=\"200\"}[5m])) / sum(rate(http_requests_total[5m]))) * 100",
+          "expr": "(sum(rate(http_server_requests_seconds_count{outcome=\"SUCCESS\"}[5m])) / sum(rate(http_server_requests_seconds_count[5m]))) * 100",
           "refId": "A"
         }
       ],
@@ -471,17 +471,17 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "sum(increase(http_requests_total{status=~\"2..\"}[5m])) by (status)",
+          "expr": "sum(increase(http_server_requests_seconds_count{status=~\"2..\"}[5m])) by (status)",
           "refId": "A",
           "legendFormat": "2xx"
         },
         {
-          "expr": "sum(increase(http_requests_total{status=~\"4..\"}[5m])) by (status)",
+          "expr": "sum(increase(http_server_requests_seconds_count{status=~\"4..\"}[5m])) by (status)",
           "refId": "B",
           "legendFormat": "4xx"
         },
         {
-          "expr": "sum(increase(http_requests_total{status=~\"5..\"}[5m])) by (status)",
+          "expr": "sum(increase(http_server_requests_seconds_count{status=~\"5..\"}[5m])) by (status)",
           "refId": "C",
           "legendFormat": "5xx"
         }

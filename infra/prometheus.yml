@@ -8,6 +8,10 @@ global:
   external_labels:
     monitor: 'team-devvopps'
 
+# Alert rules
+rule_files:
+  - '/etc/prometheus/alerts.yaml'
+
 scrape_configs:
   # Monitor Prometheus itself for health and performance
   - job_name: 'prometheus'
