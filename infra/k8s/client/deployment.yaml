@@ -13,6 +13,8 @@ spec:
       labels:
         app: client
     spec:
+      # Disable legacy Docker-link env injection (USER_SERVICE_PORT=tcp://... etc.)
+      enableServiceLinks: false
       containers:
         - name: client
           image: team-devvopps/client:latest

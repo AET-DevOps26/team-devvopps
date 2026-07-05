@@ -89,16 +89,19 @@ k8s-build:
 	docker build -t $(IMAGE_PREFIX)/course-service:latest   -f server/course-service/Dockerfile server/
 	docker build -t $(IMAGE_PREFIX)/roadmap-service:latest  -f server/roadmap-service/Dockerfile server/
 	docker build -t $(IMAGE_PREFIX)/api-gateway:latest      -f server/api-gateway/Dockerfile server/
+	docker build -t $(IMAGE_PREFIX)/llm-service:latest      server/llm-service/
 	docker build -t $(IMAGE_PREFIX)/client:latest           client/
 	docker build -t $(IMAGE_PREFIX)/course-seeder:latest    -f server/course-service/Dockerfile.seeder server/course-service/
 
 k8s-deploy: k8s-build
 	kubectl apply -f infra/k8s/namespace.yaml
+	$(MAKE) k8s-secrets
 	kubectl apply -f infra/k8s/
 	kubectl apply -f infra/k8s/postgres/
 	kubectl apply -f infra/k8s/user-service/
 	kubectl apply -f infra/k8s/course-service/
 	kubectl apply -f infra/k8s/roadmap-service/
+	kubectl apply -f infra/k8s/llm-service/
 	kubectl apply -f infra/k8s/api-gateway/
 	kubectl apply -f infra/k8s/client/
 	@echo ""
@@ -109,6 +112,19 @@ k8s-deploy: k8s-build
 	@echo "Deployment complete!"
 	@echo "  Client:      http://localhost:30000"
 	@echo "  API Gateway: http://localhost:30080"
+
+# Create the llm-secret from infra/.env (GROQ_API_KEY) — the .env file is
+# git-ignored, so the key never ends up in the repo. Safe to re-run (apply).
+k8s-secrets:
+	@if [ -f infra/.env ]; then \
+		GROQ_KEY=$$(grep -E '^GROQ_API_KEY=' infra/.env | cut -d= -f2-); \
+		kubectl create secret generic llm-secret -n $(NAMESPACE) \
+			--from-literal=groq-api-key="$$GROQ_KEY" \
+			--dry-run=client -o yaml | kubectl apply -f -; \
+		echo "llm-secret created from infra/.env"; \
+	else \
+		echo "WARNING: infra/.env not found — llm-service will have no GROQ_API_KEY"; \
+	fi
 
 k8s-seed:
 	@echo "Running course seeder (checks if data exists first)..."

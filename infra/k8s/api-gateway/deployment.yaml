@@ -13,6 +13,8 @@ spec:
       labels:
         app: api-gateway
     spec:
+      # Disable legacy Docker-link env injection (USER_SERVICE_PORT=tcp://... etc.)
+      enableServiceLinks: false
       containers:
         - name: api-gateway
           image: team-devvopps/api-gateway:latest
