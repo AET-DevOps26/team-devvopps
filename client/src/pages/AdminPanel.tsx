@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const API = "/api";
 
@@ -28,8 +28,8 @@ interface RoadmapLog {
   id: number;
   title: string;
   created_date: string;
-  progress: number;
-  milestones: { title: string }[];
+  progress?: number;
+  milestones?: { title: string }[];
 }
 
 type Tab = "users" | "courses" | "logs";
@@ -57,14 +57,28 @@ export default function AdminPanel() {
     });
   }, []);
 
+  // Guards against overlapping fetches (tab switch + Refresh): only the
+  // latest invocation is allowed to write state, stale responses are dropped.
+  const fetchSeq = useRef(0);
+
   const fetchLogs = () => {
-    fetch("/llm/logs").then((r) => r.json()).then((d) => setLlmLogs(d.logs || [])).catch(() => {});
-    fetch(`${API}/roadmaps`).then((r) => r.json()).then((d) => {
-      const sorted = [...(Array.isArray(d) ? d : [])].sort(
-        (a, b) => new Date(b.created_date).getTime() - new Date(a.created_date).getTime()
-      );
-      setRoadmapLogs(sorted.slice(0, 50));
-    }).catch(() => {});
+    const seq = ++fetchSeq.current;
+    fetch("/llm/logs")
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d) => {
+        if (seq === fetchSeq.current) setLlmLogs(d.logs || []);
+      })
+      .catch((e) => console.error("Failed to fetch LLM logs:", e));
+    fetch(`${API}/roadmaps`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d) => {
+        if (seq !== fetchSeq.current) return;
+        const sorted = [...(Array.isArray(d) ? d : [])].sort(
+          (a, b) => new Date(b.created_date).getTime() - new Date(a.created_date).getTime()
+        );
+        setRoadmapLogs(sorted.slice(0, 50));
+      })
+      .catch((e) => console.error("Failed to fetch roadmap logs:", e));
   };
 
   useEffect(() => {

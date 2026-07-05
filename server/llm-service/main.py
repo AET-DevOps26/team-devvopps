@@ -1,3 +1,4 @@
+import asyncio
 import os
 import json
 import time
@@ -127,7 +128,6 @@ def filter_courses(goal: str, k: int = TOP_K) -> str:
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    import asyncio
     _log("INFO", f"Starting up (model: {MODEL_NAME})")
     for attempt in range(1, 6):
         count = build_index()
@@ -336,7 +336,9 @@ async def recommend(req: RoadmapRequest) -> RoadmapResponse:
         raw = await chain.ainvoke({"goal": req.goal, "courses": courses_str})
         llm_ms = round((time.time() - t_llm) * 1000)
         _log("INFO", f"LLM responded in {llm_ms}ms", goal=req.goal, llm_ms=llm_ms)
-    except RuntimeError as e:
+    except Exception as e:
+        # Catch everything (timeouts, connection errors, provider SDK errors),
+        # not just RuntimeError — otherwise failures bypass the structured log.
         llm_ms = round((time.time() - t_llm) * 1000)
         _log("ERROR", f"LLM call failed after {llm_ms}ms: {e}", goal=req.goal, llm_ms=llm_ms)
         raise HTTPException(status_code=503, detail=str(e)) from e

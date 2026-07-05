@@ -71,12 +71,15 @@ public class RoadmapService {
     }
 
     /**
-      * Generates a roadmap from a user request.
-      */
+     * Returns all roadmaps.
+     */
     public List<Roadmap> getAllRoadmaps() {
         return roadmapRepository.findAll();
     }
 
+    /**
+     * Generates a roadmap from a user request.
+     */
     public Roadmap generateRoadmap(Long userId, String user_goal) {
         log.info("[Roadmap] generate — userId={} goal='{}'", userId, user_goal);
         long t0 = System.currentTimeMillis();
@@ -109,6 +112,12 @@ public class RoadmapService {
         if (llmResponse != null && llmResponse.milestones() != null) {
             int index = 0;
             for (MilestoneDto m : llmResponse.milestones()) {
+                // Milestone.validateTasks() rejects task-less milestones at persist
+                // time, so saving one would fail the whole roadmap with a 500.
+                if (m.tasks() == null || m.tasks().isEmpty()) {
+                    log.warn("[LLM] Skipping milestone '{}' — no tasks returned", m.title());
+                    continue;
+                }
                 Milestone milestone = new Milestone();
                 milestone.setTitle(m.title());
                 milestone.setDescription(m.description());
