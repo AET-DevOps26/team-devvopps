@@ -22,12 +22,12 @@ data:
               summary: "Service {{ "{{" }} $labels.job {{ "}}" }} is down"
               description: "Service {{ "{{" }} $labels.job {{ "}}" }} ({{ "{{" }} $labels.instance {{ "}}" }}) has been unavailable for more than 1 minute"
 
-          # Warning: Service is responding but with high error rate
+          # Warning: Service is responding with client/server errors
           - alert: HighErrorRate
-            # Query: Calculate error rate = 5xx responses / total responses over last 5 minutes
+            # Query: Calculate error rate = (4xx + 5xx responses) / total responses over last 5 minutes
             expr: |
               (
-                sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m])) by (job)
+                sum(rate(http_server_requests_seconds_count{status=~"[45].."}[5m])) by (job)
                 /
                 sum(rate(http_server_requests_seconds_count[5m])) by (job)
               ) > 0.05
@@ -37,7 +37,7 @@ data:
               severity: warning
             annotations:
               summary: "High error rate on {{ "{{" }} $labels.job {{ "}}" }}"
-              description: "Error rate is above 5% for {{ "{{" }} $labels.job {{ "}}" }}"
+              description: "Error rate (4xx/5xx) is above 5% for {{ "{{" }} $labels.job {{ "}}" }}"
 
           # Warning: Service is responding slowly (high latency)
           - alert: HighLatency

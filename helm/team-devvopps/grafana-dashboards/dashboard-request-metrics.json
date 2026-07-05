@@ -302,12 +302,12 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "(sum(rate(http_server_requests_seconds_count{status=~\"5..\"}[5m])) by (job) / sum(rate(http_server_requests_seconds_count[5m])) by (job)) * 100",
+          "expr": "(sum(rate(http_server_requests_seconds_count{status=~\"[45]..\"}[5m])) by (job) / sum(rate(http_server_requests_seconds_count[5m])) by (job)) * 100",
           "refId": "A",
           "legendFormat": "{{ job }}"
         }
       ],
-      "title": "Error Rate (5xx) by Service (%)",
+      "title": "Error Rate (4xx/5xx) by Service (%)",
       "type": "stat"
     },
     {
