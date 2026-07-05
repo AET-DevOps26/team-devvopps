@@ -44,8 +44,12 @@ spec:
                   key: password
             - name: USER_SERVICE_HOST
               value: user-service
+            - name: USER_SERVICE_PORT
+              value: "{{ .Values.services.userService.port }}"
             - name: LLM_SERVICE_HOST
               value: llm-service
+            - name: LLM_SERVICE_PORT
+              value: "{{ .Values.services.llmService.port }}"
           readinessProbe:
             httpGet:
               path: /actuator/health

@@ -20,7 +20,7 @@ The application uses a microservice-based client-server architecture.
 ### Components
 The backend consists of **3 independent Spring Boot microservices and 1 Python service** behind an API Gateway:
 
-**api-gateway** (port 8080): Routes all incoming requests to the appropriate service
+- **api-gateway** (port 8080): Routes all incoming requests to the appropriate service
 - **user-service** (port 8081): User management
 - **course-service** (port 8082): Mock TUM course database (source of truth for university courses)
 - **roadmap-service** (port 8083): Personalized learning roadmap generation and tracking
@@ -238,6 +238,7 @@ make k8s-down         # Tear down
 
 ## API Documentation
 
+### OpenAPI
 OpenAPI specifications are maintained in `api/`:
 
 - `api/user-service.yaml`
@@ -245,7 +246,16 @@ OpenAPI specifications are maintained in `api/`:
 - `api/roadmap-service.yaml`
 - `api/genai-service.yaml`
 
-Swagger UI is available at `/swagger-ui.html` on each service:
+OpenAPI linting runs in CI with Redocly:
+
+```bash
+redocly lint api/user-service.yaml
+redocly lint api/course-service.yaml
+redocly lint api/roadmap-service.yaml
+redocly lint api/genai-service.yaml
+```
+### Swagger UI
+Swagger UI is available, for local development, at `/swagger-ui.html` on each service:
 
 | Service | Local URL |
 |---|---|
@@ -254,6 +264,7 @@ Swagger UI is available at `/swagger-ui.html` on each service:
 | Roadmap Service | http://localhost:8083/swagger-ui.html |
 | LLM Service | http://localhost:8084/swagger-ui.html |
 
+### API Gateway
 The API Gateway exposes the current implemented service routes:
 
 | Gateway Route | Target Service | Notes |
@@ -262,6 +273,17 @@ The API Gateway exposes the current implemented service routes:
 | `/courses/**` | `course-service` | List courses, fetch course by ID, search by title |
 | `/roadmaps/**` | `roadmap-service` | Generate and retrieve roadmaps |
 
+### Service Discovery
+Inter-service communication uses DNS-based service discovery, i.e., no hardcoded IPs or ports.
+
+- Docker Compose: Docker's internal DNS resolves service names (e.g., `http://llm-service:8084`)
+- Kubernetes: Cluster-internal DNS resolves service names within the namespace (e.g., `http://course-service:8082` resolves to the `course-service` ClusterIP Service)
+
+All service URLs are externalized as environment variables and centralized in:
+- `infra/docker-compose.yml` for local Docker development
+- `helm/team-devvopps/values.yaml` for Kubernetes deployments
+
+### Endpoints
 Current implemented endpoints include:
 
 - `POST /users`
@@ -272,15 +294,6 @@ Current implemented endpoints include:
 - `GET /courses/search?title=<title>`
 - `POST /roadmaps/generate?userId=<id>&goal=<goal>`
 - `GET /roadmaps/{id}`
-
-OpenAPI linting runs in CI with Redocly:
-
-```bash
-redocly lint api/user-service.yaml
-redocly lint api/course-service.yaml
-redocly lint api/roadmap-service.yaml
-redocly lint api/genai-service.yaml
-```
 
 ## CI/CD
 

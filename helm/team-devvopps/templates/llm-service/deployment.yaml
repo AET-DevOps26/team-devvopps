@@ -29,7 +29,7 @@ spec:
               memory: 512Mi
           env:
             - name: COURSE_SERVICE_URL
-              value: http://course-service:8082/courses
+              value: "http://course-service:{{ .Values.services.courseService.port }}/courses"
             - name: PORT
               value: "{{ .Values.services.llmService.port }}"
             - name: GROQ_API_KEY
