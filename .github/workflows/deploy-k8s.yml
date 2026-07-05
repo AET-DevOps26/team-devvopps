@@ -1,8 +1,10 @@
 name: Deploy to AET Kubernetes Cluster
 
 # Can be triggered manually via workflow_dispatch, or automatically on every push to main.
-# concurrency ensures only one deploy runs at a time per branch
-# if a new push comes in while deploying, the in-progress deploy is cancelled.
+# concurrency ensures only one deploy runs at a time per branch.
+# cancel-in-progress MUST stay false: killing helm mid-upgrade leaves the
+# release locked in pending-upgrade, and every later deploy fails with
+# "another operation (install/upgrade/rollback) is in progress".
 on:
   push:
     branches:
@@ -11,7 +13,7 @@ on:
 
 concurrency:
   group: deploy-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'team-devvopps' }}
@@ -67,11 +69,15 @@ jobs:
             --set postgres.replicationPassword="$POSTGRES_REPLICATION_PASSWORD"
 
       # Remove pods stuck in Failed/Unknown state that would block the Helm rollout.
+      # Also delete the course-seeder job: completed Jobs are immutable, so helm
+      # cannot patch it and the whole upgrade fails ("cannot patch course-seeder").
+      # Deleting it lets helm recreate it fresh (it checks for existing data anyway).
       - name: Clean up failed deployments
         run: |
           echo "Cleaning up failed and unknown pods..."
           kubectl delete pods -n "$K8S_NAMESPACE" --field-selector=status.phase=Failed 2>/dev/null || true
           kubectl delete pods -n "$K8S_NAMESPACE" --field-selector=status.phase=Unknown 2>/dev/null || true
+          kubectl delete job course-seeder -n "$K8S_NAMESPACE" --ignore-not-found
           echo "Cleanup complete"
 
       # helm upgrade --install: creates the release if it doesn't exist, upgrades if it does.
