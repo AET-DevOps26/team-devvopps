@@ -1,5 +1,6 @@
 package com.tum.roadmap.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -34,6 +35,7 @@ public class Milestone {
     private Long milestone_id;
 
     /** The roadmap this milestone belongs to (required) */
+    @JsonIgnore
     @ManyToOne
     @JoinColumn(name = "roadmap_id", nullable = false)
     private Roadmap roadmap;

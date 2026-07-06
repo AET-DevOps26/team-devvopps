@@ -14,6 +14,8 @@ spec:
         app: course-service
         monitoring: "true"
     spec:
+      # Disable legacy Docker-link env injection (USER_SERVICE_PORT=tcp://... etc.)
+      enableServiceLinks: false
       containers:
         - name: course-service
           image: team-devvopps/course-service:latest

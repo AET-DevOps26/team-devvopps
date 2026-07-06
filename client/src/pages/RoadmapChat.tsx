@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-const LLM_SERVICE_URL = import.meta.env.VITE_LLM_SERVICE_URL || "http://localhost:8004";
+const API_URL = "/api";
 
 interface Task {
   title: string;
@@ -32,10 +32,8 @@ export default function RoadmapChat() {
     setRoadmap(null);
 
     try {
-      const res = await fetch(`${LLM_SERVICE_URL}/recommend`, {
+      const res = await fetch(`${API_URL}/roadmaps/generate?goal=${encodeURIComponent(goal)}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ goal }),
       });
 
       if (!res.ok) throw new Error(`Error ${res.status}: ${res.statusText}`);

@@ -1,8 +1,10 @@
 name: Deploy to AET Kubernetes Cluster
 
 # Can be triggered manually via workflow_dispatch, or automatically on every push to main.
-# concurrency ensures only one deploy runs at a time per branch
-# if a new push comes in while deploying, the in-progress deploy is cancelled.
+# concurrency ensures only one deploy runs at a time per branch.
+# cancel-in-progress MUST stay false: killing helm mid-upgrade leaves the
+# release locked in pending-upgrade, and every later deploy fails with
+# "another operation (install/upgrade/rollback) is in progress".
 on:
   push:
     branches:
@@ -11,7 +13,7 @@ on:
 
 concurrency:
   group: deploy-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'team-devvopps' }}
@@ -28,6 +30,8 @@ jobs:
         uses: azure/setup-helm@v3
         with:
           version: 'latest'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Write the kubeconfig from secrets so kubectl and Helm can reach the cluster.
       # Fails early with a clear message if the secret is missing.
@@ -65,11 +69,15 @@ jobs:
             --set postgres.replicationPassword="$POSTGRES_REPLICATION_PASSWORD"
 
       # Remove pods stuck in Failed/Unknown state that would block the Helm rollout.
+      # Also delete the course-seeder job: completed Jobs are immutable, so helm
+      # cannot patch it and the whole upgrade fails ("cannot patch course-seeder").
+      # Deleting it lets helm recreate it fresh (it checks for existing data anyway).
       - name: Clean up failed deployments
         run: |
           echo "Cleaning up failed and unknown pods..."
           kubectl delete pods -n "$K8S_NAMESPACE" --field-selector=status.phase=Failed 2>/dev/null || true
           kubectl delete pods -n "$K8S_NAMESPACE" --field-selector=status.phase=Unknown 2>/dev/null || true
+          kubectl delete job course-seeder -n "$K8S_NAMESPACE" --ignore-not-found
           echo "Cleanup complete"
 
       # helm upgrade --install: creates the release if it doesn't exist, upgrades if it does.
@@ -97,6 +105,40 @@ jobs:
             -n "$K8S_NAMESPACE" \
             --wait \
             --timeout 5m
+
+      # All images use the :latest tag, so helm upgrade alone does not restart
+      # pods when only the image content changed. Force a rollout so every
+      # deployment pulls the freshly built image (imagePullPolicy: Always).
+      # Each deployment is restarted and waited on by name so a partial
+      # failure is reported explicitly instead of hiding behind bulk output.
+      - name: Restart deployments to pull latest images
+        run: |
+          set -euo pipefail
+          deployments=$(kubectl get deployments -n "$K8S_NAMESPACE" -o jsonpath='{.items[*].metadata.name}')
+
+          if [ -z "$deployments" ]; then
+            echo "No deployments found in namespace $K8S_NAMESPACE"
+            exit 0
+          fi
+
+          for d in $deployments; do
+            echo "Restarting deployment/$d"
+            kubectl rollout restart deployment/"$d" -n "$K8S_NAMESPACE"
+          done
+
+          failed=0
+          for d in $deployments; do
+            echo "Waiting for rollout of deployment/$d"
+            if ! kubectl rollout status deployment/"$d" -n "$K8S_NAMESPACE" --timeout=5m; then
+              echo "::error::Rollout failed for deployment/$d"
+              failed=1
+            fi
+          done
+
+          if [ "$failed" -ne 0 ]; then
+            echo "One or more deployments failed to roll out"
+            exit 1
+          fi
 
       # Quick sanity check — prints pod/service/ingress state immediately after deploy.
       - name: Verify deployment
