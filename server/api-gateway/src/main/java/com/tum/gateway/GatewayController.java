@@ -1,5 +1,7 @@
 package com.tum.gateway;
 
+import java.net.URI;
+
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
@@ -68,7 +70,11 @@ public class GatewayController {
         String path = request.getRequestURI();
         String query = request.getQueryString();
         String url = targetBaseUrl + path + (query != null ? "?" + query : "");
-        ResponseEntity<byte[]> response = restTemplate.exchange(url, HttpMethod.valueOf(request.getMethod()), entity, byte[].class);
+        // getRequestURI()/getQueryString() return the RAW (already percent-encoded)
+        // values. Pass a URI object so RestTemplate forwards them as-is — the
+        // String overload would encode a second time (%20 → %2520), making
+        // downstream services see literal "%20" in parameter values.
+        ResponseEntity<byte[]> response = restTemplate.exchange(URI.create(url), HttpMethod.valueOf(request.getMethod()), entity, byte[].class);
         
         // Copy response headers, excluding Transfer-Encoding to avoid chunked encoding conflicts.
 
