@@ -153,8 +153,8 @@ services:
       - LLM_MODEL=${LLM_MODEL:-gemma-4-e2b}
       - LLM_API_KEY=${LLM_API_KEY:-}
       # Provider precedence (mirrors main.py logic):
-      #   1. GROQ_API_KEY set → Groq (llama-3.3-70b-versatile)
-      #   2. LOGOS_API_KEY set → TUM Logos (openai/gpt-oss-120b)
+      #   1. LOGOS_API_KEY set → TUM Logos (openai/gpt-oss-120b)
+      #   2. GROQ_API_KEY set → Groq (llama-3.3-70b-versatile)
       #   3. Neither set → LM Studio (LLM_API_URL above)
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - LOGOS_API_KEY=${LOGOS_API_KEY:-}

@@ -40,16 +40,19 @@ import numpy as np
 LOGOS_API_KEY = os.getenv("LOGOS_API_KEY")
 GROQ_API_KEY  = os.getenv("GROQ_API_KEY")
 
-if GROQ_API_KEY:
-    # Groq profile: free tier, llama-3.3-70b-versatile.
-    API_URL = "https://api.groq.com/openai/v1/chat/completions"
-    MODEL_NAME = "llama-3.3-70b-versatile"
-    LLM_API_KEY = GROQ_API_KEY
-elif LOGOS_API_KEY:
+if LOGOS_API_KEY:
     # Logos profile: TUM-hosted gpt-oss-120b. Off-campus needs eduVPN.
+    # Checked FIRST so Logos wins whenever its key is present, even if a
+    # Groq key is also configured.
     API_URL = "https://logos.aet.cit.tum.de/v1/chat/completions"
     MODEL_NAME = "openai/gpt-oss-120b"
     LLM_API_KEY = LOGOS_API_KEY
+elif GROQ_API_KEY:
+    # Groq profile: free tier, llama-3.3-70b-versatile. Fallback only —
+    # used when no LOGOS_API_KEY is set (e.g. local development).
+    API_URL = "https://api.groq.com/openai/v1/chat/completions"
+    MODEL_NAME = "llama-3.3-70b-versatile"
+    LLM_API_KEY = GROQ_API_KEY
 else:
     # LM Studio profile: local model on host. Defaults match compose.yml
     # so both `docker compose up` and `python main.py` work.
