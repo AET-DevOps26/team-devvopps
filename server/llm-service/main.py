@@ -128,9 +128,11 @@ def filter_courses(goal: str, k: int = TOP_K) -> str:
 # Per-user token usage tracking
 # ---------------------------------------------------------------------------
 
-# One request uses approx. 1000 tokens. Setting max tokens per user to 30000 
-# allows the user to generate approx. 30 roadmaps
-MAX_TOKENS_PER_USER = 30000  # max cumulative tokens per user
+# The limit is based on actual LLM-reported token usage (prompt + completion).
+# With a 50000 token limit and an average usage of ~1000 tokens per request 
+# (smaller input), users can generate approximately 50 roadmaps. The exact number 
+# depends on the length of the input and the generated roadmap response.
+MAX_TOKENS_PER_USER = 50000  # max cumulative tokens per user
 
 _user_token_usage: dict = defaultdict(int)  # userId -> total tokens used
 
