@@ -104,7 +104,7 @@ public class RoadmapService {
         // Call LLM
         log.info("[LLM] Calling llm-service at {} for goal='{}'", getLlmUrl(), user_goal);
         long tLlm = System.currentTimeMillis();
-        RoadmapResponse llmResponse = callLLM(user_goal);
+        RoadmapResponse llmResponse = callLLM(user_goal, userId);
         log.info("[LLM] Response received in {}ms", System.currentTimeMillis() - tLlm);
 
         List<Milestone> milestones = new ArrayList<>();
@@ -166,14 +166,17 @@ public class RoadmapService {
     }
 
     // Private Helper
-    private RoadmapResponse callLLM(String goal) {
+    private RoadmapResponse callLLM(String goal, Long userId) {
         try {
             return restTemplate.postForObject(
-                    getLlmUrl() + "/recommend",
+                    getLlmUrl() + "/recommend?user_id=" + userId,
                     new RoadmapRequest(goal),
                     RoadmapResponse.class
             );
         } catch (HttpClientErrorException e) {
+            if (e.getStatusCode().value() == 429) {
+                throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Token quota exceeded");
+            }
             log.error("[LLM] HTTP error {}: {}", e.getStatusCode(), e.getMessage());
             throw new ResponseStatusException(e.getStatusCode(), "LLM service returned an error: " + e.getMessage());
         } catch (Exception e) {

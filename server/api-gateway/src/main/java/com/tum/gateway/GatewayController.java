@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.HttpStatusCodeException;
 
 /**
  * API Gateway controller that proxies all incoming requests to the appropriate downstream service.
@@ -68,16 +69,30 @@ public class GatewayController {
         String path = request.getRequestURI();
         String query = request.getQueryString();
         String url = targetBaseUrl + path + (query != null ? "?" + query : "");
-        ResponseEntity<byte[]> response = restTemplate.exchange(url, HttpMethod.valueOf(request.getMethod()), entity, byte[].class);
         
-        // Copy response headers, excluding Transfer-Encoding to avoid chunked encoding conflicts.
+        try {
+            ResponseEntity<byte[]> response = restTemplate.exchange(url, HttpMethod.valueOf(request.getMethod()), entity, byte[].class);
+            // Copy response headers, excluding Transfer-Encoding to avoid chunked encoding conflicts.
 
-        HttpHeaders headers = new HttpHeaders();
-        response.getHeaders().forEach((key, values) -> {
-            if (!key.equalsIgnoreCase("Transfer-Encoding")) {
-                headers.put(key, values);
-            }
-        });
-        return ResponseEntity.status(response.getStatusCode()).headers(headers).body(response.getBody());
+            HttpHeaders headers = new HttpHeaders();
+            response.getHeaders().forEach((key, values) -> {
+                if (!key.equalsIgnoreCase("Transfer-Encoding")) {
+                    headers.put(key, values);
+                }
+            });
+            return ResponseEntity.status(response.getStatusCode()).headers(headers).body(response.getBody());
+        } catch (HttpStatusCodeException e) {
+            HttpHeaders headers = new HttpHeaders();
+
+            e.getResponseHeaders().forEach((key, values) -> {
+                if (!key.equalsIgnoreCase("Transfer-Encoding")) {
+                    headers.put(key, values);
+                }
+            });
+            
+            return ResponseEntity.status(e.getStatusCode()).headers(headers).body(e.getResponseBodyAsByteArray());
+        }
+        
+        
     }
 }
