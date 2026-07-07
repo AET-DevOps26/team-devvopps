@@ -2,6 +2,7 @@ services:
 
   # ── Database ──────────────────────────────────────────────────────────────
   # PostgreSQL database server initializes three schemas via init-databases.sql. Data persists in postgres_data volume.
+  # PostgreSQL database server initializes three schemas via init-databases.sql. Data persists in postgres_data volume.
   postgres:
     image: postgres:16
     environment:
@@ -56,7 +57,48 @@ services:
       retries: 1
       start_period: 360s
 
+  # ── Course Data Seeder ────────────────────────────────────────────────────
+  # One-time job that populates the coursedb with initial course data.
+  # Runs immediately after postgres is healthy. Exits after seeding completes.
+  course-seeder:
+    build:
+      context: ../server/course-service
+      dockerfile: Dockerfile.seeder
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: coursedb
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+
+  # ── Wait for Courses ───────────────────────────────────────────────────────
+  # Polling service that blocks until coursedb has at least one course.
+  # Needed because other services may depend on courses being seeded before
+  # they initialize (e.g., llm-service reads courses during startup).
+  # Polls every 5s, times out after 360s (6 minutes).
+  wait-for-courses:
+    image: postgres:16
+    environment:
+      PGPASSWORD: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+      course-seeder:
+        condition: service_started
+    entrypoint: sh -c "while ! psql -h postgres -U postgres -d coursedb -c 'SELECT COUNT(*) FROM courses WHERE course_id > 0' 2>/dev/null | grep -q '[1-9]'; do sleep 5; done; echo 'Courses ready'; sleep infinity"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "psql -h postgres -U postgres -d coursedb -c 'SELECT COUNT(*) FROM courses WHERE course_id > 0' 2>/dev/null | grep -q '[1-9]'"]
+      interval: 5s
+      timeout: 5s
+      retries: 1
+      start_period: 360s
+
   # ── Spring Boot Services ──────────────────────────────────────────────────
+
   user-service:
     build:
       context: ../server
@@ -83,6 +125,7 @@ services:
       postgres:
         condition: service_healthy
 
+  # Roadmap service: generates learning roadmaps using the LLM.
   roadmap-service:
     build:
       context: ../server
@@ -138,6 +181,10 @@ services:
     ports:
       - "8084:8084"
     depends_on:
+      postgres:
+        condition: service_healthy
+      wait-for-courses:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       wait-for-courses:
