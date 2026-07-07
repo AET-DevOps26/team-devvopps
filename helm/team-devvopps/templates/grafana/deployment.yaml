@@ -14,11 +14,6 @@ spec:
       labels:
         app: grafana
     spec:
-      # Security context for Grafana container
-      # fsGroup: 472 ensures the mounted PVC is writable by Grafana (UID 472)
-      # Without this, Grafana crashes with "is not writable" permission errors
-      securityContext:
-        fsGroup: 472
       containers:
         - name: grafana
           image: grafana/grafana:10.2.3
@@ -62,11 +57,10 @@ spec:
               mountPath: /etc/grafana/provisioning/dashboards
       # Define volumes referenced above
       volumes:
-        # Volume 1: Persistent storage for Grafana data (survives pod restarts)
-        # PersistentVolumeClaim automatically creates/manages storage in the cluster
+        # Volume 1: Ephemeral storage for Grafana UI state (lost on pod restart)
+        # Dashboards and datasources are auto-provisioned from ConfigMaps
         - name: grafana-storage
-          persistentVolumeClaim:
-            claimName: grafana-storage-pvc
+          emptyDir: {}
         # Volume 2: Datasource provisioning config from ConfigMap
         - name: grafana-datasources
           configMap:
