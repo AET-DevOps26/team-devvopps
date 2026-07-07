@@ -67,6 +67,14 @@ COURSE_SERVICE_URL = os.getenv("COURSE_SERVICE_URL", "http://course-service:8082
 # Number of courses passed to the LLM after TF-IDF filtering.
 TOP_K = int(os.getenv("TOP_K", "30"))
 
+# Hard cap on LLM output length. Generation time scales with output tokens,
+# so this bounds both latency and cost. The prompt asks for a compact
+# roadmap (max 5 milestones) so valid JSON fits comfortably under the cap.
+MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "1500"))
+
+# Max characters accepted for the goal (mirrored by maxLength in the UI).
+MAX_GOAL_CHARS = int(os.getenv("MAX_GOAL_CHARS", "200"))
+
 # ---------------------------------------------------------------------------
 # TF-IDF index: built once at startup, held in memory.
 # Replaces keyword search — finds the TOP_K most relevant courses
@@ -210,6 +218,7 @@ class OpenAICompatibleLLM(LLM):
         payload = {
             "model": self.model_name,
             "messages": messages,
+            "max_tokens": MAX_TOKENS,
         }
 
         try:
@@ -250,7 +259,8 @@ Instructions:
 2. Break the journey into clear milestones (e.g. "Complete foundational mathematics"). Also include external milestones that are not courses.
 3. For each milestone, define concrete tasks the student should do. For course tasks, include the course code in brackets (e.g. "Enroll in [IN2064] Machine Learning").
 4. Each milestone MUST contain at least 2–4 tasks. Tasks MUST belong to their milestone (nested structure)
-5. Respond with ONLY valid JSON.
+5. Create at most 5 milestones. Keep titles and descriptions short (one sentence) — the response must stay compact.
+6. Respond with ONLY valid JSON.
 
 Required JSON format:
 
@@ -316,6 +326,12 @@ async def health_check():
 async def recommend(req: RoadmapRequest) -> RoadmapResponse:
     if not req.goal.strip():
         raise HTTPException(status_code=422, detail="goal cannot be empty")
+
+    if len(req.goal) > MAX_GOAL_CHARS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"goal is too long ({len(req.goal)} chars) — maximum is {MAX_GOAL_CHARS}",
+        )
 
     t0 = time.time()
     _log("INFO", "Roadmap request received", goal=req.goal, model=MODEL_NAME)

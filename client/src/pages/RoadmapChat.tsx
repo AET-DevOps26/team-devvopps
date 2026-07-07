@@ -2,6 +2,10 @@ import { useState } from "react";
 
 const API_URL = "/api";
 
+// Mirrors MAX_GOAL_CHARS in llm-service — requests longer than this are
+// rejected server-side with 422, so block them in the input directly.
+const MAX_GOAL_LENGTH = 200;
+
 interface Task {
   title: string;
   completed: boolean;
@@ -59,13 +63,19 @@ export default function RoadmapChat() {
           type="text"
           placeholder="e.g. I want to learn Machine Learning"
           value={goal}
-          onChange={(e) => setGoal(e.target.value)}
+          onChange={(e) => setGoal(e.target.value.slice(0, MAX_GOAL_LENGTH))}
+          maxLength={MAX_GOAL_LENGTH}
           disabled={loading}
         />
         <button style={styles.button} type="submit" disabled={loading || !goal.trim()}>
           {loading ? "Generating..." : "Generate Roadmap"}
         </button>
       </form>
+      {goal.length >= MAX_GOAL_LENGTH * 0.8 && (
+        <p style={styles.charHint}>
+          {goal.length}/{MAX_GOAL_LENGTH} characters
+        </p>
+      )}
 
       {error && (
         <div style={styles.error}>
@@ -154,6 +164,11 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 10,
     cursor: "pointer",
     whiteSpace: "nowrap",
+  },
+  charHint: {
+    color: "#888",
+    fontSize: 13,
+    margin: "-24px 0 24px 4px",
   },
   error: {
     background: "#fff3f3",
