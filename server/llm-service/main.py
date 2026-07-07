@@ -217,7 +217,9 @@ class OpenAICompatibleLLM(LLM):
                 self.api_url,
                 headers=headers,
                 json=payload,
-                timeout=120
+                # gpt-oss-120b on Logos routinely takes 130-160s per roadmap;
+                # keep well above that so slow responses aren't cut off.
+                timeout=300
             )
             response.raise_for_status()
 
