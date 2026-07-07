@@ -94,7 +94,7 @@ export default function RoadmapChat() {
           }),
         };
       });
-    } catch (err) {
+    } catch {
       setRoadmap(prevRoadmap);
       setError("Couldn't update task. Try again.");
       setTimeout(() => setError(null), 3000);
