@@ -8,17 +8,29 @@ The monitoring stack consists of:
 - **Prometheus** — collects metrics from all services via `/actuator/prometheus` endpoint
 - **Grafana** — visualizes metrics with pre-built dashboards
 - **Alert Rules** — defines thresholds for critical incidents
+- **Loki** — Log aggregation server (stores and indexes logs)
+- **Promtail** — Agent that discovers Docker containers and ships logs to Loki
+
 
 Dashboards auto-load on startup:
 - **Request Metrics** — request rate, latency (p95, p99), error rate by service
 - **System Health** — service up/down status, JVM memory/threads, HTTP status distribution, active alerts
+- **Logs Dashboard** — Grafana dashboard for viewing logs
 
 Both Docker Compose and Kubernetes deployments are fully synchronized using the same:
 - Prometheus configuration and alert rules
 - Dashboard JSON files
 - Grafana datasource & provisioning configs
 
-## Local Development (Docker Compose)
+How Logs Flow:
+1. All services log to stdout
+2. Promtail detects containers via Docker socket and ships logs to Loki
+3. Loki stores logs with `service` label for filtering
+4. Grafana visualizes logs via LogQL queries
+
+Logs are kept for **7 days** and automatically deleted after.
+
+
 
 ### Starting Monitoring
 

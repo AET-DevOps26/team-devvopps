@@ -1,20 +1,22 @@
-# Promtail configuration - simple log collection
+# Promtail Configuration: Collects logs from Docker containers and ships to Loki
+# Choice: Docker service discovery auto-discovers containers without manual config per service
 server:
-  http_listen_port: 9080
+  http_listen_port: 9080  # Health/metrics endpoint
 
 positions:
-  filename: /tmp/promtail-positions.yaml
+  filename: /tmp/promtail-positions.yaml  # Tracks log read positions to avoid re-sending
 
 clients:
-  - url: http://loki:3100/loki/api/v1/push
+  - url: http://loki:3100/loki/api/v1/push  # Send all logs to Loki
 
 scrape_configs:
   - job_name: docker
     docker_sd_configs:
       - host: unix:///var/run/docker.sock
-        refresh_interval: 5s
+        refresh_interval: 5s  # Discover new containers every 5s
 
     relabel_configs:
-      # Extract service name from Docker Compose label
+      # Extract clean service name from Docker Compose label (e.g., "user-service")
+      # This label is automatically added by docker-compose
       - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
         target_label: 'service'
