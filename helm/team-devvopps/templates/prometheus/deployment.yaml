@@ -24,12 +24,12 @@ spec:
           resources:
             # Minimum CPU/memory guaranteed by Kubernetes scheduler
             requests:
-              cpu: 100m
-              memory: 128Mi
+              cpu: {{ .Values.prometheus.resources.requests.cpu }}
+              memory: {{ .Values.prometheus.resources.requests.memory }}
             # Maximum resources this pod can consume
             limits:
-              cpu: 500m
-              memory: 512Mi
+              cpu: {{ .Values.prometheus.resources.limits.cpu }}
+              memory: {{ .Values.prometheus.resources.limits.memory }}
           volumeMounts:
             - name: prometheus-config
               mountPath: /etc/prometheus
