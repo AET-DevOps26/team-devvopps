@@ -6,9 +6,11 @@ name: Deploy to AET Kubernetes Cluster
 # release locked in pending-upgrade, and every later deploy fails with
 # "another operation (install/upgrade/rollback) is in progress".
 on:
-  push:
-    branches:
-      - main
+  workflow_run:
+    workflows:
+      - Build Docker Images
+    types:
+      - completed
   workflow_dispatch:
 
 concurrency:
@@ -21,6 +23,11 @@ env:
 
 jobs:
   deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
