@@ -145,7 +145,7 @@ jobs:
           failed=0
           for d in $deployments; do
             echo "Waiting for rollout of deployment/$d"
-            if ! kubectl rollout status deployment/"$d" -n "$K8S_NAMESPACE" --timeout=5m; then
+            if ! kubectl rollout status deployment/"$d" -n "$K8S_NAMESPACE" --timeout=10m; then
               echo "::error::Rollout failed for deployment/$d"
               failed=1
             fi
@@ -177,7 +177,7 @@ jobs:
           failed=0
           for ds in $daemonsets; do
             echo "Waiting for rollout of daemonset/$ds"
-            if ! kubectl rollout status daemonset/"$ds" -n "$K8S_NAMESPACE" --timeout=5m; then
+            if ! kubectl rollout status daemonset/"$ds" -n "$K8S_NAMESPACE" --timeout=10m; then
               echo "::error::Rollout failed for daemonset/$ds"
               failed=1
             fi
