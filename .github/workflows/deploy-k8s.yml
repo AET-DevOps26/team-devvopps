@@ -113,7 +113,7 @@ jobs:
             --set grafana.adminPassword="$GRAFANA_ADMIN_PASSWORD" \
             -n "$K8S_NAMESPACE" \
             --wait \
-            --timeout 5m
+            --timeout 10m
 
       # All images use the :latest tag, so helm upgrade alone does not restart
       # pods when only the image content changed. Force a rollout so every
