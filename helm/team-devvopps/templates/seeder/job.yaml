@@ -41,7 +41,7 @@ spec:
               memory: 512Mi
           env:
             - name: DB_HOST
-              value: postgres
+              value: postgres-0.postgres
             - name: DB_PORT
               value: "5432"
             - name: DB_NAME

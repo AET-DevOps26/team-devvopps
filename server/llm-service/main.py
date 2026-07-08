@@ -1,12 +1,26 @@
+import asyncio
 import os
 import json
+import time
 import requests
 import uvicorn
+from collections import deque
+from datetime import datetime, timezone
 from typing import Any, List, Optional
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+
+# ---------------------------------------------------------------------------
+# In-memory log store (last 200 entries, newest first)
+# ---------------------------------------------------------------------------
+_logs: deque = deque(maxlen=200)
+
+def _log(level: str, message: str, **extra):
+    entry = {"timestamp": datetime.now(timezone.utc).isoformat(), "level": level, "message": message, **extra}
+    _logs.appendleft(entry)
+    print(f"[{level}] {message}", flush=True)
 from langchain_core.prompts import PromptTemplate
 from langchain_core.language_models.llms import LLM
 from langchain_core.callbacks.manager import CallbackManagerForLLMRun
@@ -26,18 +40,16 @@ import numpy as np
 LOGOS_API_KEY = os.getenv("LOGOS_API_KEY")
 GROQ_API_KEY  = os.getenv("GROQ_API_KEY")
 
-if LOGOS_API_KEY:
-    # Logos profile: TUM-hosted gpt-oss-120b. Off-campus needs eduVPN.
-    # Hardcoded so a single LOGOS_API_KEY in .env is the only switch
-    # students need to flip.
-    API_URL = "https://logos.aet.cit.tum.de/v1/chat/completions"
-    MODEL_NAME = "openai/gpt-oss-120b"
-    LLM_API_KEY = LOGOS_API_KEY
-elif GROQ_API_KEY:
+if GROQ_API_KEY:
     # Groq profile: free tier, llama-3.3-70b-versatile.
     API_URL = "https://api.groq.com/openai/v1/chat/completions"
     MODEL_NAME = "llama-3.3-70b-versatile"
     LLM_API_KEY = GROQ_API_KEY
+elif LOGOS_API_KEY:
+    # Logos profile: TUM-hosted gpt-oss-120b. Off-campus needs eduVPN.
+    API_URL = "https://logos.aet.cit.tum.de/v1/chat/completions"
+    MODEL_NAME = "openai/gpt-oss-120b"
+    LLM_API_KEY = LOGOS_API_KEY
 else:
     # LM Studio profile: local model on host. Defaults match compose.yml
     # so both `docker compose up` and `python main.py` work.
@@ -60,6 +72,7 @@ TOP_K = int(os.getenv("TOP_K", "30"))
 _courses: List[dict] = []
 _vectorizer: Optional[TfidfVectorizer] = None
 _matrix = None
+_last_index_attempt: float = 0.0  # epoch seconds of last failed build attempt
 
 
 def build_index() -> int:
@@ -78,6 +91,10 @@ def build_index() -> int:
         title = c.get("title", "")
         objective = (c.get("objective") or c.get("content") or "")[:300]
         documents.append(f"{title} {objective}")
+
+    if not documents:
+        print("[RAG] No documents to index (empty course list).")
+        return 0
 
     _vectorizer = TfidfVectorizer(stop_words="english", ngram_range=(1, 2))
     _matrix = _vectorizer.fit_transform(documents)
@@ -111,9 +128,16 @@ def filter_courses(goal: str, k: int = TOP_K) -> str:
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print(f"[RAG] Building TF-IDF index... (model: {MODEL_NAME})")
-    count = build_index()
-    print(f"[RAG] Ready — {count} courses indexed.")
+    _log("INFO", f"Starting up (model: {MODEL_NAME})")
+    for attempt in range(1, 6):
+        count = build_index()
+        if count > 0:
+            _log("INFO", f"Index ready — {count} courses indexed")
+            break
+        _log("WARN", f"Course index empty (attempt {attempt}/5), retrying in 10s...")
+        await asyncio.sleep(10)
+    else:
+        _log("ERROR", "Could not build course index after 5 attempts — proceeding without courses")
     yield
 
 
@@ -269,7 +293,8 @@ def parse_llm_response(raw: str) -> RoadmapResponse:
 
         return RoadmapResponse.model_validate(data)
 
-    except Exception:
+    except Exception as e:
+        _log("ERROR", f"Failed to parse LLM response: {e}", raw_snippet=raw[:300])
         return RoadmapResponse(milestones=[])
 
 # ---------------------------------------------------------------------------
@@ -287,19 +312,46 @@ async def recommend(req: RoadmapRequest) -> RoadmapResponse:
     if not req.goal.strip():
         raise HTTPException(status_code=422, detail="goal cannot be empty")
 
-    # Use TF-IDF to find the most relevant courses (replaces keyword search)
-    courses_str = filter_courses(req.goal)
+    t0 = time.time()
+    _log("INFO", "Roadmap request received", goal=req.goal, model=MODEL_NAME)
 
-    # Call LLM
+    if not _courses:
+        global _last_index_attempt
+        if time.time() - _last_index_attempt > 60:
+            _last_index_attempt = time.time()
+            _log("WARN", "Course index empty — retrying fetch from course-service")
+            count = build_index()
+            if count > 0:
+                _log("INFO", f"Course index rebuilt: {count} courses")
+            else:
+                _log("WARN", "Course index still empty — proceeding without courses")
+
+    courses_str = filter_courses(req.goal)
+    course_count = len([l for l in courses_str.splitlines() if l.strip().startswith("-")])
+    _log("INFO", f"TF-IDF filtered {course_count} relevant courses", goal=req.goal)
+
+    _log("INFO", f"Calling LLM ({MODEL_NAME})...", goal=req.goal)
+    t_llm = time.time()
     try:
-        raw = await chain.ainvoke({
-            "goal": req.goal,
-            "courses": courses_str
-        })
-    except RuntimeError as e:
+        raw = await chain.ainvoke({"goal": req.goal, "courses": courses_str})
+        llm_ms = round((time.time() - t_llm) * 1000)
+        _log("INFO", f"LLM responded in {llm_ms}ms", goal=req.goal, llm_ms=llm_ms)
+    except Exception as e:
+        # Catch everything (timeouts, connection errors, provider SDK errors),
+        # not just RuntimeError — otherwise failures bypass the structured log.
+        llm_ms = round((time.time() - t_llm) * 1000)
+        _log("ERROR", f"LLM call failed after {llm_ms}ms: {e}", goal=req.goal, llm_ms=llm_ms)
         raise HTTPException(status_code=503, detail=str(e)) from e
 
-    return parse_llm_response(raw)
+    result = parse_llm_response(raw)
+    total_ms = round((time.time() - t0) * 1000)
+    _log("INFO", f"Request done in {total_ms}ms — {len(result.milestones)} milestones", goal=req.goal, total_ms=total_ms)
+    return result
+
+
+@app.get("/logs")
+async def get_logs():
+    return {"logs": list(_logs)}
 
 
 @app.get("/")

@@ -13,17 +13,28 @@ spec:
       labels:
         app: llm-service
     spec:
+      # Disable legacy Docker-link env injection (USER_SERVICE_PORT=tcp://... etc.)
+      # which collides with Spring relaxed binding of user.service.port properties.
+      enableServiceLinks: false
       containers:
         - name: llm-service
-          image: ghcr.io/aet-devops26/team-devvopps/llm-service:latest
-          imagePullPolicy: Always
+          # Local image built by `make k8s-build` — never pulled from a registry
+          image: team-devvopps/llm-service:latest
+          imagePullPolicy: Never
           ports:
             - containerPort: 8084
           env:
-            - name: COURSE_SERVICE_HOST
-              value: course-service
-            - name: LLM_API_URL
-              value: http://llm-backend:1234/v1/chat/completions
+            # main.py defaults to port 8004; the service and probe expect 8084
+            - name: PORT
+              value: "8084"
+            - name: COURSE_SERVICE_URL
+              value: http://course-service:8082/courses
+            - name: GROQ_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: llm-secret
+                  key: groq-api-key
+                  optional: true
           readinessProbe:
             httpGet:
               path: /health

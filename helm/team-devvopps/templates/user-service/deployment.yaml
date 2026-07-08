@@ -14,6 +14,9 @@ spec:
         app: user-service
         monitoring: "true"
     spec:
+      # Disable legacy Docker-link env injection (USER_SERVICE_PORT=tcp://... etc.)
+      # which collides with Spring relaxed binding of user.service.port properties.
+      enableServiceLinks: false
       containers:
         - name: user-service
           image: {{ .Values.imageRegistry }}/user-service:{{ .Values.imageTag }}
@@ -29,7 +32,7 @@ spec:
               memory: 512Mi
           env:
             - name: DB_HOST
-              value: postgres
+              value: postgres-0.postgres
             - name: DB_NAME
               value: userdb
             - name: DB_USER

@@ -10,6 +10,8 @@ import com.tum.roadmap.repository.RoadmapRepository;
 
 import lombok.RequiredArgsConstructor;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -27,6 +29,8 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class RoadmapService {
+
+    private static final Logger log = LoggerFactory.getLogger(RoadmapService.class);
 
     private final RoadmapRepository roadmapRepository;
     private final GoalRepository goalRepository;
@@ -67,9 +71,18 @@ public class RoadmapService {
     }
 
     /**
-      * Generates a roadmap from a user request.
-      */
+     * Returns all roadmaps.
+     */
+    public List<Roadmap> getAllRoadmaps() {
+        return roadmapRepository.findAll();
+    }
+
+    /**
+     * Generates a roadmap from a user request.
+     */
     public Roadmap generateRoadmap(Long userId, String user_goal) {
+        log.info("[Roadmap] generate — userId={} goal='{}'", userId, user_goal);
+        long t0 = System.currentTimeMillis();
 
         // Verify user exists via user-service
         Object user = getUser(userId);
@@ -82,20 +95,34 @@ public class RoadmapService {
 
         // Create Roadmap
         Roadmap roadmap = new Roadmap();
+        roadmap.setUser_id(userId);
         roadmap.setGoal(goal);
+        roadmap.setTitle(user_goal);
+        roadmap.setProgress(0);
         roadmap.setCreated_date(LocalDateTime.now());
 
         // Call LLM
+        log.info("[LLM] Calling llm-service at {} for goal='{}'", getLlmUrl(), user_goal);
+        long tLlm = System.currentTimeMillis();
         RoadmapResponse llmResponse = callLLM(user_goal);
+        log.info("[LLM] Response received in {}ms", System.currentTimeMillis() - tLlm);
 
         List<Milestone> milestones = new ArrayList<>();
-        
+
         if (llmResponse != null && llmResponse.milestones() != null) {
-            
+            int index = 0;
             for (MilestoneDto m : llmResponse.milestones()) {
+                // Milestone.validateTasks() rejects task-less milestones at persist
+                // time, so saving one would fail the whole roadmap with a 500.
+                if (m.tasks() == null || m.tasks().isEmpty()) {
+                    log.warn("[LLM] Skipping milestone '{}' — no tasks returned", m.title());
+                    continue;
+                }
                 Milestone milestone = new Milestone();
                 milestone.setTitle(m.title());
                 milestone.setDescription(m.description());
+                milestone.setStatus(Status.NOT_STARTED);
+                milestone.setOrderIndex(index++);
                 milestone.setRoadmap(roadmap);
 
                 List<Task> tasks = new ArrayList<>();
@@ -116,9 +143,18 @@ public class RoadmapService {
             }
         }
 
+        if (milestones.isEmpty()) {
+            log.error("[LLM] Returned no milestones for goal='{}' — not saving roadmap", user_goal);
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "LLM returned no milestones — please try again");
+        }
+
         roadmap.setMilestones(milestones);
 
-        return roadmapRepository.save(roadmap);
+        Roadmap saved = roadmapRepository.save(roadmap);
+        log.info("[Roadmap] Saved roadmapId={} in {}ms — {} milestones",
+                saved.getRoadmap_id(), System.currentTimeMillis() - t0, saved.getMilestones().size());
+        return saved;
     }
     
     /**
@@ -132,14 +168,16 @@ public class RoadmapService {
     // Private Helper
     private RoadmapResponse callLLM(String goal) {
         try {
-            return restTemplate.postForObject(  // ← use injected restTemplate, not new RestTemplate()
+            return restTemplate.postForObject(
                     getLlmUrl() + "/recommend",
                     new RoadmapRequest(goal),
                     RoadmapResponse.class
             );
         } catch (HttpClientErrorException e) {
+            log.error("[LLM] HTTP error {}: {}", e.getStatusCode(), e.getMessage());
             throw new ResponseStatusException(e.getStatusCode(), "LLM service returned an error: " + e.getMessage());
         } catch (Exception e) {
+            log.error("[LLM] Unreachable: {}", e.getMessage());
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "LLM service not reachable");
         }
     }

@@ -13,32 +13,23 @@ import java.util.List;
 @RequiredArgsConstructor
 @CrossOrigin
 public class RoadmapController {
-    
-    // Service layer dependency
+
     private final RoadmapService roadmapService;
 
-    /**
-     * POST /roadmaps/generate
-     *
-     * Receives a user goal from the frontend and generates a personalized roadmap.
-     */
-    @PostMapping("/generate")
-    public ResponseEntity<Roadmap> generateRoadmap(@RequestParam Long userId, @RequestParam String goal) {
-        
-        Roadmap roadmap = roadmapService.generateRoadmap(userId, goal);
-        return ResponseEntity.ok(roadmap);
+    @GetMapping
+    public ResponseEntity<List<Roadmap>> getAllRoadmaps() {
+        return ResponseEntity.ok(roadmapService.getAllRoadmaps());
     }
 
-    /**
-     * GET /roadmaps/{id}
-     *
-     * Returns a roadmap by ID.
-     */
+    @PostMapping("/generate")
+    public ResponseEntity<Roadmap> generateRoadmap(
+            @RequestParam(defaultValue = "1") Long userId,
+            @RequestParam String goal) {
+        return ResponseEntity.ok(roadmapService.generateRoadmap(userId, goal));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<Roadmap> getRoadmap(@PathVariable Long id) {
-
-        Roadmap roadmap = roadmapService.getRoadmap(id);
-
-        return ResponseEntity.ok(roadmap);
+        return ResponseEntity.ok(roadmapService.getRoadmap(id));
     }
 }

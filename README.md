@@ -173,37 +173,35 @@ Access:
 
 ### Running with Kubernetes
 
-#### Local Kubernetes With Helm
+#### Switching kubectl Contexts
 
-The fastest containerized way to run the entire stack.
+`kubectl` and `helm` always operate on the currently active context — check it before deploying anything:
+
+```bash
+kubectl config get-contexts                   # List all contexts (* = active)
+kubectl config use-context docker-desktop     # Local Kubernetes (Docker Desktop)
+kubectl config use-context stud               # AET cluster (server)
+```
+
+> ⚠️ `make k8s-deploy` refuses to run unless the context is `docker-desktop`,
+> so locally built images can never be deployed to the AET cluster by accident.
+
+#### Local Kubernetes (Recommended)
+
+Deploys the **same Helm chart used on the AET cluster** with local overrides
+(`helm/team-devvopps/values-local.yaml`: locally built images, NodePort instead of ingress, single postgres).
 
 Prerequisites:
 - **Docker Desktop** with **Kubernetes enabled**
   - Settings → Kubernetes → Enable Kubernetes → Apply & Restart
 - **Helm 3.x** (install from https://helm.sh/docs/intro/install/)
+- `infra/.env` containing `GROQ_API_KEY=...` (git-ignored; ask a teammate for the key)
 
+Deploy:
 
-First time setup:
-
-1. Copy the example secrets file:
 ```bash
-cp helm/team-devvopps/values-secrets.example.yaml helm/team-devvopps/values-secrets.yaml
-```
-
-2. Edit `helm/team-devvopps/values-secrets.yaml` with your database credentials:
-```yaml
-postgres:
-  credentials:
-    username: postgres
-    password: your_secure_password_here
-  # Replication uses trust auth (no password needed within cluster)
-  replicationUser: replication
-  replicationPassword: replication
-```
-
-3. Deploy:
-```bash
-make helm-install
+kubectl config use-context docker-desktop
+make k8s-deploy       # Builds all images, installs/upgrades the Helm release, restarts pods
 ```
 
 Access:
@@ -212,26 +210,35 @@ Access:
 
 Manage deployment:
 ```bash
-make helm-upgrade    # Update existing deployment
-make helm-delete     # Remove deployment
 make k8s-status      # Check pod status
+make k8s-seed        # Re-run the course seeder
+make k8s-down        # Tear down (deletes the namespace and all local data)
 ```
 
 #### AET Kubernetes Cluster
 
-For deployment to the AET cluster, see [DEPLOYMENT.md](DEPLOYMENT.md)
+Deployed via GitHub Actions: run **Build Docker Images**, then **Deploy to AET Kubernetes Cluster**.
+The workflow connects to the cluster with its own credentials, so your local kubectl context does not matter for this path. For details see [DEPLOYMENT.md](DEPLOYMENT.md).
+
+To inspect the server or deploy manually, switch your context to the AET cluster first:
 
 ```bash
-make helm-install-aet    # Deploy to AET (uses GitHub Secrets)
+kubectl config use-context stud
+
+kubectl get pods -n team-devvopps       # Inspect what is running on the server
+make helm-install-aet                   # Manual deploy fallback (requires credentials)
 ```
 
-#### Legacy kubectl (Not Recommended)
+> ⚠️ Remember to switch back with `kubectl config use-context docker-desktop`
+> before working locally again.
+
+#### Old Plain-YAML Manifests (Fallback Only)
+
+The original hand-written manifests in `infra/k8s/` are kept as a fallback.
+Do **not** mix with the Helm-based deploy — run `make k8s-down` before switching methods.
 
 ```bash
-make k8s-build        # Build all Docker images
-make k8s-deploy       # Deploy to Kubernetes
-make k8s-status       # Check status
-make k8s-down         # Tear down
+make k8s-deploy-old   # Build images and deploy using infra/k8s/ manifests
 ```
 
 ---
@@ -302,9 +309,10 @@ GitHub Actions workflows are defined in `.github/workflows/`.
 | Workflow | Trigger | Purpose |
 |---|---|---|
 | `lint.yml` | Pull requests to `main`, pushes to non-`main` branches | Runs frontend ESLint, Java checks, actionlint, Helm lint, and OpenAPI lint |
-| `build_and_deploy_docker_VM.yml` | Push to `main` | Builds Docker images, pushes them to GHCR, and deploys to the Azure VM with Docker Compose |
+| `build.yml` | Push to `main` | Builds Docker images for all services and pushes them to GHRC |
+| `deploy-vm.yml` | Automatically after `build.yml` completes successfully on `main` (via `workflow_run`) | Temporarily opens SSH access for the runner's IP, deploys the latest images to the Azure VM with Docker Compose, then closes SSH access again |
 | `deploy-k8s.yml` | Push to `main`, manual dispatch | Deploys the Helm chart to the AET Kubernetes cluster |
-| `provision.yml` | Manual dispatch | Provisions or imports Azure resources with Terraform, configures the VM with Ansible, and updates the Azure public IP GitHub variable |
+| `provision.yml` | Manual dispatch | Provisions or imports Azure resources with Terraform, temporarily opens SSH for the runner's IP, configures the VM with Ansible, and updates the Azure public IP GitHub variable, then closes SSH access again |
 
 Required GitHub configuration:
 
@@ -315,7 +323,7 @@ For Azure VM:
 | `AZURE_PUBLIC_IP` | variable | Public IP of Azure VM |
 | `AZURE_USER` | variable | SSH username (`azureuser`) |
 | `AZURE_PRIVATE_KEY` | secret | SSH private key |
-| `ARM_CLIENT_ID` | secret | Azure service principal client ID |
+| `ARM_CLIENT_ID` | secret | Azure service principal client ID *(has Network Contributor role on the NSG to manage the temporary CI SSH rule)* |
 | `ARM_CLIENT_SECRET` | secret | Azure service principal client secret |
 | `ARM_SUBSCRIPTION_ID` | secret | Azure subscription ID |
 | `ARM_TENANT_ID` | secret | Azure tenant ID |
@@ -345,8 +353,8 @@ The application is automatically built and deployed to an Azure VM on every merg
    - Terraform creates VM + Ansible configures Docker
 
 2. **Deployment (automatic on merge to main):**
-   - Build job: Creates 5 Docker images → pushes to ghcr.io
-   - Deploy job: Copies docker-compose to VM → starts services with Traefik for HTTPS
+   - `build.yml`: Creates 5 Docker images → pushes to ghcr.io
+   - `deploy-vm.yml`: Temporarily allows the runner's IP through the VM's NSG → Copies docker-compose to VM → starts services with Traefik for HTTPS
 
 **Stack on VM:**
 - Traefik (reverse proxy + Let's Encrypt HTTPS)
@@ -358,6 +366,13 @@ The application is automatically built and deployed to an Azure VM on every merg
 - Terraform State Backend: Shared storage for team state
 - SSH Key Pair: For accessing VM
 - All configured in GitHub Secrets
+
+**Network Security:**
+- SSH (port 22) on the Azure VM's Network Security Group is restricted to the MWN (Münchner Wissenschaftsnetz) range `129.187.0.0/16`, which covers TUM, LMU, BADW, and LRZ.
+- To SSH into the VM, connect to TUM's eduVPN first.
+- The allowed range is set via the `allowed_ssh_eduVPN` Terraform variable in `terraform/` and defaults to `129.187.0.0/16`. Update it there (and re-run `terraform apply` or the `provision.yml` workflow) if the MWN allocation changes.
+- HTTP (80) and HTTPS (443) remain open to all sources, since the application's frontend/API are intended to be publicly available. Only SSH is access-restricted.
+- **CI/CD SSH access**: Since the GitHub Actions runners don't have IPs within the MWN range, both `provision.yml` (which runs the Ansible playbook to configure the VM) and `deploy-vm.yml` (which deploys updated images) add a `/32` NSG rule for the runner's own public IP just before connecting over SSH, then delete that rule immediately afterward (even on failure, via `if: always()`). This keeps the NSG closed to the public internet while still allowing automated provisioning and deploys.
 
 See [README.md section on Azure](README.md#azure-vm-stagingdemo) for detailed setup.
 
