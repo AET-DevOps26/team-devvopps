@@ -97,7 +97,7 @@ services:
       USER_SERVICE_HOST: user-service
       USER_SERVICE_PORT: "8081"        
       LLM_SERVICE_HOST: llm-service
-      LLM_SERVICE_PORT: "8004"
+      LLM_SERVICE_PORT: "8084"
     depends_on:
       postgres:
         condition: service_healthy
