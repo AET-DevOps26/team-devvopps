@@ -8,6 +8,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestTemplate;
 
@@ -24,7 +25,8 @@ import org.springframework.web.client.RestTemplate;
  * which is stripped to avoid chunked-encoding conflicts with Spring's response writing.
  */
 @RestController
-@CrossOrigin
+@CrossOrigin(methods = {RequestMethod.GET, RequestMethod.HEAD, RequestMethod.POST,
+        RequestMethod.PUT, RequestMethod.PATCH, RequestMethod.DELETE, RequestMethod.OPTIONS})
 public class GatewayController {
 
     @Value("${services.user.url}")

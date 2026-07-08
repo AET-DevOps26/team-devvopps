@@ -52,4 +52,16 @@ public class UserService {
     public List<User> getAllUsers() {
         return repo.findAll();
     }
+
+    /**
+     * Deletes a user by ID.
+     *
+     * @param id user ID
+     */
+    public void deleteUser(Long id) {
+        if (!repo.existsById(id)) {
+            throw new RuntimeException("User not found");
+        }
+        repo.deleteById(id);
+    }
 }
