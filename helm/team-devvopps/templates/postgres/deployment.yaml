@@ -8,6 +8,7 @@ spec:
   # Required for StatefulSet pods to discover each other for replication
   serviceName: postgres
   replicas: {{ .Values.postgres.replicas }}
+  revisionHistoryLimit: 3
   selector:
     matchLabels:
       app: postgres

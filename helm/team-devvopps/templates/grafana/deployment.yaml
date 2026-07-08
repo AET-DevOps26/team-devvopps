@@ -6,6 +6,7 @@ metadata:
 spec:
   # Run exactly 1 Grafana instance (single replica)
   replicas: 1
+  revisionHistoryLimit: 3
   selector:
     matchLabels:
       app: grafana

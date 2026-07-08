@@ -6,6 +6,7 @@ metadata:
 spec:
   # Run exactly 1 Prometheus instance (single replica for simplicity)
   replicas: 1
+  revisionHistoryLimit: 3
   selector:
     matchLabels:
       app: prometheus

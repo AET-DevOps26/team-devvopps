@@ -5,6 +5,7 @@ metadata:
   namespace: {{ .Values.namespace }}
 spec:
   replicas: {{ .Values.replicas }}
+  revisionHistoryLimit: 3
   selector:
     matchLabels:
       app: course-service
@@ -25,10 +26,10 @@ spec:
             - containerPort: {{ .Values.services.courseService.port }}
           resources:
             requests:
-              cpu: 100m
+              cpu: 50m
               memory: 256Mi
             limits:
-              cpu: 200m
+              cpu: 100m
               memory: 512Mi
           env:
             - name: DB_HOST

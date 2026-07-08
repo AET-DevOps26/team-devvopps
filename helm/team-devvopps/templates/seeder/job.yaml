@@ -34,10 +34,10 @@ spec:
           imagePullPolicy: {{ .Values.imagePullPolicy }}
           resources:
             requests:
-              cpu: 150m
+              cpu: 75m
               memory: 256Mi
             limits:
-              cpu: 400m
+              cpu: 150m
               memory: 512Mi
           env:
             - name: DB_HOST
