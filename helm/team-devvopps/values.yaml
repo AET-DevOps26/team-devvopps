@@ -70,10 +70,10 @@ prometheus:
   evaluationInterval: 15s
   resources:
     requests:
-      cpu: 100m
+      cpu: 50m
       memory: 128Mi
     limits:
-      cpu: 500m
+      cpu: 200m
       memory: 512Mi
 
 # Grafana Configuration
@@ -83,10 +83,10 @@ grafana:
   replicas: 1
   resources:
     requests:
-      cpu: 100m
+      cpu: 50m
       memory: 128Mi
     limits:
-      cpu: 300m
+      cpu: 150m
       memory: 256Mi
 
 # Loki Configuration (log aggregation, ephemeral emptyDir storage)
@@ -95,11 +95,11 @@ loki:
   retention: 168h
   resources:
     requests:
-      cpu: 100m
-      memory: 128Mi
+      cpu: 50m
+      memory: 64Mi
     limits:
-      cpu: 500m
-      memory: 512Mi
+      cpu: 150m
+      memory: 256Mi
 
 # Promtail Configuration (log shipper, runs as DaemonSet on every node)
 promtail:

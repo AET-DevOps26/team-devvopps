@@ -124,10 +124,10 @@ spec:
             - containerPort: {{ .Values.services.postgres.port }}
           resources:
             requests:
-              cpu: 250m
+              cpu: 200m
               memory: 256Mi
             limits:
-              cpu: 300m
+              cpu: 250m
               memory: 512Mi
           env:
             - name: POSTGRES_USER
