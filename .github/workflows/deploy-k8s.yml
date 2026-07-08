@@ -149,6 +149,38 @@ jobs:
             exit 1
           fi
 
+      # DaemonSets (e.g. promtail) are not covered by the Deployment restart loop above.
+      # Without this, DaemonSet pods keep running with whatever resource limits they
+      # started with, even after values.yaml/template changes are deployed via helm upgrade.
+      - name: Restart daemonsets to pull latest images
+        run: |
+          set -euo pipefail
+          daemonsets=$(kubectl get daemonsets -n "$K8S_NAMESPACE" -o jsonpath='{.items[*].metadata.name}')
+
+          if [ -z "$daemonsets" ]; then
+            echo "No daemonsets found in namespace $K8S_NAMESPACE"
+            exit 0
+          fi
+
+          for ds in $daemonsets; do
+            echo "Restarting daemonset/$ds"
+            kubectl rollout restart daemonset/"$ds" -n "$K8S_NAMESPACE"
+          done
+
+          failed=0
+          for ds in $daemonsets; do
+            echo "Waiting for rollout of daemonset/$ds"
+            if ! kubectl rollout status daemonset/"$ds" -n "$K8S_NAMESPACE" --timeout=5m; then
+              echo "::error::Rollout failed for daemonset/$ds"
+              failed=1
+            fi
+          done
+
+          if [ "$failed" -ne 0 ]; then
+            echo "One or more daemonsets failed to roll out"
+            exit 1
+          fi
+
       # Quick sanity check — prints pod/service/ingress state immediately after deploy.
       - name: Verify deployment
         run: |

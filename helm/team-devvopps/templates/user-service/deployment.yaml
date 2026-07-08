@@ -27,10 +27,10 @@ spec:
           resources:
             requests:
               cpu: 50m
-              memory: 256Mi
+              memory: 128Mi
             limits:
               cpu: 100m
-              memory: 512Mi
+              memory: 256Mi
           env:
             - name: DB_HOST
               value: postgres-0.postgres

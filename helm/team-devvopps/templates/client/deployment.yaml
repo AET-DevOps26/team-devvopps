@@ -26,10 +26,10 @@ spec:
           resources:
             requests:
               cpu: 25m
-              memory: 128Mi
+              memory: 64Mi
             limits:
               cpu: 50m
-              memory: 256Mi
+              memory: 128Mi
           volumeMounts:
             - name: cache
               mountPath: /var/cache/nginx
