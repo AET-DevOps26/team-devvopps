@@ -22,11 +22,11 @@ spec:
             - containerPort: 3000
           resources:
             requests:
-              cpu: 100m
-              memory: 128Mi
+              cpu: {{ .Values.grafana.resources.requests.cpu }}
+              memory: {{ .Values.grafana.resources.requests.memory }}
             limits:
-              cpu: 300m
-              memory: 256Mi
+              cpu: {{ .Values.grafana.resources.limits.cpu }}
+              memory: {{ .Values.grafana.resources.limits.memory }}
           # Environment variables configure Grafana behavior
           env:
             # Admin password from Kubernetes Secret (not hard-coded)
