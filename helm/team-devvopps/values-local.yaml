@@ -23,3 +23,7 @@ postgres:
 # groqApiKey is injected by `make k8s-deploy` via --set from the git-ignored infra/.env
 llmService:
   groqApiKey: ""
+
+# docker-desktop uses the docker log format (JSON), not containerd's cri format
+promtail:
+  pipelineStage: docker

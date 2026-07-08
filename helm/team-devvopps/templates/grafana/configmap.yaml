@@ -16,3 +16,13 @@ data:
         # Kubernetes DNS: http://prometheus:9090 resolves to Prometheus service
         url: http://prometheus:9090
         isDefault: true
+  # Loki datasource for log queries — the Logs dashboard references it by the
+  # exact name "Loki", so don't rename it
+  loki.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://loki:3100
+        isDefault: false

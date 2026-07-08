@@ -15,12 +15,11 @@ The monitoring stack consists of:
 Dashboards auto-load on startup:
 - **Request Metrics** — request rate, latency (p95, p99), error rate by service
 - **System Health** — service up/down status, JVM memory/threads, HTTP status distribution, active alerts
-- **Logs Dashboard** — Grafana dashboard for viewing logs
+- **Logs Dashboard** — Grafana dashboard for viewing logs. Includes live logs, error counts, log volume by service, and DB count stat panels
 
-Both Docker Compose and Kubernetes deployments are fully synchronized using the same:
-- Prometheus configuration and alert rules
-- Dashboard JSON files
-- Grafana datasource & provisioning configs
+Log format differs per runtime:
+- **AET (containerd):** `cri` pipeline stage (default in values.yaml)
+- **docker-desktop:** `docker` pipeline stage (set in values-local.yaml)
 
 How Logs Flow:
 1. All services log to stdout
@@ -32,7 +31,7 @@ Logs are kept for **7 days** and automatically deleted after.
 
 
 
-### Starting Monitoring
+## Docker
 
 ```bash
 make docker-up
@@ -40,13 +39,14 @@ make docker-up
 
 Metrics are collected every 15 seconds. Alert rules are evaluated every 15 seconds.
 
-### Accessing Dashboards
+### Accessing Dashboards on Docker
 
-- **Grafana:** http://localhost:3001 (login: `admin` / `admin123`)
+- **Grafana:** http://localhost:3001 (login: `admin` / `admin`)
 - **Prometheus:** http://localhost:9090
 
+<br>
 
-## Kubernetes Deployment
+## Kubernetes AET Deployment
 
 ### Prerequisites
 
@@ -55,6 +55,13 @@ Set your kubeconfig to point to the AET cluster:
 ```bash
 export KUBECONFIG=~/pathtostud.yaml
 ```
+
+### Logging Stack (Kubernetes-specific)
+
+On Kubernetes, Promtail runs as a **DaemonSet** (one pod per node) and discovers logs from `/var/log/pods` using Kubernetes service discovery, restricted to the `team-devvopps` namespace.
+
+**Important:** Promtail's Kubernetes discovery filters pods by node using the `HOSTNAME` environment variable (injected from `spec.nodeName`). Without this, discovery silently matches zero pods and Loki receives no logs. This is configured in the daemonset template and critical for multi-node clusters.
+
 
 ### Accessing Dashboards
 
@@ -66,12 +73,16 @@ kubectl port-forward -n team-devvopps svc/grafana 3001:3000
 
 # Terminal 2: Prometheus  
 kubectl port-forward -n team-devvopps svc/prometheus 9090:9090
+
+# Terminal 3: Loki (if needed for API access)
+kubectl port-forward -n team-devvopps svc/loki 3100:3100
 ```
 
 Then access:
 - **Grafana:** http://localhost:3001 (login: `admin` / `admin123`)
 - **Prometheus:** http://localhost:9090
 
+<br>
 
 ## Troubleshooting
 
@@ -106,6 +117,7 @@ To recover:
 docker start infra-roadmap-service-1
 ```
 
+<br>
 
 ## Understanding the Dashboards (Extra Explanation)
 

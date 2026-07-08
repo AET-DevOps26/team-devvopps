@@ -1,0 +1,74 @@
+# Promtail runs as a DaemonSet: one pod per node, tailing that node's pod log
+# files from /var/log/pods and pushing them to Loki.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: promtail
+  namespace: {{ .Values.namespace }}
+spec:
+  selector:
+    matchLabels:
+      app: promtail
+  template:
+    metadata:
+      labels:
+        app: promtail
+    spec:
+      serviceAccountName: promtail
+      containers:
+        - name: promtail
+          image: {{ .Values.promtail.image }}
+          args:
+            - '-config.file=/etc/promtail/promtail-config.yaml'
+          ports:
+            - containerPort: 9080
+          env:
+            # Promtail restricts kubernetes_sd discovery to pods on its own
+            # node using $HOSTNAME as the node name. Without this, HOSTNAME
+            # defaults to the pod's own name and discovery silently matches
+            # zero pods.
+            - name: HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          # Runs as root — required to read /var/log/pods on the node.
+          # Everything else is locked down: read-only rootfs, no privilege
+          # escalation, all capabilities dropped.
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: {{ .Values.promtail.resources.requests.cpu }}
+              memory: {{ .Values.promtail.resources.requests.memory }}
+            limits:
+              cpu: {{ .Values.promtail.resources.limits.cpu }}
+              memory: {{ .Values.promtail.resources.limits.memory }}
+          volumeMounts:
+            - name: promtail-config
+              mountPath: /etc/promtail
+            - name: positions
+              mountPath: /run/promtail
+            - name: pod-logs
+              mountPath: /var/log/pods
+              readOnly: true
+            # On docker-desktop, files under /var/log/pods are symlinks into
+            # /var/lib/docker/containers; harmless no-op on containerd (AET).
+            - name: docker-logs
+              mountPath: /var/lib/docker/containers
+              readOnly: true
+      volumes:
+        - name: promtail-config
+          configMap:
+            name: promtail-config
+        - name: positions
+          emptyDir: {}
+        - name: pod-logs
+          hostPath:
+            path: /var/log/pods
+        - name: docker-logs
+          hostPath:
+            path: /var/lib/docker/containers

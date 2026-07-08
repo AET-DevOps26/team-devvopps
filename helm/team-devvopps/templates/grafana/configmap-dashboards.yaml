@@ -22,3 +22,4 @@ binaryData:
   # Dashboard JSON files (base64-encoded from helm chart)
   request-metrics.json: {{ .Files.Get "grafana-dashboards/dashboard-request-metrics.json" | b64enc }}
   system-health.json: {{ .Files.Get "grafana-dashboards/dashboard-system-health.json" | b64enc }}
+  logs.json: {{ .Files.Get "grafana-dashboards/dashboard-logs.json" | b64enc }}

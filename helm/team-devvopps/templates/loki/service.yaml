@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki
+  namespace: {{ .Values.namespace }}
+spec:
+  # ClusterIP: only Promtail and Grafana need to reach Loki, both in-cluster.
+  # Service name "loki" keeps the URL http://loki:3100 identical to docker-compose.
+  type: ClusterIP
+  selector:
+    app: loki
+  ports:
+    - port: 3100
+      targetPort: 3100

@@ -89,3 +89,30 @@ grafana:
       cpu: 300m
       memory: 256Mi
 
+# Loki Configuration (log aggregation, ephemeral emptyDir storage)
+loki:
+  image: grafana/loki:2.9.0
+  retention: 168h
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Promtail Configuration (log shipper, runs as DaemonSet on every node)
+promtail:
+  image: grafana/promtail:3.0.0
+  # Log line format of the container runtime:
+  #   cri    = containerd (AET cluster)
+  #   docker = docker-desktop (values-local.yaml overrides to this)
+  pipelineStage: cri
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
