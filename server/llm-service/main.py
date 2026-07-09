@@ -154,7 +154,7 @@ _thread_local = threading.local()
 def check_user_limit(user_id: str) -> None:
     """Raises HTTPException if user has exceeded their token limit."""
     current = _user_token_usage[user_id]
-    if current >= MAX_TOKENS_PER_USER:
+    if current + MAX_TOKENS >= MAX_TOKENS_PER_USER:
         raise HTTPException(
             status_code=429,
             detail=f"Token limit exceeded. You have used {current}/{MAX_TOKENS_PER_USER} tokens."
@@ -371,52 +371,60 @@ async def recommend(req: RoadmapRequest, user_id: str = "anonymous") -> RoadmapR
             status_code=422,
             detail=f"goal is too long ({len(req.goal)} chars) — maximum is {MAX_GOAL_CHARS}",
         )
-    # Check user limit before calling llm
-    # Add MAX_TOKENS (max output) so as an assumption of tokens used during request so that user cannot generate i+1 roadmaps
-    with _user_locks[user_id]:
-        _user_token_usage[user_id] += MAX_TOKENS
-        check_user_limit(user_id)
-
-    t0 = time.time()
-    _log("INFO", "Roadmap request received", goal=req.goal, model=MODEL_NAME)
-
-    if not _courses:
-        global _last_index_attempt
-        if time.time() - _last_index_attempt > 60:
-            _last_index_attempt = time.time()
-            _log("WARN", "Course index empty — retrying fetch from course-service")
-            count = build_index()
-            if count > 0:
-                _log("INFO", f"Course index rebuilt: {count} courses")
-            else:
-                _log("WARN", "Course index still empty — proceeding without courses")
-
-    courses_str = filter_courses(req.goal)
-    course_count = len([l for l in courses_str.splitlines() if l.strip().startswith("-")])
-    _log("INFO", f"TF-IDF filtered {course_count} relevant courses", goal=req.goal)
-    _log("INFO", f"Calling LLM ({MODEL_NAME})...", goal=req.goal)
-
-    t_llm = time.time()
+    reserved = False
+    total_tokens = 0
     try:
+        # Check user limit before calling llm
+        # Add MAX_TOKENS (max output) so as an assumption of tokens used during request so that user cannot generate i+1 roadmaps
+        with _user_locks[user_id]:
+            check_user_limit(user_id)
+            _user_token_usage[user_id] += MAX_TOKENS
+            reserved = True
+
+        t0 = time.time()
+        _log("INFO", "Roadmap request received", goal=req.goal, model=MODEL_NAME)
+
+        if not _courses:
+            global _last_index_attempt
+            if time.time() - _last_index_attempt > 60:
+                _last_index_attempt = time.time()
+                _log("WARN", "Course index empty — retrying fetch from course-service")
+                count = build_index()
+                if count > 0:
+                    _log("INFO", f"Course index rebuilt: {count} courses")
+                else:
+                    _log("WARN", "Course index still empty — proceeding without courses")
+
+        courses_str = filter_courses(req.goal)
+        course_count = len([l for l in courses_str.splitlines() if l.strip().startswith("-")])
+        _log("INFO", f"TF-IDF filtered {course_count} relevant courses", goal=req.goal)
+        _log("INFO", f"Calling LLM ({MODEL_NAME})...", goal=req.goal)
+
+        t_llm = time.time()
+    
         raw = await chain.ainvoke({"goal": req.goal, "courses": courses_str})
+
         usage = getattr(_thread_local, "usage", {})
+        total_tokens = usage.get("total_tokens", 0)
+
         llm_ms = round((time.time() - t_llm) * 1000)
         _log("INFO", f"LLM responded in {llm_ms}ms", goal=req.goal, llm_ms=llm_ms)
+
+        result = parse_llm_response(raw)
+
     except Exception as e:
         # Catch everything (timeouts, connection errors, provider SDK errors),
         # not just RuntimeError — otherwise failures bypass the structured log.
         llm_ms = round((time.time() - t_llm) * 1000)
         _log("ERROR", f"LLM call failed after {llm_ms}ms: {e}", goal=req.goal, llm_ms=llm_ms)
         raise HTTPException(status_code=503, detail=str(e)) from e
-
-    result = parse_llm_response(raw)
-
-    total_tokens = usage.get("total_tokens", 0)
-    with _user_locks[user_id]:
-        _user_token_usage[user_id] -= MAX_TOKENS
-        _user_token_usage[user_id] += total_tokens
-    _log("INFO", f"User {user_id} used {total_tokens} tokens " f"({_user_token_usage[user_id]}/{MAX_TOKENS_PER_USER})"
-)
+    
+    finally: 
+        if reserved:
+            with _user_locks[user_id]:
+                _user_token_usage[user_id] -= MAX_TOKENS
+                _user_token_usage[user_id] += total_tokens
+            _log("INFO", f"User {user_id} used {total_tokens} tokens " f"({_user_token_usage[user_id]}/{MAX_TOKENS_PER_USER})")
 
     total_ms = round((time.time() - t0) * 1000)
     _log("INFO", f"Request done in {total_ms}ms — {len(result.milestones)} milestones", goal=req.goal, total_ms=total_ms)
