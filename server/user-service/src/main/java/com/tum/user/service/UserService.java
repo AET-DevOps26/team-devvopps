@@ -5,7 +5,9 @@ import com.tum.user.repository.UserRepository;
 
 import lombok.AllArgsConstructor;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -41,7 +43,7 @@ public class UserService {
      */
     public User getUser(Long id) {
         return repo.findById(id)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
     }
 
     /**
@@ -60,7 +62,7 @@ public class UserService {
      */
     public void deleteUser(Long id) {
         if (!repo.existsById(id)) {
-            throw new RuntimeException("User not found");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
         }
         repo.deleteById(id);
     }

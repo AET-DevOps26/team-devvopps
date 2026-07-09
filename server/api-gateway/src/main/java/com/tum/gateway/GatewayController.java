@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 
 /**
@@ -70,8 +71,17 @@ public class GatewayController {
         String path = request.getRequestURI();
         String query = request.getQueryString();
         String url = targetBaseUrl + path + (query != null ? "?" + query : "");
-        ResponseEntity<byte[]> response = restTemplate.exchange(url, HttpMethod.valueOf(request.getMethod()), entity, byte[].class);
-        
+
+        ResponseEntity<byte[]> response;
+        try {
+            response = restTemplate.exchange(url, HttpMethod.valueOf(request.getMethod()), entity, byte[].class);
+        } catch (HttpStatusCodeException e) {
+            // RestTemplate throws on non-2xx responses instead of returning them.
+            // Re-wrap so the downstream service's real status/body reaches the caller
+            // instead of being flattened into a 500 by Spring's default error handling.
+            response = ResponseEntity.status(e.getStatusCode()).headers(e.getResponseHeaders()).body(e.getResponseBodyAsByteArray());
+        }
+
         // Copy response headers, excluding Transfer-Encoding to avoid chunked encoding conflicts.
 
         HttpHeaders headers = new HttpHeaders();

@@ -244,7 +244,7 @@
               }
             ]
           },
-          "unit": "decbytes"
+          "unit": "none"
         },
         "overrides": []
       },
@@ -268,12 +268,12 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "jvm_memory_used_bytes{area=\"heap\"} / 1024 / 1024",
+          "expr": "sum(jvm_memory_used_bytes{area=\"heap\"}) by (job) / 1024 / 1024",
           "refId": "A",
           "legendFormat": "{{ job }} - Heap Used"
         },
         {
-          "expr": "jvm_memory_max_bytes{area=\"heap\"} / 1024 / 1024",
+          "expr": "sum(jvm_memory_max_bytes{area=\"heap\"}) by (job) / 1024 / 1024",
           "refId": "B",
           "legendFormat": "{{ job }} - Heap Max"
         }
