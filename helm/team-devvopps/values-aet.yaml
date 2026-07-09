@@ -25,7 +25,9 @@ prometheus:
   retention: 30d
 
 grafana:
-  # Intentionally empty: the deploy workflow passes the real password via
-  # --set grafana.adminPassword=... from GitHub Secrets. Manual deploys
-  # without --set fail at template time (see grafana/secret.yaml `required`).
+  # Intentionally empty: the deploy workflow passes the real username/password
+  # via --set grafana.adminUser=... / --set grafana.adminPassword=... from
+  # GitHub Secrets. Manual deploys without --set fail at template time
+  # (see grafana/secret.yaml `required`).
+  adminUser: ""
   adminPassword: ""
