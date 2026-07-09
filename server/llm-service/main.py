@@ -371,9 +371,10 @@ async def recommend(req: RoadmapRequest, user_id: str = "anonymous") -> RoadmapR
             status_code=422,
             detail=f"goal is too long ({len(req.goal)} chars) — maximum is {MAX_GOAL_CHARS}",
         )
-    # Check user limit before calling llm, but because we do not know token usage of the llm call, 
-    # user will have n+1 tries (will exceed usage by one request, next time request is denied)
+    # Check user limit before calling llm
+    # Add MAX_TOKENS (max output) so as an assumption of tokens used during request so that user cannot generate i+1 roadmaps
     with _user_locks[user_id]:
+        _user_token_usage[user_id] += MAX_TOKENS
         check_user_limit(user_id)
 
     t0 = time.time()
@@ -398,6 +399,7 @@ async def recommend(req: RoadmapRequest, user_id: str = "anonymous") -> RoadmapR
     t_llm = time.time()
     try:
         raw = await chain.ainvoke({"goal": req.goal, "courses": courses_str})
+        usage = getattr(_thread_local, "usage", {})
         llm_ms = round((time.time() - t_llm) * 1000)
         _log("INFO", f"LLM responded in {llm_ms}ms", goal=req.goal, llm_ms=llm_ms)
     except Exception as e:
@@ -409,8 +411,9 @@ async def recommend(req: RoadmapRequest, user_id: str = "anonymous") -> RoadmapR
 
     result = parse_llm_response(raw)
 
-    total_tokens = getattr(_thread_local, "usage", {}).get("total_tokens", 0)
+    total_tokens = usage.get("total_tokens", 0)
     with _user_locks[user_id]:
+        _user_token_usage[user_id] -= MAX_TOKENS
         _user_token_usage[user_id] += total_tokens
     _log("INFO", f"User {user_id} used {total_tokens} tokens " f"({_user_token_usage[user_id]}/{MAX_TOKENS_PER_USER})"
 )
