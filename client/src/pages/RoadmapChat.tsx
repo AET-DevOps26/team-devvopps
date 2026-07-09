@@ -38,7 +38,7 @@ export default function RoadmapChat() {
 
       if (res.status === 429) {
         const data = await res.json();
-        setError(data.message || "Token quota exceeded.");
+        setError(data.detail || "Token quota exceeded.");
         return;
       }
 
