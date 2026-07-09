@@ -4,7 +4,10 @@ import json
 import time
 import requests
 import uvicorn
+import threading
+
 from collections import deque
+from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, List, Optional
 from contextlib import asynccontextmanager
@@ -27,6 +30,7 @@ from langchain_core.callbacks.manager import CallbackManagerForLLMRun
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
+
 
 # ---------------------------------------------------------------------------
 # LLM provider selection
@@ -133,6 +137,28 @@ def filter_courses(goal: str, k: int = TOP_K) -> str:
 
     return "\n".join(lines) if lines else "- No matching courses found"
 
+# ---------------------------------------------------------------------------
+# Per-user token usage tracking
+# ---------------------------------------------------------------------------
+
+# The limit is based on actual LLM-reported token usage (prompt + completion).
+# With a 50000 token limit and an average usage of ~1000 tokens per request 
+# (smaller input), users can generate approximately 50 roadmaps. The exact number 
+# depends on the length of the input and the generated roadmap response.
+MAX_TOKENS_PER_USER = 50000  # max cumulative tokens per user
+
+_user_token_usage: dict = defaultdict(int)  # userId -> total tokens used
+_user_locks: dict = defaultdict(threading.Lock)
+_thread_local = threading.local()
+
+def check_user_limit(user_id: str) -> None:
+    """Raises HTTPException if user has exceeded their token limit."""
+    current = _user_token_usage[user_id]
+    if current >= MAX_TOKENS_PER_USER:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Token limit exceeded. You have used {current}/{MAX_TOKENS_PER_USER} tokens."
+        )
 
 # ---------------------------------------------------------------------------
 # App lifecycle
@@ -192,6 +218,7 @@ class OpenAICompatibleLLM(LLM):
     api_url: str = API_URL
     api_key: Optional[str] = LLM_API_KEY
     model_name: str = MODEL_NAME
+    last_usage: dict = Field(default_factory=dict)
 
     @property
     def _llm_type(self) -> str:
@@ -207,6 +234,7 @@ class OpenAICompatibleLLM(LLM):
         headers = {
             "Content-Type": "application/json",
         }
+
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
@@ -233,6 +261,16 @@ class OpenAICompatibleLLM(LLM):
             response.raise_for_status()
 
             result = response.json()
+
+            # ── Token usage tracking ───────────────────────────────────
+            usage = result.get("usage", {})
+            if usage:
+                _log("INFO", "Token usage",
+                     prompt_tokens=usage.get("prompt_tokens"),
+                     completion_tokens=usage.get("completion_tokens"),
+                     total_tokens=usage.get("total_tokens"),
+                )
+                _thread_local.usage = usage
 
             # Extract the response content
             if "choices" in result and len(result["choices"]) > 0:
@@ -281,11 +319,12 @@ Required JSON format:
 
 JSON response:
 """
+llm = OpenAICompatibleLLM()
 
 chain = PromptTemplate(
     input_variables=["goal", "courses"],
     template=_PROMPT,
-) | OpenAICompatibleLLM()
+) | llm
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -323,7 +362,7 @@ async def health_check():
 
 
 @app.post("/recommend", response_model=RoadmapResponse)
-async def recommend(req: RoadmapRequest) -> RoadmapResponse:
+async def recommend(req: RoadmapRequest, user_id: str = "anonymous") -> RoadmapResponse:
     if not req.goal.strip():
         raise HTTPException(status_code=422, detail="goal cannot be empty")
 
@@ -332,6 +371,10 @@ async def recommend(req: RoadmapRequest) -> RoadmapResponse:
             status_code=422,
             detail=f"goal is too long ({len(req.goal)} chars) — maximum is {MAX_GOAL_CHARS}",
         )
+    # Check user limit before calling llm, but because we do not know token usage of the llm call, 
+    # user will have n+1 tries (will exceed usage by one request, next time request is denied)
+    with _user_locks[user_id]:
+        check_user_limit(user_id)
 
     t0 = time.time()
     _log("INFO", "Roadmap request received", goal=req.goal, model=MODEL_NAME)
@@ -350,8 +393,8 @@ async def recommend(req: RoadmapRequest) -> RoadmapResponse:
     courses_str = filter_courses(req.goal)
     course_count = len([l for l in courses_str.splitlines() if l.strip().startswith("-")])
     _log("INFO", f"TF-IDF filtered {course_count} relevant courses", goal=req.goal)
-
     _log("INFO", f"Calling LLM ({MODEL_NAME})...", goal=req.goal)
+
     t_llm = time.time()
     try:
         raw = await chain.ainvoke({"goal": req.goal, "courses": courses_str})
@@ -365,8 +408,16 @@ async def recommend(req: RoadmapRequest) -> RoadmapResponse:
         raise HTTPException(status_code=503, detail=str(e)) from e
 
     result = parse_llm_response(raw)
+
+    total_tokens = getattr(_thread_local, "usage", {}).get("total_tokens", 0)
+    with _user_locks[user_id]:
+        _user_token_usage[user_id] += total_tokens
+    _log("INFO", f"User {user_id} used {total_tokens} tokens " f"({_user_token_usage[user_id]}/{MAX_TOKENS_PER_USER})"
+)
+
     total_ms = round((time.time() - t0) * 1000)
     _log("INFO", f"Request done in {total_ms}ms — {len(result.milestones)} milestones", goal=req.goal, total_ms=total_ms)
+
     return result
 
 

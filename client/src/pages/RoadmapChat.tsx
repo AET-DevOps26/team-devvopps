@@ -40,6 +40,12 @@ export default function RoadmapChat() {
         method: "POST",
       });
 
+      if (res.status === 429) {
+        const data = await res.json();
+        setError(data.detail || "Token quota exceeded.");
+        return;
+      }
+
       if (!res.ok) throw new Error(`Error ${res.status}: ${res.statusText}`);
       const data: RoadmapResponse = await res.json();
       setRoadmap(data);
