@@ -55,6 +55,7 @@ export default function RoadmapChat() {
 
   async function handleToggleTask(taskId: number) {
     if (!roadmap) return;
+    if (togglingTaskId !== null) return;
     setTogglingTaskId(taskId);
 
     // Optimistic update
@@ -201,7 +202,11 @@ export default function RoadmapChat() {
                       <p style={styles.milestoneDesc}>{milestone.description}</p>
                     </div>
                   </div>
-                  <ul style={styles.taskList}>
+                  <ul style={{
+                        ...styles.taskList,
+                        pointerEvents: togglingTaskId !== null ? "none" : "auto",
+                        opacity: togglingTaskId !== null ? 0.6 : 1,
+                      }}>
                     {[...milestone.tasks]
                       .sort((a, b) => a.order_index - b.order_index)
                       .map((task) => (
