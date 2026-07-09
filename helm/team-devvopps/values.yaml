@@ -172,11 +172,17 @@ loki:
 
 # Promtail Configuration (log shipper, runs as DaemonSet on every node --
 # requests/limits below apply PER NODE, so the AET Fair Use budget cost is
-# this value times the AET node count, e.g. ~30 nodes observed on AET).
+# this value times the AET node count (28 nodes observed on AET). The AET
+# ResourceQuota (default-85gsk) hard-caps limits.cpu at 4 and limits.memory
+# at 6Gi for the WHOLE namespace -- a 200m promtail limit x 28 nodes alone
+# blew past the 4-core cap (7850m total, quota rejected pod creation with
+# "exceeded quota" and stalled the DaemonSet rollout at 27/28 nodes).
 # Request lowered toward AET-measured actual usage (~3.5m cpu, ~20Mi mem
-# average per pod); limit raised so tailing+pushing bursts aren't throttled
-# (old 10m limit throttled 94.6% of periods, causing failed pushes to Loki
-# and empty log dashboards).
+# average per pod); limit raised modestly (not aggressively, due to the x28
+# multiplier) so tailing+pushing bursts aren't throttled as badly as the old
+# 10m limit (94.6% throttled periods, causing failed pushes to Loki and
+# empty log dashboards) while keeping total namespace limits.cpu/memory
+# well under the quota.
 promtail:
   image: grafana/promtail:3.0.0
   # Log line format of the container runtime:
@@ -188,6 +194,6 @@ promtail:
       cpu: 10m
       memory: 32Mi
     limits:
-      cpu: 200m
+      cpu: 20m
       memory: 64Mi
 
