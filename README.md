@@ -20,7 +20,7 @@ The application uses a microservice-based client-server architecture.
 ### Components
 The backend consists of **3 independent Spring Boot microservices and 1 Python service** behind an API Gateway:
 
-**api-gateway** (port 8080): Routes all incoming requests to the appropriate service
+- **api-gateway** (port 8080): Routes all incoming requests to the appropriate service
 - **user-service** (port 8081): User management
 - **course-service** (port 8082): Mock TUM course database (source of truth for university courses)
 - **roadmap-service** (port 8083): Personalized learning roadmap generation and tracking
@@ -245,14 +245,24 @@ make k8s-deploy-old   # Build images and deploy using infra/k8s/ manifests
 
 ## API Documentation
 
+### OpenAPI
 OpenAPI specifications are maintained in `api/`:
 
 - `api/user-service.yaml`
 - `api/course-service.yaml`
 - `api/roadmap-service.yaml`
-- `api/genai-service.yaml`
+- `api/llm-service.yaml`
 
-Swagger UI is available at `/swagger-ui.html` on each service:
+OpenAPI linting runs in CI with Redocly:
+
+```bash
+redocly lint api/user-service.yaml
+redocly lint api/course-service.yaml
+redocly lint api/roadmap-service.yaml
+redocly lint api/llm-service.yaml
+```
+### Swagger UI
+Swagger UI is available, for local development, at `/swagger-ui.html` on each service:
 
 | Service | Local URL |
 |---|---|
@@ -261,6 +271,7 @@ Swagger UI is available at `/swagger-ui.html` on each service:
 | Roadmap Service | http://localhost:8083/swagger-ui.html |
 | LLM Service | http://localhost:8084/swagger-ui.html |
 
+### API Gateway
 The API Gateway exposes the current implemented service routes:
 
 | Gateway Route | Target Service | Notes |
@@ -269,6 +280,17 @@ The API Gateway exposes the current implemented service routes:
 | `/courses/**` | `course-service` | List courses, fetch course by ID, search by title |
 | `/roadmaps/**` | `roadmap-service` | Generate and retrieve roadmaps |
 
+### Service Discovery
+Inter-service communication uses DNS-based service discovery, i.e., no hardcoded IPs or ports.
+
+- Docker Compose: Docker's internal DNS resolves service names. Hostnames are set via environment variables (`USER_SERVICE_HOST`, `LLM_SERVICE_HOST` etc.) in `infra/docker-compose.yml`. Ports are externalised via `USER_SERVICE_PORT`, `LLM_SERVICE_PORT` etc. and centralised in `infra/docker-compose.yml`.
+- Kubernetes: Cluster-internal DNS resolves service names within the namespace. All ports are centralised in `helm/team-devvopps/values.yaml` under `services.*` and injected into each pod as environment variables via Helm templates (e.g., `http://course-service:{{ .Values.services.courseService.port }}`).
+
+All service URLs are externalized as environment variables and centralized in:
+- `infra/docker-compose.yml` for local Docker development
+- `helm/team-devvopps/values.yaml` for Kubernetes deployments
+
+### Endpoints
 Current implemented endpoints include:
 
 - `POST /users`
@@ -280,15 +302,6 @@ Current implemented endpoints include:
 - `POST /roadmaps/generate?userId=<id>&goal=<goal>`
 - `GET /roadmaps/{id}`
 
-OpenAPI linting runs in CI with Redocly:
-
-```bash
-redocly lint api/user-service.yaml
-redocly lint api/course-service.yaml
-redocly lint api/roadmap-service.yaml
-redocly lint api/genai-service.yaml
-```
-
 ## CI/CD
 
 GitHub Actions workflows are defined in `.github/workflows/`.
@@ -296,9 +309,10 @@ GitHub Actions workflows are defined in `.github/workflows/`.
 | Workflow | Trigger | Purpose |
 |---|---|---|
 | `lint.yml` | Pull requests to `main`, pushes to non-`main` branches | Runs frontend ESLint, Java checks, actionlint, Helm lint, and OpenAPI lint |
-| `build_and_deploy_docker_VM.yml` | Push to `main` | Builds Docker images, pushes them to GHCR, and deploys to the Azure VM with Docker Compose |
+| `build.yml` | Push to `main` | Builds Docker images for all services and pushes them to GHRC |
+| `deploy-vm.yml` | Automatically after `build.yml` completes successfully on `main` (via `workflow_run`) | Temporarily opens SSH access for the runner's IP, deploys the latest images to the Azure VM with Docker Compose, then closes SSH access again |
 | `deploy-k8s.yml` | Push to `main`, manual dispatch | Deploys the Helm chart to the AET Kubernetes cluster |
-| `provision.yml` | Manual dispatch | Provisions or imports Azure resources with Terraform, configures the VM with Ansible, and updates the Azure public IP GitHub variable |
+| `provision.yml` | Manual dispatch | Provisions or imports Azure resources with Terraform, temporarily opens SSH for the runner's IP, configures the VM with Ansible, and updates the Azure public IP GitHub variable, then closes SSH access again |
 
 Required GitHub configuration:
 
@@ -309,7 +323,7 @@ For Azure VM:
 | `AZURE_PUBLIC_IP` | variable | Public IP of Azure VM |
 | `AZURE_USER` | variable | SSH username (`azureuser`) |
 | `AZURE_PRIVATE_KEY` | secret | SSH private key |
-| `ARM_CLIENT_ID` | secret | Azure service principal client ID |
+| `ARM_CLIENT_ID` | secret | Azure service principal client ID *(has Network Contributor role on the NSG to manage the temporary CI SSH rule)* |
 | `ARM_CLIENT_SECRET` | secret | Azure service principal client secret |
 | `ARM_SUBSCRIPTION_ID` | secret | Azure subscription ID |
 | `ARM_TENANT_ID` | secret | Azure tenant ID |
@@ -339,8 +353,8 @@ The application is automatically built and deployed to an Azure VM on every merg
    - Terraform creates VM + Ansible configures Docker
 
 2. **Deployment (automatic on merge to main):**
-   - Build job: Creates 5 Docker images → pushes to ghcr.io
-   - Deploy job: Copies docker-compose to VM → starts services with Traefik for HTTPS
+   - `build.yml`: Creates 5 Docker images → pushes to ghcr.io
+   - `deploy-vm.yml`: Temporarily allows the runner's IP through the VM's NSG → Copies docker-compose to VM → starts services with Traefik for HTTPS
 
 **Stack on VM:**
 - Traefik (reverse proxy + Let's Encrypt HTTPS)
@@ -352,6 +366,13 @@ The application is automatically built and deployed to an Azure VM on every merg
 - Terraform State Backend: Shared storage for team state
 - SSH Key Pair: For accessing VM
 - All configured in GitHub Secrets
+
+**Network Security:**
+- SSH (port 22) on the Azure VM's Network Security Group is restricted to the MWN (Münchner Wissenschaftsnetz) range `129.187.0.0/16`, which covers TUM, LMU, BADW, and LRZ.
+- To SSH into the VM, connect to TUM's eduVPN first.
+- The allowed range is set via the `allowed_ssh_eduVPN` Terraform variable in `terraform/` and defaults to `129.187.0.0/16`. Update it there (and re-run `terraform apply` or the `provision.yml` workflow) if the MWN allocation changes.
+- HTTP (80) and HTTPS (443) remain open to all sources, since the application's frontend/API are intended to be publicly available. Only SSH is access-restricted.
+- **CI/CD SSH access**: Since the GitHub Actions runners don't have IPs within the MWN range, both `provision.yml` (which runs the Ansible playbook to configure the VM) and `deploy-vm.yml` (which deploys updated images) add a `/32` NSG rule for the runner's own public IP just before connecting over SSH, then delete that rule immediately afterward (even on failure, via `if: always()`). This keeps the NSG closed to the public internet while still allowing automated provisioning and deploys.
 
 See [README.md section on Azure](README.md#azure-vm-stagingdemo) for detailed setup.
 
