@@ -4,6 +4,8 @@ import json
 import time
 import requests
 import uvicorn
+import threading
+
 from collections import deque
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -135,6 +137,7 @@ def filter_courses(goal: str, k: int = TOP_K) -> str:
 MAX_TOKENS_PER_USER = 50000  # max cumulative tokens per user
 
 _user_token_usage: dict = defaultdict(int)  # userId -> total tokens used
+_thread_local = threading.local()
 
 def check_user_limit(user_id: str) -> None:
     """Raises HTTPException if user has exceeded their token limit."""
@@ -203,7 +206,6 @@ class OpenAICompatibleLLM(LLM):
     api_url: str = API_URL
     api_key: Optional[str] = LLM_API_KEY
     model_name: str = MODEL_NAME
-    last_usage: dict = {}
 
     @property
     def _llm_type(self) -> str:
@@ -245,6 +247,7 @@ class OpenAICompatibleLLM(LLM):
             result = response.json()
 
             # ── Token usage tracking ───────────────────────────────────
+            _thread_local.usage = {}
             usage = result.get("usage", {})
             if usage:
                 _log("INFO", "Token usage",
@@ -252,7 +255,7 @@ class OpenAICompatibleLLM(LLM):
                      completion_tokens=usage.get("completion_tokens"),
                      total_tokens=usage.get("total_tokens"),
                 )
-                self.last_usage = usage
+                _thread_local.usage = usage
 
             # Extract the response content
             if "choices" in result and len(result["choices"]) > 0:
@@ -384,7 +387,7 @@ async def recommend(req: RoadmapRequest, user_id: str = "anonymous") -> RoadmapR
 
     result = parse_llm_response(raw)
 
-    total_tokens = llm.last_usage.get("total_tokens", 0)
+    total_tokens = getattr(_thread_local, "usage", {}).get("total_tokens", 0)
     _user_token_usage[user_id] += total_tokens
     _log("INFO", f"User {user_id} used {total_tokens} tokens " f"({_user_token_usage[user_id]}/{MAX_TOKENS_PER_USER})"
 )
