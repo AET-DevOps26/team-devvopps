@@ -44,16 +44,19 @@ import numpy as np
 LOGOS_API_KEY = os.getenv("LOGOS_API_KEY")
 GROQ_API_KEY  = os.getenv("GROQ_API_KEY")
 
-if GROQ_API_KEY:
-    # Groq profile: free tier, llama-3.3-70b-versatile.
-    API_URL = "https://api.groq.com/openai/v1/chat/completions"
-    MODEL_NAME = "llama-3.3-70b-versatile"
-    LLM_API_KEY = GROQ_API_KEY
-elif LOGOS_API_KEY:
+if LOGOS_API_KEY:
     # Logos profile: TUM-hosted gpt-oss-120b. Off-campus needs eduVPN.
+    # Checked FIRST so Logos wins whenever its key is present, even if a
+    # Groq key is also configured.
     API_URL = "https://logos.aet.cit.tum.de/v1/chat/completions"
     MODEL_NAME = "openai/gpt-oss-120b"
     LLM_API_KEY = LOGOS_API_KEY
+elif GROQ_API_KEY:
+    # Groq profile: free tier, llama-3.3-70b-versatile. Fallback only —
+    # used when no LOGOS_API_KEY is set (e.g. local development).
+    API_URL = "https://api.groq.com/openai/v1/chat/completions"
+    MODEL_NAME = "llama-3.3-70b-versatile"
+    LLM_API_KEY = GROQ_API_KEY
 else:
     # LM Studio profile: local model on host. Defaults match compose.yml
     # so both `docker compose up` and `python main.py` work.
@@ -67,6 +70,14 @@ COURSE_SERVICE_URL = os.getenv("COURSE_SERVICE_URL", "http://course-service:8082
 
 # Number of courses passed to the LLM after TF-IDF filtering.
 TOP_K = int(os.getenv("TOP_K", "30"))
+
+# Hard cap on LLM output length. Generation time scales with output tokens,
+# so this bounds both latency and cost. The prompt asks for a compact
+# roadmap (max 5 milestones) so valid JSON fits comfortably under the cap.
+MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "1500"))
+
+# Max characters accepted for the goal (mirrored by maxLength in the UI).
+MAX_GOAL_CHARS = int(os.getenv("MAX_GOAL_CHARS", "200"))
 
 # ---------------------------------------------------------------------------
 # TF-IDF index: built once at startup, held in memory.
@@ -235,6 +246,7 @@ class OpenAICompatibleLLM(LLM):
         payload = {
             "model": self.model_name,
             "messages": messages,
+            "max_tokens": MAX_TOKENS,
         }
 
         try:
@@ -242,7 +254,9 @@ class OpenAICompatibleLLM(LLM):
                 self.api_url,
                 headers=headers,
                 json=payload,
-                timeout=120
+                # gpt-oss-120b on Logos routinely takes 130-160s per roadmap;
+                # keep well above that so slow responses aren't cut off.
+                timeout=300
             )
             response.raise_for_status()
 
@@ -283,7 +297,8 @@ Instructions:
 2. Break the journey into clear milestones (e.g. "Complete foundational mathematics"). Also include external milestones that are not courses.
 3. For each milestone, define concrete tasks the student should do. For course tasks, include the course code in brackets (e.g. "Enroll in [IN2064] Machine Learning").
 4. Each milestone MUST contain at least 2–4 tasks. Tasks MUST belong to their milestone (nested structure)
-5. Respond with ONLY valid JSON.
+5. Create at most 5 milestones. Keep titles and descriptions short (one sentence) — the response must stay compact.
+6. Respond with ONLY valid JSON.
 
 Required JSON format:
 
@@ -351,6 +366,11 @@ async def recommend(req: RoadmapRequest, user_id: str = "anonymous") -> RoadmapR
     if not req.goal.strip():
         raise HTTPException(status_code=422, detail="goal cannot be empty")
 
+    if len(req.goal) > MAX_GOAL_CHARS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"goal is too long ({len(req.goal)} chars) — maximum is {MAX_GOAL_CHARS}",
+        )
     # Check user limit before calling llm, but because we do not know token usage of the llm call, 
     # user will have n+1 tries (will exceed usage by one request, next time request is denied)
     with _user_locks[user_id]:
