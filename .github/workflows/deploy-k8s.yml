@@ -126,9 +126,9 @@ jobs:
             exit 1
           fi
 
-          if [ -z "$GROQ_API_KEY" ]; then
-            echo "ERROR: GROQ_API_KEY secret not configured"
-            echo "Refusing to deploy llm-service without a Groq API key"
+          if [ -z "$GROQ_API_KEY" ] && [ -z "$LOGOS_API_KEY" ]; then
+            echo "ERROR: neither GROQ_API_KEY nor LOGOS_API_KEY secret is configured"
+            echo "Refusing to deploy llm-service without an LLM provider key (llm-service falls back Groq -> Logos)"
             exit 1
           fi
 
