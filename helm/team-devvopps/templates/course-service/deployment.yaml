@@ -26,11 +26,11 @@ spec:
             - containerPort: {{ .Values.services.courseService.port }}
           resources:
             requests:
-              cpu: 50m
-              memory: 256Mi
+              cpu: {{ .Values.services.courseService.resources.requests.cpu }}
+              memory: {{ .Values.services.courseService.resources.requests.memory }}
             limits:
-              cpu: 200m
-              memory: 350Mi
+              cpu: {{ .Values.services.courseService.resources.limits.cpu }}
+              memory: {{ .Values.services.courseService.resources.limits.memory }}
           env:
             - name: DB_HOST
               value: postgres-0.postgres

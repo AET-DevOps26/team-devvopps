@@ -25,11 +25,11 @@ spec:
             - containerPort: {{ .Values.services.client.port }}
           resources:
             requests:
-              cpu: 25m
-              memory: 64Mi
+              cpu: {{ .Values.services.client.resources.requests.cpu }}
+              memory: {{ .Values.services.client.resources.requests.memory }}
             limits:
-              cpu: 50m
-              memory: 128Mi
+              cpu: {{ .Values.services.client.resources.limits.cpu }}
+              memory: {{ .Values.services.client.resources.limits.memory }}
           volumeMounts:
             - name: cache
               mountPath: /var/cache/nginx

@@ -25,11 +25,11 @@ spec:
             - containerPort: {{ .Values.services.apiGateway.port }}
           resources:
             requests:
-              cpu: 50m
-              memory: 128Mi
+              cpu: {{ .Values.services.apiGateway.resources.requests.cpu }}
+              memory: {{ .Values.services.apiGateway.resources.requests.memory }}
             limits:
-              cpu: 100m
-              memory: 256Mi
+              cpu: {{ .Values.services.apiGateway.resources.limits.cpu }}
+              memory: {{ .Values.services.apiGateway.resources.limits.memory }}
           env:
             - name: USER_SERVICE_HOST
               value: user-service
