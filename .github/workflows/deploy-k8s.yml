@@ -68,6 +68,8 @@ jobs:
           # Replication credentials: ensure they're set in GitHub Secrets for production
           POSTGRES_REPLICATION_USER: ${{ secrets.POSTGRES_REPLICATION_USER || 'replication' }}
           POSTGRES_REPLICATION_PASSWORD: ${{ secrets.POSTGRES_REPLICATION_PASSWORD || 'replication' }}
+          # Fallback values are safe here: lint only renders templates,
+          # nothing is deployed. The deploy step below fails fast instead.
           GRAFANA_ADMIN_USER: ${{ secrets.GRAFANA_ADMIN_USER || 'admin' }}
           GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD || 'admin' }}
         run: |
@@ -99,15 +101,37 @@ jobs:
       - name: Deploy with Helm
         env:
           POSTGRES_USER: ${{ secrets.POSTGRES_USER || 'postgres' }}
-          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD || 'postgres' }}
+          # No fallback for passwords: deploying with well-known defaults on
+          # the shared cluster would be a security risk (fail-fast check below).
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           # Replication credentials passed via --set (used for pg_basebackup on replica pods)
           POSTGRES_REPLICATION_USER: ${{ secrets.POSTGRES_REPLICATION_USER || 'replication' }}
-          POSTGRES_REPLICATION_PASSWORD: ${{ secrets.POSTGRES_REPLICATION_PASSWORD || 'replication' }}
+          POSTGRES_REPLICATION_PASSWORD: ${{ secrets.POSTGRES_REPLICATION_PASSWORD }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           LOGOS_API_KEY: ${{ secrets.LOGOS_API_KEY }}
-          GRAFANA_ADMIN_USER: ${{ secrets.GRAFANA_ADMIN_USER || 'admin' }}
-          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD || 'admin' }}
+          # No fallback: Grafana is exposed via ingress, deploying with
+          # admin/admin on the shared cluster would be a security risk.
+          GRAFANA_ADMIN_USER: ${{ secrets.GRAFANA_ADMIN_USER }}
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
         run: |
+          if [ -z "$GRAFANA_ADMIN_USER" ] || [ -z "$GRAFANA_ADMIN_PASSWORD" ]; then
+            echo "ERROR: GRAFANA_ADMIN_USER or GRAFANA_ADMIN_PASSWORD secret not configured"
+            echo "Refusing to deploy Grafana with default admin/admin credentials"
+            exit 1
+          fi
+
+          if [ -z "$POSTGRES_PASSWORD" ] || [ -z "$POSTGRES_REPLICATION_PASSWORD" ]; then
+            echo "ERROR: POSTGRES_PASSWORD or POSTGRES_REPLICATION_PASSWORD secret not configured"
+            echo "Refusing to deploy postgres with well-known default credentials"
+            exit 1
+          fi
+
+          if [ -z "$GROQ_API_KEY" ]; then
+            echo "ERROR: GROQ_API_KEY secret not configured"
+            echo "Refusing to deploy llm-service without a Groq API key"
+            exit 1
+          fi
+
           helm upgrade --install "$HELM_RELEASE_NAME" helm/team-devvopps/ \
             -f helm/team-devvopps/values-aet.yaml \
             --set postgres.credentials.username="$POSTGRES_USER" \

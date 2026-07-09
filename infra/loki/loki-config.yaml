@@ -46,7 +46,10 @@ storage_config:
 limits_config:
   reject_old_samples: true  # Reject logs older than 7 days
   reject_old_samples_max_age: 168h
+  retention_period: 168h
 
 compactor:
   working_directory: /loki/boltdb-shipper-compactor
   shared_store: filesystem  # Optimize index files in background
+  # Actually delete chunks older than retention_period (reject_old_samples alone only blocks ingestion)
+  retention_enabled: true

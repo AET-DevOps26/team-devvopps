@@ -44,6 +44,8 @@ Metrics are collected every 15 seconds. Alert rules are evaluated every 15 secon
 - **Grafana:** http://localhost:3001 (login: `admin` / `admin`)
 - **Prometheus:** http://localhost:9090
 
+> **Note:** The default `admin`/`admin` credentials are intentional and fine for local Docker — Grafana is only reachable from your machine. On the AET cluster, Grafana is publicly exposed via ingress, so the deploy workflow requires the `GRAFANA_ADMIN_USER`/`GRAFANA_ADMIN_PASSWORD` GitHub Secrets and fails fast if they are missing.
+
 <br>
 
 ## Kubernetes AET Deployment
@@ -79,7 +81,7 @@ kubectl port-forward -n team-devvopps svc/loki 3100:3100
 ```
 
 Then access:
-- **Grafana:** http://localhost:3001 (login: `admin` / `admin123`)
+- **Grafana:** http://localhost:3001 (login: credentials from the `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` GitHub Secrets)
 - **Prometheus:** http://localhost:9090
 
 <br>
