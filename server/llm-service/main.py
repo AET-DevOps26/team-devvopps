@@ -360,6 +360,18 @@ async def health_check():
     return {"status": "healthy", "service": "LLM Roadmap Generation Service", "model": MODEL_NAME}
 
 
+@app.get("/usage/{user_id}")
+async def get_usage(user_id: str):
+    """Returns the user's cumulative token usage and remaining quota."""
+    used = _user_token_usage[user_id]
+    return {
+        "user_id": user_id,
+        "used": used,
+        "limit": MAX_TOKENS_PER_USER,
+        "remaining": max(0, MAX_TOKENS_PER_USER - used),
+    }
+
+
 @app.post("/recommend", response_model=RoadmapResponse)
 async def recommend(req: RoadmapRequest, user_id: str = "anonymous") -> RoadmapResponse:
     if not req.goal.strip():

@@ -1,6 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const API_URL = "/api";
+// nginx proxies /llm/ straight to llm-service (see client/nginx.conf).
+const LLM_URL = "/llm";
+// roadmaps/generate defaults to userId=1 server-side, so token usage is keyed
+// by the same id. Kept as a constant so it's easy to wire to real auth later.
+const USER_ID = 1;
 
 // Mirrors MAX_GOAL_CHARS in llm-service — requests longer than this are
 // rejected server-side with 422, so block them in the input directly.
@@ -26,12 +31,36 @@ interface RoadmapResponse {
   milestones: Milestone[];
 }
 
+interface TokenUsage {
+  used: number;
+  limit: number;
+  remaining: number;
+}
+
 export default function RoadmapChat() {
   const [goal, setGoal] = useState("");
   const [roadmap, setRoadmap] = useState<RoadmapResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [togglingTaskId, setTogglingTaskId] = useState<number | null>(null);
+  const [usage, setUsage] = useState<TokenUsage | null>(null);
+
+  // Token usage is best-effort: fetch on mount and refresh after each
+  // generation so the remaining balance stays in sync. Failures are ignored
+  // silently — the badge just won't render.
+  async function fetchUsage() {
+    try {
+      const res = await fetch(`${LLM_URL}/usage/${USER_ID}`);
+      if (!res.ok) return;
+      setUsage(await res.json());
+    } catch {
+      // ignore — usage display is non-critical
+    }
+  }
+
+  useEffect(() => {
+    fetchUsage();
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -49,6 +78,7 @@ export default function RoadmapChat() {
       if (res.status === 429) {
         const data = await res.json();
         setError(data.detail || "Token quota exceeded.");
+        fetchUsage();
         return;
       }
 
@@ -67,6 +97,7 @@ export default function RoadmapChat() {
       if (!res.ok) throw new Error(`Error ${res.status}: ${res.statusText}`);
       const data: RoadmapResponse = await res.json();
       setRoadmap(data);
+      fetchUsage();
 
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
@@ -136,12 +167,38 @@ export default function RoadmapChat() {
     (a, b) => a.milestone_id - b.milestone_id
   );
 
+  // Token badge: color shifts green → orange → red as the balance runs low.
+  const tokenRatio = usage && usage.limit > 0 ? usage.remaining / usage.limit : 1;
+  const tokenColor = tokenRatio > 0.5 ? "#2e7d32" : tokenRatio > 0.2 ? "#e08600" : "#c62828";
+
+  // Character counter: warn as the goal approaches the server-enforced max.
+  const charRatio = goal.length / MAX_GOAL_LENGTH;
+  const charColor = charRatio >= 1 ? "#c62828" : charRatio >= 0.8 ? "#e08600" : "#888";
+
   return (
     <div style={styles.container}>
       <div style={styles.header}>
         <h1 style={styles.title}>TUMgoal</h1>
         <p style={styles.subtitle}>Tell us your learning goal — we'll build your roadmap.</p>
       </div>
+
+      {usage && (
+        <div style={styles.tokenBar}>
+          <div style={styles.tokenRow}>
+            <span style={styles.tokenLabel}>🎫 Remaining tokens</span>
+            <span style={{ ...styles.tokenValue, color: tokenColor }}>
+              {usage.remaining.toLocaleString()} / {usage.limit.toLocaleString()}
+            </span>
+          </div>
+          <div style={styles.tokenTrack}>
+            <div style={{
+              ...styles.tokenFill,
+              width: `${Math.max(0, Math.min(100, tokenRatio * 100))}%`,
+              background: tokenColor,
+            }} />
+          </div>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} style={styles.form}>
         <input
@@ -157,17 +214,12 @@ export default function RoadmapChat() {
           {loading ? "Generating..." : "Generate Roadmap"}
         </button>
       </form>
-      {goal.length >= MAX_GOAL_LENGTH * 0.8 && (
-        <p style={styles.charHint}>
-          {goal.length}/{MAX_GOAL_LENGTH} characters
-        </p>
-      )}
-
-      {error && (
-        <div style={styles.error}>
-          ⚠️ {error}
-        </div>
-      )}
+      <div style={styles.charHintRow}>
+        <span style={{ color: charColor, fontWeight: charRatio >= 0.8 ? 600 : 400 }}>
+          {goal.length} / {MAX_GOAL_LENGTH} characters
+        </span>
+        {charRatio >= 1 && <span style={{ color: "#c62828" }}>Maximum length reached</span>}
+      </div>
 
       {error && <div style={styles.error}>⚠️ {error}</div>}
 
@@ -335,10 +387,45 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     whiteSpace: "nowrap",
   },
-  charHint: {
-    color: "#888",
+  charHintRow: {
+    display: "flex",
+    justifyContent: "space-between",
     fontSize: 13,
     margin: "-24px 0 24px 4px",
+  },
+  tokenBar: {
+    background: "#f7f9fc",
+    border: "1px solid #e0e6ef",
+    borderRadius: 10,
+    padding: "12px 16px",
+    marginBottom: 24,
+  },
+  tokenRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  tokenLabel: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: "#555",
+  },
+  tokenValue: {
+    fontSize: 14,
+    fontWeight: 700,
+    fontVariantNumeric: "tabular-nums",
+  },
+  tokenTrack: {
+    background: "#e5e5e5",
+    borderRadius: 6,
+    height: 8,
+    overflow: "hidden",
+  },
+  tokenFill: {
+    height: "100%",
+    borderRadius: 6,
+    transition: "width 0.4s ease, background 0.4s ease",
   },
   error: {
     background: "#fff3f3",
