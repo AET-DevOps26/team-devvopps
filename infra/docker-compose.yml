@@ -1,6 +1,8 @@
 services:
 
   # ── Database ──────────────────────────────────────────────────────────────
+  # PostgreSQL database server initializes three schemas via init-databases.sql. Data persists in postgres_data volume.
+  # PostgreSQL database server initializes three schemas via init-databases.sql. Data persists in postgres_data volume.
   postgres:
     image: postgres:16
     environment:
@@ -15,7 +17,48 @@ services:
       timeout: 5s
       retries: 10
 
+  # ── Course Data Seeder ────────────────────────────────────────────────────
+  # One-time job that populates the coursedb with initial course data.
+  # Runs immediately after postgres is healthy. Exits after seeding completes.
+  course-seeder:
+    build:
+      context: ../server/course-service
+      dockerfile: Dockerfile.seeder
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: coursedb
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+
+  # ── Wait for Courses ───────────────────────────────────────────────────────
+  # Polling service that blocks until coursedb has at least one course.
+  # Needed because other services may depend on courses being seeded before
+  # they initialize (e.g., llm-service reads courses during startup).
+  # Polls every 5s, times out after 360s (6 minutes).
+  wait-for-courses:
+    image: postgres:16
+    environment:
+      PGPASSWORD: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+      course-seeder:
+        condition: service_started
+    entrypoint: sh -c "while ! psql -h postgres -U postgres -d coursedb -c 'SELECT COUNT(*) FROM courses WHERE course_id > 0' 2>/dev/null | grep -q '[1-9]'; do sleep 5; done; echo 'Courses ready'; sleep infinity"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "psql -h postgres -U postgres -d coursedb -c 'SELECT COUNT(*) FROM courses WHERE course_id > 0' 2>/dev/null | grep -q '[1-9]'"]
+      interval: 5s
+      timeout: 5s
+      retries: 1
+      start_period: 360s
+
   # ── Spring Boot Services ──────────────────────────────────────────────────
+
   user-service:
     build:
       context: ../server
@@ -42,6 +85,7 @@ services:
       postgres:
         condition: service_healthy
 
+  # Roadmap service: generates learning roadmaps using the LLM.
   roadmap-service:
     build:
       context: ../server
@@ -52,7 +96,9 @@ services:
       DB_USER: postgres
       DB_PASSWORD: postgres
       USER_SERVICE_HOST: user-service
+      USER_SERVICE_PORT: "8081"        
       LLM_SERVICE_HOST: llm-service
+      LLM_SERVICE_PORT: "8084"
     depends_on:
       postgres:
         condition: service_healthy
@@ -68,8 +114,11 @@ services:
       - "8080:8080"
     environment:
       USER_SERVICE_HOST: user-service
+      USER_SERVICE_PORT: "8081"        
       COURSE_SERVICE_HOST: course-service
+      COURSE_SERVICE_PORT: "8082"      
       ROADMAP_SERVICE_HOST: roadmap-service
+      ROADMAP_SERVICE_PORT: "8083"
     depends_on:
       - user-service
       - course-service
@@ -84,29 +133,109 @@ services:
       - "3000:80"
     depends_on:
       - api-gateway
+      - llm-service
 
-  # ── LLM Service ────────────────────────────────────────────────────────────
+# ── LLM Service ────────────────────────────────────────────────────────────
+  # LLM inference service for generating personalized roadmaps.
+  # Can use local LM Studio, Groq API, or TUM Logos (see env var priority).
+  # Exposes: http://llm-service:8084 (internal), http://localhost:8084 (external)
   llm-service:
-    image: ghcr.io/aet-devops26/w06-template/llm:latest
     build:
-      context: ../server
-      dockerfile: llm-service/Dockerfile
+      context: ../server/llm-service
+      dockerfile: Dockerfile
     ports:
       - "8084:8084"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      wait-for-courses:
+        condition: service_healthy
     environment:
       # LM Studio on the host machine. host.docker.internal works on
       # Docker Desktop (macOS/Windows) out of the box; extra_hosts below
       # extends the same name to Linux hosts.
+      - PORT=8084
       - LLM_API_URL=${LLM_API_URL:-http://host.docker.internal:1234/v1/chat/completions}
       - LLM_MODEL=${LLM_MODEL:-gemma-4-e2b}
       - LLM_API_KEY=${LLM_API_KEY:-}
-      # Set LOGOS_API_KEY in .env to switch to the TUM-hosted Logos
-      # endpoint (openai/gpt-oss-120b). When set, it overrides the
-      # LM Studio defaults above. Unset = LM Studio.
+      # Provider precedence (mirrors main.py logic):
+      #   1. LOGOS_API_KEY set → TUM Logos (openai/gpt-oss-120b)
+      #   2. GROQ_API_KEY set → Groq (llama-3.3-70b-versatile)
+      #   3. Neither set → LM Studio (LLM_API_URL above)
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
       - LOGOS_API_KEY=${LOGOS_API_KEY:-}
-      - COURSE_SERVICE_HOST: course-service
+      - COURSE_SERVICE_HOST=course-service
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+  # ── Monitoring ────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/alerts.yaml:/etc/prometheus/alerts.yaml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    depends_on:
+      - user-service
+      - course-service
+      - roadmap-service
+      - api-gateway
+
+  grafana:
+    image: grafana/grafana:10.2.3
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_USER: admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./grafana/provisioning/dashboards/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml
+      - ../helm/team-devvopps/grafana-dashboards/dashboard-request-metrics.json:/etc/grafana/provisioning/dashboards/request-metrics.json
+      - ../helm/team-devvopps/grafana-dashboards/dashboard-system-health.json:/etc/grafana/provisioning/dashboards/system-health.json
+      - ../helm/team-devvopps/grafana-dashboards/dashboard-logs.json:/etc/grafana/provisioning/dashboards/logs.json
+    depends_on:
+      - prometheus
+      - loki
+
+  # ── Logging ───────────────────────────────────────────────────────────────
+  loki:
+    image: grafana/loki:2.9.0
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki/loki-config.yaml:/etc/loki/local-config.yaml
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:3100/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  promtail:
+    # 2.9.0's bundled docker client is incompatible with newer Docker Desktop
+    # daemons (requires API >= 1.44); 3.0.0 fixes this.
+    image: grafana/promtail:3.0.0
+    volumes:
+      - ./promtail/promtail-config.yaml:/etc/promtail/config.yaml
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command: -config.file=/etc/promtail/config.yaml
+    depends_on:
+      loki:
+        condition: service_healthy
+
 volumes:
   postgres_data:
+  prometheus_data:
+  grafana_data:
+  loki_data:
+

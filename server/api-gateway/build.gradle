@@ -8,6 +8,10 @@ springBoot {
     mainClass = 'com.tum.gateway.ApiGatewayApplication'
 }
 
+dependencies {
+    implementation 'org.apache.httpcomponents.client5:httpclient5'
+}
+
 configurations {
     runtimeClasspath {
         exclude group: 'org.postgresql'

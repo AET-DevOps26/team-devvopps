@@ -8,8 +8,11 @@ import com.tum.roadmap.model.*;
 import com.tum.roadmap.repository.GoalRepository;
 import com.tum.roadmap.repository.RoadmapRepository;
 
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -20,6 +23,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Stream;
 
 /**
  * Service layer for Roadmap-related business logic.
@@ -27,6 +31,8 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class RoadmapService {
+
+    private static final Logger log = LoggerFactory.getLogger(RoadmapService.class);
 
     private final RoadmapRepository roadmapRepository;
     private final GoalRepository goalRepository;
@@ -67,9 +73,18 @@ public class RoadmapService {
     }
 
     /**
-      * Generates a roadmap from a user request.
-      */
+     * Returns all roadmaps.
+     */
+    public List<Roadmap> getAllRoadmaps() {
+        return roadmapRepository.findAll();
+    }
+
+    /**
+     * Generates a roadmap from a user request.
+     */
     public Roadmap generateRoadmap(Long userId, String user_goal) {
+        log.info("[Roadmap] generate — userId={} goal='{}'", userId, user_goal);
+        long t0 = System.currentTimeMillis();
 
         // Verify user exists via user-service
         Object user = getUser(userId);
@@ -82,22 +97,36 @@ public class RoadmapService {
 
         // Create Roadmap
         Roadmap roadmap = new Roadmap();
+        roadmap.setUser_id(userId);
         roadmap.setGoal(goal);
+        roadmap.setTitle(user_goal);
+        roadmap.setProgress(0);
         roadmap.setCreated_date(LocalDateTime.now());
         roadmap.setUser_id(userId);
         roadmap.setTitle("Roadmap for " + user_goal);
 
         // Call LLM
-        RoadmapResponse llmResponse = callLLM(user_goal);
+        log.info("[LLM] Calling llm-service at {} for goal='{}'", getLlmUrl(), user_goal);
+        long tLlm = System.currentTimeMillis();
+        RoadmapResponse llmResponse = callLLM(user_goal, userId);
+        log.info("[LLM] Response received in {}ms", System.currentTimeMillis() - tLlm);
 
         List<Milestone> milestones = new ArrayList<>();
-        
+
         if (llmResponse != null && llmResponse.milestones() != null) {
-            
+            int index = 0;
             for (MilestoneDto m : llmResponse.milestones()) {
+                // Milestone.validateTasks() rejects task-less milestones at persist
+                // time, so saving one would fail the whole roadmap with a 500.
+                if (m.tasks() == null || m.tasks().isEmpty()) {
+                    log.warn("[LLM] Skipping milestone '{}' — no tasks returned", m.title());
+                    continue;
+                }
                 Milestone milestone = new Milestone();
                 milestone.setTitle(m.title());
                 milestone.setDescription(m.description());
+                milestone.setStatus(Status.NOT_STARTED);
+                milestone.setOrderIndex(index++);
                 milestone.setRoadmap(roadmap);
                 milestone.setStatus(Status.NOT_STARTED);
 
@@ -119,9 +148,18 @@ public class RoadmapService {
             }
         }
 
+        if (milestones.isEmpty()) {
+            log.error("[LLM] Returned no milestones for goal='{}' — not saving roadmap", user_goal);
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "LLM returned no milestones — please try again");
+        }
+
         roadmap.setMilestones(milestones);
 
-        return roadmapRepository.save(roadmap);
+        Roadmap saved = roadmapRepository.save(roadmap);
+        log.info("[Roadmap] Saved roadmapId={} in {}ms — {} milestones",
+                saved.getRoadmap_id(), System.currentTimeMillis() - t0, saved.getMilestones().size());
+        return saved;
     }
     
     /**
@@ -132,18 +170,78 @@ public class RoadmapService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Roadmap not found"));
     }
 
+    @Transactional
+    public Roadmap toggleCompletionTask(Long roadmapId, Long taskId) {
+        Roadmap roadmap = getRoadmap(roadmapId);
+
+        Task task = roadmap.getMilestones().stream()
+                .flatMap(m -> m.getTasks().stream())
+                .filter(t -> t.getTask_id().equals(taskId))
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "Task " + taskId + " not found in roadmap " + roadmapId
+                ));
+        task.setCompleted(!task.isCompleted());
+
+        Milestone milestone = task.getMilestone();
+        milestone.updateStatus();
+
+        return roadmapRepository.save(roadmap);
+    }
+
+    public RoadmapProgress getProgress(Long roadmapId) {
+        Roadmap roadmap = getRoadmap(roadmapId);
+        return computeProgress(roadmap);
+    }
+
+    public RoadmapProgress computeProgress(Roadmap roadmap) {
+        List<Milestone> milestones = roadmap.getMilestones();
+        if (milestones == null || milestones.isEmpty()) {
+            return new RoadmapProgress(0, 0, 0, 0, false);
+        }
+        int totalMilestones = milestones.size();
+        long completedMilestones = milestones.stream()
+                .filter(m -> m.getStatus() == Status.COMPLETED)
+                .count();
+        
+        int totalTasks = milestones.stream()
+                .mapToInt(m -> m.getTasks() == null ? 0 : m.getTasks().size())
+                .sum();
+        long completedTasks = milestones.stream()
+                .flatMap(m -> m.getTasks() == null ? java.util.stream.Stream.<Task>empty() : m.getTasks().stream())
+                .filter(t -> t != null && t.isCompleted())
+                .count();
+        
+        boolean roadmapCompleted = completedMilestones == totalMilestones;
+        
+        return new RoadmapProgress((int) completedMilestones, totalMilestones, (int) completedTasks, totalTasks, roadmapCompleted);
+    }
+
     // Private Helper
-    private RoadmapResponse callLLM(String goal) {
+    private RoadmapResponse callLLM(String goal, Long userId) {
         try {
-            return restTemplate.postForObject(  // ← use injected restTemplate, not new RestTemplate()
-                    getLlmUrl() + "/recommend",
+            return restTemplate.postForObject(
+                    getLlmUrl() + "/recommend?user_id=" + userId,
                     new RoadmapRequest(goal),
                     RoadmapResponse.class
             );
         } catch (HttpClientErrorException e) {
+            if (e.getStatusCode().value() == 429) {
+                throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Token quota exceeded");
+            }
+            log.error("[LLM] HTTP error {}: {}", e.getStatusCode(), e.getMessage());
             throw new ResponseStatusException(e.getStatusCode(), "LLM service returned an error: " + e.getMessage());
         } catch (Exception e) {
+            log.error("[LLM] Unreachable: {}", e.getMessage());
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "LLM service not reachable");
         }
     }
+
+    public record RoadmapProgress(
+        int completedMilestones,
+        int totalMilestones,
+        int completedTasks,
+        long totalTasks,
+        boolean roadmapCompleted
+    ) {}
 }

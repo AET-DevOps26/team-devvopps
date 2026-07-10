@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: {{ .Values.namespace }}
+data:
+  prometheus.yml: |
+    # Global settings applied to all scrape jobs and alert evaluations
+    global:
+      # collects metrics from targets
+      scrape_interval: 15s
+      # How often alert rules are evaluated
+      evaluation_interval: 15s
+      # Labels added to all metrics
+      external_labels:
+        monitor: 'team-devvopps'
+
+    # Load alert rules that trigger notifications
+    rule_files:
+      - '/etc/prometheus/alerts/alerts.yaml'
+
+    # Define which services to monitor and where to find their metrics
+    scrape_configs:
+      # Monitor Prometheus itself for health and performance
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+          
+      - job_name: 'user-service'
+        static_configs:
+          - targets: ['user-service:{{ .Values.services.userService.port }}']
+        metrics_path: '/actuator/prometheus'
+
+      - job_name: 'course-service'
+        static_configs:
+          - targets: ['course-service:{{ .Values.services.courseService.port }}']
+        metrics_path: '/actuator/prometheus'
+
+      - job_name: 'roadmap-service'
+        static_configs:
+          - targets: ['roadmap-service:{{ .Values.services.roadmapService.port }}']
+        metrics_path: '/actuator/prometheus'
+
+      - job_name: 'api-gateway'
+        static_configs:
+          - targets: ['api-gateway:{{ .Values.services.apiGateway.port }}']
+        metrics_path: '/actuator/prometheus'

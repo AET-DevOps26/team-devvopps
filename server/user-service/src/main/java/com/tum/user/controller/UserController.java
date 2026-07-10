@@ -18,7 +18,8 @@ import java.util.List;
 @RestController
 @RequestMapping("/users")
 @RequiredArgsConstructor
-@CrossOrigin
+@CrossOrigin(methods = {RequestMethod.GET, RequestMethod.HEAD, RequestMethod.POST,
+        RequestMethod.PUT, RequestMethod.PATCH, RequestMethod.DELETE, RequestMethod.OPTIONS})
 public class UserController {
 
     // Service layer dependency
@@ -52,7 +53,7 @@ public class UserController {
 
     /**
      * GET /users
-     * 
+     *
      * Returns all users.
      *
      * @return list of users
@@ -60,5 +61,17 @@ public class UserController {
     @GetMapping
     public List<User> getAll() {
         return service.getAllUsers();
+    }
+
+    /**
+     * DELETE /users/{id}
+     *
+     * Deletes a user by ID.
+     *
+     * @param id user ID
+     */
+    @DeleteMapping("/{id}")
+    public void delete(@PathVariable Long id) {
+        service.deleteUser(id);
     }
 }

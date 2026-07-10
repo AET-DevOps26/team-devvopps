@@ -1,12 +1,29 @@
+import asyncio
 import os
 import json
+import time
 import requests
 import uvicorn
+import threading
+
+from collections import deque
+from collections import defaultdict
+from datetime import datetime, timezone
 from typing import Any, List, Optional
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+
+# ---------------------------------------------------------------------------
+# In-memory log store (last 200 entries, newest first)
+# ---------------------------------------------------------------------------
+_logs: deque = deque(maxlen=200)
+
+def _log(level: str, message: str, **extra):
+    entry = {"timestamp": datetime.now(timezone.utc).isoformat(), "level": level, "message": message, **extra}
+    _logs.appendleft(entry)
+    print(f"[{level}] {message}", flush=True)
 from langchain_core.prompts import PromptTemplate
 from langchain_core.language_models.llms import LLM
 from langchain_core.callbacks.manager import CallbackManagerForLLMRun
@@ -14,25 +31,29 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 
-# Environment configuration: pick the upstream provider based on env.
-#
-# If LOGOS_API_KEY is set we point at the TUM Logos endpoint and default
-# to the openai/gpt-oss-120b model. Otherwise we default to LM Studio
-# running on the host (host.docker.internal:1234 from inside Docker on
-# macOS/Windows) with gemma-4-e2b. The LM Studio path can still be
-# overridden by setting LLM_API_URL / LLM_MODEL explicitly.
+
+# ---------------------------------------------------------------------------
+# LLM provider selection
+# ---------------------------------------------------------------------------
+# The service supports three LLM backends, selected by environment variables:
+#   1. Logos (TUM-hosted GPT): set LOGOS_API_KEY. Requires eduVPN off-campus.
+#   2. Groq (free cloud API):  set GROQ_API_KEY. Uses llama-3.3-70b.
+#   3. LM Studio (local):      set neither. Defaults to localhost:1234.
+#      Override with LLM_API_URL and LLM_MODEL for a different local model.
+# ---------------------------------------------------------------------------
 LOGOS_API_KEY = os.getenv("LOGOS_API_KEY")
 GROQ_API_KEY  = os.getenv("GROQ_API_KEY")
 
 if LOGOS_API_KEY:
     # Logos profile: TUM-hosted gpt-oss-120b. Off-campus needs eduVPN.
-    # Hardcoded so a single LOGOS_API_KEY in .env is the only switch
-    # students need to flip.
+    # Checked FIRST so Logos wins whenever its key is present, even if a
+    # Groq key is also configured.
     API_URL = "https://logos.aet.cit.tum.de/v1/chat/completions"
     MODEL_NAME = "openai/gpt-oss-120b"
     LLM_API_KEY = LOGOS_API_KEY
 elif GROQ_API_KEY:
-    # Groq profile: free tier, llama-3.3-70b-versatile.
+    # Groq profile: free tier, llama-3.3-70b-versatile. Fallback only —
+    # used when no LOGOS_API_KEY is set (e.g. local development).
     API_URL = "https://api.groq.com/openai/v1/chat/completions"
     MODEL_NAME = "llama-3.3-70b-versatile"
     LLM_API_KEY = GROQ_API_KEY
@@ -44,8 +65,19 @@ else:
     # LM Studio doesn't require a key; CHAIR_API_KEY is left for back-compat.
     LLM_API_KEY = os.getenv("LLM_API_KEY") or os.getenv("CHAIR_API_KEY")
 
+# URL of the course-service REST API used to fetch the course catalogue.
 COURSE_SERVICE_URL = os.getenv("COURSE_SERVICE_URL", "http://course-service:8082/courses")
+
+# Number of courses passed to the LLM after TF-IDF filtering.
 TOP_K = int(os.getenv("TOP_K", "30"))
+
+# Hard cap on LLM output length. Generation time scales with output tokens,
+# so this bounds both latency and cost. The prompt asks for a compact
+# roadmap (max 5 milestones) so valid JSON fits comfortably under the cap.
+MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "1500"))
+
+# Max characters accepted for the goal (mirrored by maxLength in the UI).
+MAX_GOAL_CHARS = int(os.getenv("MAX_GOAL_CHARS", "200"))
 
 # ---------------------------------------------------------------------------
 # TF-IDF index: built once at startup, held in memory.
@@ -55,6 +87,7 @@ TOP_K = int(os.getenv("TOP_K", "30"))
 _courses: List[dict] = []
 _vectorizer: Optional[TfidfVectorizer] = None
 _matrix = None
+_last_index_attempt: float = 0.0  # epoch seconds of last failed build attempt
 
 
 def build_index() -> int:
@@ -67,11 +100,16 @@ def build_index() -> int:
         print(f"[RAG] Could not fetch courses: {e}")
         return 0
 
+    # Build a document per course combining title and objective for better matching.
     documents = []
     for c in _courses:
         title = c.get("title", "")
         objective = (c.get("objective") or c.get("content") or "")[:300]
         documents.append(f"{title} {objective}")
+
+    if not documents:
+        print("[RAG] No documents to index (empty course list).")
+        return 0
 
     _vectorizer = TfidfVectorizer(stop_words="english", ngram_range=(1, 2))
     _matrix = _vectorizer.fit_transform(documents)
@@ -99,15 +137,43 @@ def filter_courses(goal: str, k: int = TOP_K) -> str:
 
     return "\n".join(lines) if lines else "- No matching courses found"
 
+# ---------------------------------------------------------------------------
+# Per-user token usage tracking
+# ---------------------------------------------------------------------------
+
+# The limit is based on actual LLM-reported token usage (prompt + completion).
+# With a 50000 token limit and an average usage of ~1000 tokens per request 
+# (smaller input), users can generate approximately 50 roadmaps. The exact number 
+# depends on the length of the input and the generated roadmap response.
+MAX_TOKENS_PER_USER = 50000  # max cumulative tokens per user
+
+_user_token_usage: dict = defaultdict(int)  # userId -> total tokens used
+_user_locks: dict = defaultdict(threading.Lock)
+
+def check_user_limit(user_id: str) -> None:
+    """Raises HTTPException if user has exceeded their token limit."""
+    current = _user_token_usage[user_id]
+    if current + MAX_TOKENS >= MAX_TOKENS_PER_USER:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Token limit exceeded. You have used {current}/{MAX_TOKENS_PER_USER} tokens."
+        )
 
 # ---------------------------------------------------------------------------
 # App lifecycle
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print(f"[RAG] Building TF-IDF index... (model: {MODEL_NAME})")
-    count = build_index()
-    print(f"[RAG] Ready — {count} courses indexed.")
+    _log("INFO", f"Starting up (model: {MODEL_NAME})")
+    for attempt in range(1, 6):
+        count = build_index()
+        if count > 0:
+            _log("INFO", f"Index ready — {count} courses indexed")
+            break
+        _log("WARN", f"Course index empty (attempt {attempt}/5), retrying in 10s...")
+        await asyncio.sleep(10)
+    else:
+        _log("ERROR", "Could not build course index after 5 attempts — proceeding without courses")
     yield
 
 
@@ -119,6 +185,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Allow all origins so the frontend and API gateway can call this service freely.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -150,6 +217,7 @@ class OpenAICompatibleLLM(LLM):
     api_url: str = API_URL
     api_key: Optional[str] = LLM_API_KEY
     model_name: str = MODEL_NAME
+    last_usage: dict = {}
 
     @property
     def _llm_type(self) -> str:
@@ -165,6 +233,7 @@ class OpenAICompatibleLLM(LLM):
         headers = {
             "Content-Type": "application/json",
         }
+
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
@@ -176,6 +245,7 @@ class OpenAICompatibleLLM(LLM):
         payload = {
             "model": self.model_name,
             "messages": messages,
+            "max_tokens": MAX_TOKENS,
         }
 
         try:
@@ -183,11 +253,23 @@ class OpenAICompatibleLLM(LLM):
                 self.api_url,
                 headers=headers,
                 json=payload,
-                timeout=120
+                # gpt-oss-120b on Logos routinely takes 130-160s per roadmap;
+                # keep well above that so slow responses aren't cut off.
+                timeout=300
             )
             response.raise_for_status()
 
             result = response.json()
+
+            # ── Token usage tracking ───────────────────────────────────
+            usage = result.get("usage", {})
+            if usage:
+                _log("INFO", "Token usage",
+                     prompt_tokens=usage.get("prompt_tokens"),
+                     completion_tokens=usage.get("completion_tokens"),
+                     total_tokens=usage.get("total_tokens"),
+                )
+                self.last_usage = usage
 
             # Extract the response content
             if "choices" in result and len(result["choices"]) > 0:
@@ -214,7 +296,8 @@ Instructions:
 2. Break the journey into clear milestones (e.g. "Complete foundational mathematics"). Also include external milestones that are not courses.
 3. For each milestone, define concrete tasks the student should do. For course tasks, include the course code in brackets (e.g. "Enroll in [IN2064] Machine Learning").
 4. Each milestone MUST contain at least 2–4 tasks. Tasks MUST belong to their milestone (nested structure)
-5. Respond with ONLY valid JSON.
+5. Create at most 5 milestones. Keep titles and descriptions short (one sentence) — the response must stay compact.
+6. Respond with ONLY valid JSON.
 
 Required JSON format:
 
@@ -235,11 +318,12 @@ Required JSON format:
 
 JSON response:
 """
+llm = OpenAICompatibleLLM()
 
 chain = PromptTemplate(
     input_variables=["goal", "courses"],
     template=_PROMPT,
-) | OpenAICompatibleLLM()
+) | llm
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -262,7 +346,8 @@ def parse_llm_response(raw: str) -> RoadmapResponse:
 
         return RoadmapResponse.model_validate(data)
 
-    except Exception:
+    except Exception as e:
+        _log("ERROR", f"Failed to parse LLM response: {e}", raw_snippet=raw[:300])
         return RoadmapResponse(milestones=[])
 
 # ---------------------------------------------------------------------------
@@ -275,24 +360,98 @@ async def health_check():
     return {"status": "healthy", "service": "LLM Roadmap Generation Service", "model": MODEL_NAME}
 
 
+@app.get("/usage/{user_id}")
+async def get_usage(user_id: str):
+    """Returns the user's cumulative token usage and remaining quota."""
+    used = _user_token_usage[user_id]
+    return {
+        "user_id": user_id,
+        "used": used,
+        "limit": MAX_TOKENS_PER_USER,
+        "remaining": max(0, MAX_TOKENS_PER_USER - used),
+    }
+
+
 @app.post("/recommend", response_model=RoadmapResponse)
-async def recommend(req: RoadmapRequest) -> RoadmapResponse:
+async def recommend(req: RoadmapRequest, user_id: str = "anonymous") -> RoadmapResponse:
     if not req.goal.strip():
         raise HTTPException(status_code=422, detail="goal cannot be empty")
 
-    # Use TF-IDF to find the most relevant courses (replaces keyword search)
-    courses_str = filter_courses(req.goal)
+    if len(req.goal) > MAX_GOAL_CHARS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"goal is too long ({len(req.goal)} chars) — maximum is {MAX_GOAL_CHARS}",
+        )
+    reserved = False
+    total_tokens = 0
+    t0 = time.time()      
+    t_llm = time.time()
 
-    # Call LLM
     try:
-        raw = await chain.ainvoke({
-            "goal": req.goal,
-            "courses": courses_str
-        })
-    except RuntimeError as e:
-        raise HTTPException(status_code=503, detail=str(e)) from e
+        # Check user limit before calling llm
+        # Add MAX_TOKENS (max output) so as an assumption of tokens used during request so that user cannot generate i+1 roadmaps
+        with _user_locks[user_id]:
+            check_user_limit(user_id)
+            _user_token_usage[user_id] += MAX_TOKENS
+            reserved = True
 
-    return parse_llm_response(raw)
+        t0 = time.time()
+        _log("INFO", "Roadmap request received", goal=req.goal, model=MODEL_NAME)
+
+        if not _courses:
+            global _last_index_attempt
+            if time.time() - _last_index_attempt > 60:
+                _last_index_attempt = time.time()
+                _log("WARN", "Course index empty — retrying fetch from course-service")
+                count = build_index()
+                if count > 0:
+                    _log("INFO", f"Course index rebuilt: {count} courses")
+                else:
+                    _log("WARN", "Course index still empty — proceeding without courses")
+
+        courses_str = filter_courses(req.goal)
+        course_count = len([l for l in courses_str.splitlines() if l.strip().startswith("-")])
+        _log("INFO", f"TF-IDF filtered {course_count} relevant courses", goal=req.goal)
+        _log("INFO", f"Calling LLM ({MODEL_NAME})...", goal=req.goal)
+
+        t_llm = time.time()
+    
+        raw = await chain.ainvoke({"goal": req.goal, "courses": courses_str})
+
+        
+        usage = dict(llm.last_usage)
+        total_tokens = usage.get("total_tokens", 0)
+
+        llm_ms = round((time.time() - t_llm) * 1000)
+        _log("INFO", f"LLM responded in {llm_ms}ms", goal=req.goal, llm_ms=llm_ms)
+
+        result = parse_llm_response(raw)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Catch everything (timeouts, connection errors, provider SDK errors),
+        # not just RuntimeError — otherwise failures bypass the structured log.
+        llm_ms = round((time.time() - t_llm) * 1000)
+        _log("ERROR", f"LLM call failed after {llm_ms}ms: {e}", goal=req.goal, llm_ms=llm_ms)
+        raise HTTPException(status_code=503, detail=str(e)) from e
+    
+    finally: 
+        if reserved:
+            with _user_locks[user_id]:
+                _user_token_usage[user_id] -= MAX_TOKENS
+                _user_token_usage[user_id] += total_tokens
+            _log("INFO", f"User {user_id} used {total_tokens} tokens " f"({_user_token_usage[user_id]}/{MAX_TOKENS_PER_USER})")
+
+    total_ms = round((time.time() - t0) * 1000)
+    _log("INFO", f"Request done in {total_ms}ms — {len(result.milestones)} milestones", goal=req.goal, total_ms=total_ms)
+
+    return result
+
+
+@app.get("/logs")
+async def get_logs():
+    return {"logs": list(_logs)}
 
 
 @app.get("/")

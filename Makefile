@@ -1,21 +1,20 @@
 NAMESPACE = team-devvopps
 IMAGE_PREFIX = team-devvopps
 
-.PHONY: help helm-install helm-install-aet helm-upgrade helm-delete k8s-build k8s-deploy k8s-seed k8s-down docker-up docker-down dev dev-stop k8s-status
+.PHONY: help helm-install-aet helm-delete k8s-build k8s-deploy k8s-seed k8s-deploy-old k8s-secrets-old k8s-seed-old k8s-down docker-up docker-down dev dev-stop k8s-status
 
 help:
 	@echo "Available commands:"
 	@echo ""
-	@echo "Helm (Recommended for AET deployment):"
-	@echo "  make helm-install      - Deploy to local Kubernetes using Helm"
+	@echo "Helm (AET deployment):"
 	@echo "  make helm-install-aet  - Deploy to AET cluster using Helm"
-	@echo "  make helm-upgrade      - Upgrade existing Helm deployment"
 	@echo "  make helm-delete       - Delete Helm deployment"
 	@echo ""
-	@echo "Kubernetes (Legacy):"
-	@echo "  make k8s-build    - Build all Docker images for Kubernetes"
-	@echo "  make k8s-deploy   - Build images and deploy to Kubernetes"
-	@echo "  make k8s-down     - Tear down Kubernetes deployment"
+	@echo "Kubernetes (local, docker-desktop):"
+	@echo "  make k8s-build       - Build all Docker images for Kubernetes"
+	@echo "  make k8s-deploy      - Build images and deploy locally via Helm chart"
+	@echo "  make k8s-deploy-old  - Same but with plain YAML manifests (infra/k8s/)"
+	@echo "  make k8s-down        - Tear down Kubernetes deployment"
 	@echo ""
 	@echo "Docker Compose:"
 	@echo "  make docker-up    - Start full stack with Docker Compose"
@@ -26,35 +25,16 @@ help:
 
 # ── Helm ───────────────────────────────────────────────────────────────────────
 
-helm-install:
-	@if [ ! -f helm/team-devvopps/values-secrets.yaml ]; then \
-		echo "Creating values-secrets.yaml from example..."; \
-		cp helm/team-devvopps/values-secrets.example.yaml helm/team-devvopps/values-secrets.yaml; \
-		echo "Edit helm/team-devvopps/values-secrets.yaml with your credentials before deploying"; \
-		exit 1; \
-	fi
-	@echo "Installing Helm chart to local Kubernetes..."
-	helm install team-devvopps helm/team-devvopps/ \
-		-f helm/team-devvopps/values-secrets.yaml \
-		-n team-devvopps --create-namespace
-	@echo ""
-	@echo "Deployment complete!"
-	@echo "  Client:      http://localhost:30000"
-	@echo "  API Gateway: http://localhost:30080"
-
 helm-install-aet:
 	@echo "Installing Helm chart to AET Kubernetes cluster..."
-	@if [ -z "$(POSTGRES_USER)" ] || [ -z "$(POSTGRES_PASSWORD)" ]; then \
+	@if [ -z "$(POSTGRES_USER)" ] || [ -z "$(POSTGRES_PASSWORD)" ] || [ -z "$(POSTGRES_REPLICATION_USER)" ] || [ -z "$(POSTGRES_REPLICATION_PASSWORD)" ] || [ -z "$(GRAFANA_ADMIN_USER)" ] || [ -z "$(GRAFANA_ADMIN_PASSWORD)" ] || [ -z "$(GROQ_API_KEY)" ]; then \
 		echo ""; \
-		echo "ERROR: Database credentials required"; \
+		echo "ERROR: Database, Grafana, and Groq credentials required"; \
 		echo ""; \
-		echo "Usage: POSTGRES_USER=<user> POSTGRES_PASSWORD=<pass> make helm-install-aet"; \
-		echo ""; \
-		echo "Example:"; \
-		echo "  POSTGRES_USER=postgres POSTGRES_PASSWORD=postgres make helm-install-aet"; \
+		echo "Usage: POSTGRES_USER=<user> POSTGRES_PASSWORD=<pass> POSTGRES_REPLICATION_USER=<user> POSTGRES_REPLICATION_PASSWORD=<pass> GRAFANA_ADMIN_USER=<user> GRAFANA_ADMIN_PASSWORD=<pass> GROQ_API_KEY=<key> make helm-install-aet"; \
 		echo ""; \
 		echo "OR use GitHub Actions (recommended):"; \
-		echo "  1. Set GitHub Secrets: POSTGRES_USER and POSTGRES_PASSWORD"; \
+		echo "  1. Set GitHub Secrets: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_REPLICATION_USER, POSTGRES_REPLICATION_PASSWORD, GRAFANA_ADMIN_USER, GRAFANA_ADMIN_PASSWORD, GROQ_API_KEY"; \
 		echo "  2. Push to main or trigger workflow manually"; \
 		echo ""; \
 		exit 1; \
@@ -64,20 +44,16 @@ helm-install-aet:
 		-f helm/team-devvopps/values-aet.yaml \
 		--set postgres.credentials.username=$(POSTGRES_USER) \
 		--set postgres.credentials.password=$(POSTGRES_PASSWORD) \
+		--set postgres.replicationUser=$(POSTGRES_REPLICATION_USER) \
+		--set postgres.replicationPassword=$(POSTGRES_REPLICATION_PASSWORD) \
+		--set grafana.adminUser=$(GRAFANA_ADMIN_USER) \
+		--set grafana.adminPassword=$(GRAFANA_ADMIN_PASSWORD) \
+		--set llmService.groqApiKey=$(GROQ_API_KEY) \
+		--set llmService.logosApiKey=$(LOGOS_API_KEY) \
 		-n team-devvopps
 	@echo ""
 	@echo "Deployment complete!"
 	@echo "Check status with: kubectl get pods -n team-devvopps"
-
-helm-upgrade:
-	@if [ ! -f helm/team-devvopps/values-secrets.yaml ]; then \
-		echo "Error: helm/team-devvopps/values-secrets.yaml not found"; \
-		exit 1; \
-	fi
-	@echo "Upgrading Helm chart..."
-	helm upgrade team-devvopps helm/team-devvopps/ \
-		-f helm/team-devvopps/values-secrets.yaml \
-		-n team-devvopps
 
 helm-delete:
 	@echo "Deleting Helm deployment..."
@@ -90,31 +66,89 @@ k8s-build:
 	docker build -t $(IMAGE_PREFIX)/course-service:latest   -f server/course-service/Dockerfile server/
 	docker build -t $(IMAGE_PREFIX)/roadmap-service:latest  -f server/roadmap-service/Dockerfile server/
 	docker build -t $(IMAGE_PREFIX)/api-gateway:latest      -f server/api-gateway/Dockerfile server/
+	docker build -t $(IMAGE_PREFIX)/llm-service:latest      server/llm-service/
 	docker build -t $(IMAGE_PREFIX)/client:latest           client/
 	docker build -t $(IMAGE_PREFIX)/course-seeder:latest    -f server/course-service/Dockerfile.seeder server/course-service/
 
+# Deploy locally with the SAME Helm chart used on the AET cluster.
+# Only the values differ (values-local.yaml: local images, no ingress, single postgres).
+# The Groq key is read from the git-ignored infra/.env and passed via --set,
+# so it never ends up in the repo.
 k8s-deploy: k8s-build
+	@if [ "$$(kubectl config current-context)" != "docker-desktop" ]; then \
+		echo "ERROR: kubectl context is '$$(kubectl config current-context)', expected 'docker-desktop'."; \
+		echo "Switch with: kubectl config use-context docker-desktop"; \
+		exit 1; \
+	fi
+	@GROQ_KEY=$$(grep -E '^GROQ_API_KEY=' infra/.env 2>/dev/null | cut -d= -f2-); \
+	if [ -z "$$GROQ_KEY" ]; then echo "WARNING: no GROQ_API_KEY in infra/.env — LLM calls will fail"; fi; \
+	kubectl delete job course-seeder -n $(NAMESPACE) --ignore-not-found 2>/dev/null; \
+	helm upgrade --install team-devvopps helm/team-devvopps/ \
+		-f helm/team-devvopps/values-local.yaml \
+		--set llmService.groqApiKey="$$GROQ_KEY" \
+		-n $(NAMESPACE) --create-namespace \
+		--wait --timeout 5m
+	@echo ""
+	@echo "Restarting deployments to pick up freshly built images..."
+	kubectl rollout restart deployment -n $(NAMESPACE)
+	kubectl rollout status deployment -n $(NAMESPACE) --timeout=5m
+	@echo ""
+	@echo "Deployment complete!"
+	@echo "  Client:      http://localhost:30000"
+	@echo "  API Gateway: http://localhost:30080"
+	@echo "  Seeder:      kubectl logs -n $(NAMESPACE) job/course-seeder -f"
+
+# ── Kubernetes (OLD — plain YAML manifests from infra/k8s/) ──────────────────
+# Kept for reference/fallback. Uses the hand-written manifests instead of the
+# Helm chart. Do NOT mix with the Helm-based k8s-deploy in the same namespace —
+# wipe first with `make k8s-down` when switching between the two methods.
+
+k8s-deploy-old: k8s-build
 	kubectl apply -f infra/k8s/namespace.yaml
+	$(MAKE) k8s-secrets-old
 	kubectl apply -f infra/k8s/
 	kubectl apply -f infra/k8s/postgres/
 	kubectl apply -f infra/k8s/user-service/
 	kubectl apply -f infra/k8s/course-service/
 	kubectl apply -f infra/k8s/roadmap-service/
+	kubectl apply -f infra/k8s/llm-service/
 	kubectl apply -f infra/k8s/api-gateway/
 	kubectl apply -f infra/k8s/client/
 	@echo ""
 	@echo "Waiting for pods to be ready..."
 	kubectl wait --for=condition=ready pod --all -n $(NAMESPACE) --timeout=120s
-	$(MAKE) k8s-seed
+	$(MAKE) k8s-seed-old
 	@echo ""
 	@echo "Deployment complete!"
 	@echo "  Client:      http://localhost:30000"
 	@echo "  API Gateway: http://localhost:30080"
 
-k8s-seed:
+# Create the llm-secret from infra/.env (GROQ_API_KEY) — the .env file is
+# git-ignored, so the key never ends up in the repo. Safe to re-run (apply).
+k8s-secrets-old:
+	@if [ -f infra/.env ]; then \
+		GROQ_KEY=$$(grep -E '^GROQ_API_KEY=' infra/.env | cut -d= -f2-); \
+		kubectl create secret generic llm-secret -n $(NAMESPACE) \
+			--from-literal=groq-api-key="$$GROQ_KEY" \
+			--dry-run=client -o yaml | kubectl apply -f -; \
+		echo "llm-secret created from infra/.env"; \
+	else \
+		echo "WARNING: infra/.env not found — llm-service will have no GROQ_API_KEY"; \
+	fi
+
+k8s-seed-old:
 	@echo "Running course seeder (checks if data exists first)..."
 	kubectl delete job course-seeder -n $(NAMESPACE) --ignore-not-found
 	kubectl apply -f infra/k8s/seeder/job.yaml
+	@echo "Seeder job started. Follow with: kubectl logs -n $(NAMESPACE) job/course-seeder -f"
+
+# Re-run the course seeder (renders the job from the Helm chart)
+k8s-seed:
+	@echo "Running course seeder (checks if data exists first)..."
+	kubectl delete job course-seeder -n $(NAMESPACE) --ignore-not-found
+	helm template team-devvopps helm/team-devvopps/ \
+		-f helm/team-devvopps/values-local.yaml \
+		-s templates/seeder/job.yaml | kubectl apply -f -
 	@echo "Seeder job started. Follow with: kubectl logs -n $(NAMESPACE) job/course-seeder -f"
 
 k8s-down:

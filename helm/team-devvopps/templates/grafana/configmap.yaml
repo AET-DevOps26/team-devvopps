@@ -1,0 +1,28 @@
+# ConfigMap for Grafana datasource provisioning
+# Tells Grafana to auto-connect to Prometheus on startup
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: {{ .Values.namespace }}
+data:
+  # Datasource config that Grafana uses to query metrics from Prometheus
+  prometheus.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        # Kubernetes DNS: http://prometheus:9090 resolves to Prometheus service
+        url: http://prometheus:9090
+        isDefault: true
+  # Loki datasource for log queries — the Logs dashboard references it by the
+  # exact name "Loki", so don't rename it
+  loki.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://loki:3100
+        isDefault: false

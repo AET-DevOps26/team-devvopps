@@ -1,0 +1,40 @@
+# Prometheus configuration for local Docker Compose development
+# For Kubernetes/Helm deployment, see: helm/team-devvopps/templates/prometheus/configmap.yaml
+
+# Global settings applied to all scrape jobs and alert evaluations
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'team-devvopps'
+
+# Alert rules
+rule_files:
+  - '/etc/prometheus/alerts.yaml'
+
+scrape_configs:
+  # Monitor Prometheus itself for health and performance
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Spring Boot services expose metrics at /actuator/prometheus
+  - job_name: 'user-service'
+    static_configs:
+      - targets: ['user-service:8081']
+    metrics_path: '/actuator/prometheus'
+
+  - job_name: 'course-service'
+    static_configs:
+      - targets: ['course-service:8082']
+    metrics_path: '/actuator/prometheus'
+
+  - job_name: 'roadmap-service'
+    static_configs:
+      - targets: ['roadmap-service:8083']
+    metrics_path: '/actuator/prometheus'
+
+  - job_name: 'api-gateway'
+    static_configs:
+      - targets: ['api-gateway:8080']
+    metrics_path: '/actuator/prometheus'

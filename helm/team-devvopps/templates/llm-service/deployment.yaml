@@ -5,6 +5,7 @@ metadata:
   namespace: {{ .Values.namespace }}
 spec:
   replicas: {{ .Values.replicas }}
+  revisionHistoryLimit: 3
   selector:
     matchLabels:
       app: llm-service
@@ -14,6 +15,9 @@ spec:
         app: llm-service
         monitoring: "true"
     spec:
+      # Disable legacy Docker-link env injection (USER_SERVICE_PORT=tcp://... etc.)
+      # which collides with Spring relaxed binding of user.service.port properties.
+      enableServiceLinks: false
       containers:
         - name: llm-service
           image: {{ .Values.imageRegistry }}/llm-service:{{ .Values.imageTag }}
@@ -22,14 +26,14 @@ spec:
             - containerPort: {{ .Values.services.llmService.port }}
           resources:
             requests:
-              cpu: 150m
-              memory: 256Mi
+              cpu: {{ .Values.services.llmService.resources.requests.cpu }}
+              memory: {{ .Values.services.llmService.resources.requests.memory }}
             limits:
-              cpu: 200m
-              memory: 512Mi
+              cpu: {{ .Values.services.llmService.resources.limits.cpu }}
+              memory: {{ .Values.services.llmService.resources.limits.memory }}
           env:
             - name: COURSE_SERVICE_URL
-              value: http://course-service:8082/courses
+              value: "http://course-service:{{ .Values.services.courseService.port }}/courses"
             - name: PORT
               value: "{{ .Values.services.llmService.port }}"
             - name: GROQ_API_KEY

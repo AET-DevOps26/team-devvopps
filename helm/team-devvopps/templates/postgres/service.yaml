@@ -4,6 +4,12 @@ metadata:
   name: postgres
   namespace: {{ .Values.namespace }}
 spec:
+  # Headless service: no virtual IP, directly exposes individual pod IPs via DNS
+  # Enables StatefulSet pods to discover each other for replication
+  # Pod DNS names: postgres-0.postgres.team-devvopps.svc.cluster.local (primary)
+  #               postgres-1.postgres.team-devvopps.svc.cluster.local (replica)
+  # Init container uses these DNS names to connect for pg_basebackup
+  clusterIP: None
   type: ClusterIP
   selector:
     app: postgres

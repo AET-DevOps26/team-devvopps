@@ -13,31 +13,35 @@ import java.util.List;
 @RequiredArgsConstructor
 @CrossOrigin
 public class RoadmapController {
-    
-    // Service layer dependency
+
     private final RoadmapService roadmapService;
 
-    /**
-     * POST /roadmaps/generate
-     *
-     * Receives a user goal from the frontend and generates a personalized roadmap.
-     */
-    @PostMapping("/generate")
-    public ResponseEntity<Roadmap> generateRoadmap(
-            @RequestParam("userId") Long userId,
-            @RequestParam("goal") String goal) {
-        Roadmap roadmap = roadmapService.generateRoadmap(userId, goal);
-        return ResponseEntity.ok(roadmap);
+    @GetMapping
+    public ResponseEntity<List<Roadmap>> getAllRoadmaps() {
+        return ResponseEntity.ok(roadmapService.getAllRoadmaps());
     }
 
-    /**
-     * GET /roadmaps/{id}
-     *
-     * Returns a roadmap by ID.
-     */
+    @PostMapping("/generate")
+    public ResponseEntity<Roadmap> generateRoadmap(
+            @RequestParam(defaultValue = "1") Long userId,
+            @RequestParam String goal) {
+        return ResponseEntity.ok(roadmapService.generateRoadmap(userId, goal));
+    }
+
     @GetMapping("/{id}")
-    public ResponseEntity<Roadmap> getRoadmap(@PathVariable("id") Long id) {
-        Roadmap roadmap = roadmapService.getRoadmap(id);
-        return ResponseEntity.ok(roadmap);
+    public ResponseEntity<Roadmap> getRoadmap(@PathVariable Long id) {
+        return ResponseEntity.ok(roadmapService.getRoadmap(id));
+    }
+
+    @PatchMapping("/{roadmapId}/tasks/{taskId}/complete")
+    public ResponseEntity<Roadmap> toggleCompletionTask(
+            @PathVariable Long roadmapId,
+            @PathVariable Long taskId) {
+        return ResponseEntity.ok(roadmapService.toggleCompletionTask(roadmapId, taskId));
+    }
+
+    @GetMapping("/{roadmapId}/progress")
+    public ResponseEntity<RoadmapService.RoadmapProgress> getProgress(@PathVariable Long roadmapId) {
+        return ResponseEntity.ok(roadmapService.getProgress(roadmapId));
     }
 }

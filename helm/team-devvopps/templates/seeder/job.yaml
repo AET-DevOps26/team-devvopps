@@ -34,14 +34,14 @@ spec:
           imagePullPolicy: {{ .Values.imagePullPolicy }}
           resources:
             requests:
-              cpu: 200m
-              memory: 256Mi
+              cpu: 50m
+              memory: 64Mi
             limits:
-              cpu: 500m
-              memory: 512Mi
+              cpu: 100m
+              memory: 128Mi
           env:
             - name: DB_HOST
-              value: postgres
+              value: postgres-0.postgres
             - name: DB_PORT
               value: "5432"
             - name: DB_NAME

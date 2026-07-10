@@ -4,27 +4,44 @@ kind: Ingress
 metadata:
   name: team-devvopps-ingress
   namespace: {{ .Values.namespace }}
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    # Logos (gpt-oss-120b) roadmap generation takes 130-160s. Must stay
+    # strictly ABOVE the llm-service request timeout (300s): its timer starts
+    # earlier, so an equal value would 504 before the backend can respond.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "330"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "330"
 spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - {{ .Values.ingressHost }}
+      secretName: team-devvopps-tls
   rules:
     - host: {{ .Values.ingressHost }}
       http:
         paths:
-          - path: /api
-            pathType: Prefix
+          - path: /api(/|$)(.*)
+            pathType: ImplementationSpecific
             backend:
               service:
                 name: api-gateway
                 port:
                   number: {{ .Values.services.apiGateway.port }}
-          - path: /llm
-            pathType: Prefix
+
+          - path: /llm(/|$)(.*)
+            pathType: ImplementationSpecific
             backend:
               service:
                 name: llm-service
                 port:
                   number: {{ .Values.services.llmService.port }}
-          - path: /
-            pathType: Prefix
+
+          - path: /()(.*)
+            pathType: ImplementationSpecific
             backend:
               service:
                 name: client

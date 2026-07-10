@@ -1,7 +1,9 @@
 name: Provision Azure VM
 
+# Manual trigger only.
+# Run this once to set up the VM, or again to apply Terraform changes.
 on:
-  workflow_dispatch:  # manual trigger only 
+  workflow_dispatch:  
 
 jobs:
   provision:
@@ -11,11 +13,15 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      # --- Terraform ------------------------------------------------------
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_wrapper: false
 
+      # Initialise Terraform with the Azure backend.
+      # State is stored remotely in Azure Blob Storage so the team shares the same state.
       - name: Terraform Init
         working-directory: ./terraform
         env:
@@ -25,6 +31,8 @@ jobs:
           ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
         run: terraform init
 
+      # Import pre-existing Azure resources into Terraform state so they are managed
+      # without being recreated. The || true prevents failure if already imported.
       - name: Terraform Import Existing Resources
         working-directory: ./terraform
         env:
@@ -38,6 +46,8 @@ jobs:
           terraform import -var="ssh_public_key=${{ secrets.AZURE_SSH_PUBLIC_KEY }}" azurerm_network_security_group.main /subscriptions/${{ secrets.ARM_SUBSCRIPTION_ID }}/resourceGroups/team-devvopps/providers/Microsoft.Network/networkSecurityGroups/team-devvopps-nsg || true
           terraform import -var="ssh_public_key=${{ secrets.AZURE_SSH_PUBLIC_KEY }}" azurerm_subnet.main /subscriptions/${{ secrets.ARM_SUBSCRIPTION_ID }}/resourceGroups/team-devvopps/providers/Microsoft.Network/virtualNetworks/team-devvopps-vnet/subnets/internal || true
 
+      # Apply the Terraform plan without interactive confirmation (-auto-approve).
+      # Creates or updates the VM, networking, and NSG rules.
       - name: Terraform Apply
         working-directory: ./terraform
         env:
@@ -47,6 +57,7 @@ jobs:
           ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
         run: terraform apply -auto-approve -var="ssh_public_key=${{ secrets.AZURE_SSH_PUBLIC_KEY }}"
 
+      # Capture the VM's public IP from Terraform output for use in later steps.
       - name: Get VM IP
         working-directory: ./terraform
         env:
@@ -57,17 +68,68 @@ jobs:
         run: |
           echo "VM_IP=$(terraform output -raw public_ip)" >> "$GITHUB_ENV"
 
+
+      # --- SSH access setup -------------------------------------------------
+
+      # The VM's NSG only allows SSH (port 22) from the MWN/eduVPN range
+      # (129.187.0.0/16) by default, to keep it closed to the public internet.
+      # GitHub-hosted runners get an IP from GitHub's own pool, which is not 
+      # in that range, so without this step, every SSH/SCP action below would 
+      # time out. We temporarily open SSH for just the runner's IP, scoped to 
+      # a /32 (a single address), and remove the rule again at the end of the
+      # job (see "Remove temporary CI rule"), even if the job fails.
+
+      - name: Azure login
+        # Required before any 'az' CLI command can manage Azure resources.
+        # Uses the same service principle already used for Terraform/provisioning.
+        # That principal needs "Network Contributor" on the NSG. 
+        uses: azure/login@v2
+        with:
+          creds: '{"clientId":"${{ secrets.ARM_CLIENT_ID }}","clientSecret":"${{ secrets.ARM_CLIENT_SECRET }}","subscriptionId":"${{ secrets.ARM_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.ARM_TENANT_ID }}"}'
+
+      - name: Get runner IP
+        # Determines the public IP this specific runner instance is using, 
+        # so we can grant access to exactly that address (not a broader range)
+        id: ip
+        run: echo "ip=$(curl -s https://api.ipify.org)" >> "$GITHUB_OUTPUT"
+
+      - name: Allow runner IP in NSG
+        # Adds a narrow, temporary inbound rule:
+        #   - /32 = this single IP only
+        #   - priority 101 = evaluated just after the standing MWN-only rule (priority 100)
+        #   - destination port 22 = SSH only, nothing else is opened
+        # This rule is the only thing that lets this job reach the VM over SSH
+        run: |
+          az network nsg rule create \
+            --resource-group team-devvopps \
+            --nsg-name team-devvopps-nsg \
+            --name allow-ssh-ci-temp \
+            --priority 101 \
+            --access Allow \
+            --protocol Tcp \
+            --direction Inbound \
+            --source-address-prefixes ${{ steps.ip.outputs.ip }}/32 \
+            --destination-port-ranges 22
+
+
+      # --- Ansible --------------------------------------------------------
+
       - name: Install Ansible
         run: pip install ansible
 
+      # Write the SSH private key to a temp file so Ansible can connect to the VM.
+      # chmod 400 prevents SSH from rejecting the key due to loose permissions.
       - name: Write SSH private key
         run: |
           echo "${{ secrets.AZURE_PRIVATE_KEY }}" > /tmp/azure_key.pem
           chmod 400 /tmp/azure_key.pem
 
+      # Give the VM time to finish booting before Ansible tries to connect.
       - name: Wait for VM to be ready
         run: sleep 30
 
+      # Run the Ansible playbook to install Docker and configure the VM.
+      # StrictHostKeyChecking=no skips the host fingerprint prompt for new VMs.
       - name: Run Ansible Playbook
         run: |
           ansible-playbook -i "${{ env.VM_IP }}," \
@@ -76,6 +138,8 @@ jobs:
             --ssh-extra-args="-o StrictHostKeyChecking=no" \
             ansible/playbook.yml
 
+      # Update the AZURE_PUBLIC_IP Actions variable so the deploy workflow
+      # always has the correct IP, even after VM reprovisioning.
       - name: Update GitHub Variable AZURE_PUBLIC_IP
         run: |
           curl -X PATCH \
@@ -83,3 +147,16 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             https://api.github.com/repos/${{ github.repository }}/actions/variables/AZURE_PUBLIC_IP \
             -d "{\"name\":\"AZURE_PUBLIC_IP\",\"value\":\"${{ env.VM_IP }}\"}"
+      
+
+      # --- Cleanup ------------------------------------------------------------
+      
+      - name: Remove temporary CI rule
+        # `if: always()` ensures that this runs even if an earlier step fails,
+        # so a failed deploy never leaves an open SSH rule behind.
+        if: always()
+        run: |
+          az network nsg rule delete \
+            --resource-group team-devvopps \
+            --nsg-name team-devvopps-nsg \
+            --name allow-ssh-ci-temp

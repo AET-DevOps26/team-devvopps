@@ -5,6 +5,7 @@ metadata:
   namespace: {{ .Values.namespace }}
 spec:
   replicas: {{ .Values.replicas }}
+  revisionHistoryLimit: 3
   selector:
     matchLabels:
       app: api-gateway
@@ -13,6 +14,9 @@ spec:
       labels:
         app: api-gateway
     spec:
+      # Disable legacy Docker-link env injection (USER_SERVICE_PORT=tcp://... etc.)
+      # which collides with Spring relaxed binding of user.service.port properties.
+      enableServiceLinks: false
       containers:
         - name: api-gateway
           image: {{ .Values.imageRegistry }}/api-gateway:{{ .Values.imageTag }}
@@ -21,11 +25,11 @@ spec:
             - containerPort: {{ .Values.services.apiGateway.port }}
           resources:
             requests:
-              cpu: 150m
-              memory: 256Mi
+              cpu: {{ .Values.services.apiGateway.resources.requests.cpu }}
+              memory: {{ .Values.services.apiGateway.resources.requests.memory }}
             limits:
-              cpu: 200m
-              memory: 512Mi
+              cpu: {{ .Values.services.apiGateway.resources.limits.cpu }}
+              memory: {{ .Values.services.apiGateway.resources.limits.memory }}
           env:
             - name: USER_SERVICE_HOST
               value: user-service
@@ -39,3 +43,9 @@ spec:
               port: {{ .Values.services.apiGateway.port }}
             initialDelaySeconds: 20
             periodSeconds: 10
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

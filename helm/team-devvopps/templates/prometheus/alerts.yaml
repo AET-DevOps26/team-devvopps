@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-alerts
+  namespace: {{ .Values.namespace }}
+data:
+  alerts.yaml: |
+    # Alert rule groups for team-devvopps services
+    groups:
+      - name: team-devvopps
+        interval: 30s
+        rules:
+          # Critical: Service is completely down and unreachable
+          - alert: ServiceDown
+            # Query: Check if any monitored service is down (up metric == 0)
+            expr: up{job=~"user-service|course-service|roadmap-service|api-gateway"} == 0
+            # Wait 1 minute before alerting to avoid flapping on transient failures
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Service {{ "{{" }} $labels.job {{ "}}" }} is down"
+              description: "Service {{ "{{" }} $labels.job {{ "}}" }} ({{ "{{" }} $labels.instance {{ "}}" }}) has been unavailable for more than 1 minute"
+
+          # Warning: Service is responding with client/server errors
+          - alert: HighErrorRate
+            # Query: Calculate error rate = (4xx + 5xx responses) / total responses over last 5 minutes
+            expr: |
+              (
+                sum(rate(http_server_requests_seconds_count{status=~"[45].."}[5m])) by (job)
+                /
+                sum(rate(http_server_requests_seconds_count[5m])) by (job)
+              ) > 0.05
+            # Wait 2 minutes to allow transient spikes to resolve
+            for: 2m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High error rate on {{ "{{" }} $labels.job {{ "}}" }}"
+              description: "Error rate (4xx/5xx) is above 5% for {{ "{{" }} $labels.job {{ "}}" }}"
+
+          # Warning: Service is responding slowly (high latency)
+          - alert: HighLatency
+            # Query: Calculate 95th percentile (p95) latency over last 5 minutes
+            expr: |
+              histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket[5m])) by (le, job)) > 1
+            # Wait 2 minutes to avoid alerting on temporary slowdowns
+            for: 2m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High latency on {{ "{{" }} $labels.job {{ "}}" }}"
+              description: "p95 latency is above 1s for {{ "{{" }} $labels.job {{ "}}" }}"

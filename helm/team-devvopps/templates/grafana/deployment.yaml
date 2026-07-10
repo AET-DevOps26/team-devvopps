@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: {{ .Values.namespace }}
+spec:
+  # Run exactly 1 Grafana instance (single replica)
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:10.2.3
+          ports:
+            - containerPort: 3000
+          resources:
+            requests:
+              cpu: {{ .Values.grafana.resources.requests.cpu }}
+              memory: {{ .Values.grafana.resources.requests.memory }}
+            limits:
+              cpu: {{ .Values.grafana.resources.limits.cpu }}
+              memory: {{ .Values.grafana.resources.limits.memory }}
+          # Environment variables configure Grafana behavior
+          env:
+            # Admin password from Kubernetes Secret (not hard-coded)
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-admin-secret
+                  key: admin-password
+            # Admin username from Kubernetes Secret (not hard-coded)
+            - name: GF_SECURITY_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-admin-secret
+                  key: admin-user
+            # Disable self-registration (only admin can create accounts)
+            - name: GF_USERS_ALLOW_SIGN_UP
+              value: "false"
+          # Mount configuration and data volumes
+          volumeMounts:
+            # Grafana user data (dashboards, alerts, preferences)
+            # emptyDir = ephemeral storage, lost on pod restart
+            - name: grafana-storage
+              mountPath: /var/lib/grafana
+            # Auto-provision Prometheus datasource on startup
+            - name: grafana-datasources
+              mountPath: /etc/grafana/provisioning/datasources
+            # Dashboard provisioning config and dashboard JSON files (auto-loaded on startup)
+            - name: grafana-dashboards-content
+              mountPath: /etc/grafana/provisioning/dashboards
+      # Define volumes referenced above
+      volumes:
+        # Volume 1: Ephemeral storage for Grafana UI state (lost on pod restart)
+        # Dashboards and datasources are auto-provisioned from ConfigMaps
+        - name: grafana-storage
+          emptyDir: {}
+        # Volume 2: Datasource provisioning config from ConfigMap
+        - name: grafana-datasources
+          configMap:
+            name: grafana-datasources
+        # Volume 3: Dashboard provisioning config and dashboard JSON files from ConfigMap
+        - name: grafana-dashboards-content
+          configMap:
+            name: grafana-dashboards-content

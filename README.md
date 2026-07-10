@@ -162,7 +162,11 @@ Commands:
 ```bash
 make docker-up      # Start full stack
 make docker-down    # Stop stack
-make docker-reset   # Stop and delete all data
+```
+
+To stop the stack and delete all data:
+```bash
+cd infra && docker-compose down -v
 ```
 
 Access:
@@ -173,34 +177,35 @@ Access:
 
 ### Running with Kubernetes
 
-#### Local Kubernetes With Helm
+#### Switching kubectl Contexts
 
-The fastest containerized way to run the entire stack.
+`kubectl` and `helm` always operate on the currently active context — check it before deploying anything:
+
+```bash
+kubectl config get-contexts                   # List all contexts (* = active)
+kubectl config use-context docker-desktop     # Local Kubernetes (Docker Desktop)
+kubectl config use-context stud               # AET cluster (server)
+```
+
+> ⚠️ `make k8s-deploy` refuses to run unless the context is `docker-desktop`,
+> so locally built images can never be deployed to the AET cluster by accident.
+
+#### Local Kubernetes (Recommended)
+
+Deploys the **same Helm chart used on the AET cluster** with local overrides
+(`helm/team-devvopps/values-local.yaml`: locally built images, NodePort instead of ingress, single postgres).
 
 Prerequisites:
 - **Docker Desktop** with **Kubernetes enabled**
   - Settings → Kubernetes → Enable Kubernetes → Apply & Restart
 - **Helm 3.x** (install from https://helm.sh/docs/intro/install/)
+- `infra/.env` containing `GROQ_API_KEY=...` (git-ignored; ask a teammate for the key)
 
+Deploy:
 
-First time setup:
-
-1. Copy the example secrets file:
 ```bash
-cp helm/team-devvopps/values-secrets.example.yaml helm/team-devvopps/values-secrets.yaml
-```
-
-2. Edit `helm/team-devvopps/values-secrets.yaml` with your database credentials:
-```yaml
-postgres:
-  credentials:
-    username: your_username
-    password: your_password
-```
-
-3. Deploy:
-```bash
-make helm-install
+kubectl config use-context docker-desktop
+make k8s-deploy       # Builds all images, installs/upgrades the Helm release, restarts pods
 ```
 
 Access:
@@ -209,40 +214,59 @@ Access:
 
 Manage deployment:
 ```bash
-make helm-upgrade    # Update existing deployment
-make helm-delete     # Remove deployment
 make k8s-status      # Check pod status
+make k8s-seed        # Re-run the course seeder
+make k8s-down        # Tear down (deletes the namespace and all local data)
 ```
 
 #### AET Kubernetes Cluster
 
-For deployment to the AET cluster, see [DEPLOYMENT.md](DEPLOYMENT.md)
+Deployed via GitHub Actions: run **Build Docker Images**, then **Deploy to AET Kubernetes Cluster**.
+The workflow connects to the cluster with its own credentials, so your local kubectl context does not matter for this path. For details see [DEPLOYMENT.md](DEPLOYMENT.md).
+
+To inspect the server or deploy manually, switch your context to the AET cluster first:
 
 ```bash
-make helm-install-aet    # Deploy to AET (uses GitHub Secrets)
+kubectl config use-context stud
+
+kubectl get pods -n team-devvopps       # Inspect what is running on the server
+make helm-install-aet                   # Manual deploy fallback (requires credentials)
 ```
 
-#### Legacy kubectl (Not Recommended)
+> ⚠️ Remember to switch back with `kubectl config use-context docker-desktop`
+> before working locally again.
+
+#### Old Plain-YAML Manifests (Fallback Only)
+
+The original hand-written manifests in `infra/k8s/` are kept as a fallback.
+Do **not** mix with the Helm-based deploy — run `make k8s-down` before switching methods.
 
 ```bash
-make k8s-build        # Build all Docker images
-make k8s-deploy       # Deploy to Kubernetes
-make k8s-status       # Check status
-make k8s-down         # Tear down
+make k8s-deploy-old   # Build images and deploy using infra/k8s/ manifests
 ```
 
 ---
 
 ## API Documentation
 
+### OpenAPI
 OpenAPI specifications are maintained in `api/`:
 
 - `api/user-service.yaml`
 - `api/course-service.yaml`
 - `api/roadmap-service.yaml`
-- `api/genai-service.yaml`
+- `api/llm-service.yaml`
 
-Swagger UI is available at `/swagger-ui.html` on each service:
+OpenAPI linting runs in CI with Redocly:
+
+```bash
+redocly lint api/user-service.yaml
+redocly lint api/course-service.yaml
+redocly lint api/roadmap-service.yaml
+redocly lint api/llm-service.yaml
+```
+### Swagger UI
+Swagger UI is available, for local development, at `/swagger-ui.html` on each service:
 
 | Service | Local URL |
 |---|---|
@@ -251,6 +275,7 @@ Swagger UI is available at `/swagger-ui.html` on each service:
 | Roadmap Service | http://localhost:8083/swagger-ui.html |
 | LLM Service | http://localhost:8084/swagger-ui.html |
 
+### API Gateway
 The API Gateway exposes the current implemented service routes:
 
 | Gateway Route | Target Service | Notes |
@@ -259,6 +284,17 @@ The API Gateway exposes the current implemented service routes:
 | `/courses/**` | `course-service` | List courses, fetch course by ID, search by title |
 | `/roadmaps/**` | `roadmap-service` | Generate and retrieve roadmaps |
 
+### Service Discovery
+Inter-service communication uses DNS-based service discovery, i.e., no hardcoded IPs or ports.
+
+- Docker Compose: Docker's internal DNS resolves service names. Hostnames are set via environment variables (`USER_SERVICE_HOST`, `LLM_SERVICE_HOST` etc.) in `infra/docker-compose.yml`. Ports are externalised via `USER_SERVICE_PORT`, `LLM_SERVICE_PORT` etc. and centralised in `infra/docker-compose.yml`.
+- Kubernetes: Cluster-internal DNS resolves service names within the namespace. All ports are centralised in `helm/team-devvopps/values.yaml` under `services.*` and injected into each pod as environment variables via Helm templates (e.g., `http://course-service:{{ .Values.services.courseService.port }}`).
+
+All service URLs are externalized as environment variables and centralized in:
+- `infra/docker-compose.yml` for local Docker development
+- `helm/team-devvopps/values.yaml` for Kubernetes deployments
+
+### Endpoints
 Current implemented endpoints include:
 
 - `POST /users`
@@ -270,15 +306,6 @@ Current implemented endpoints include:
 - `POST /roadmaps/generate?userId=<id>&goal=<goal>`
 - `GET /roadmaps/{id}`
 
-OpenAPI linting runs in CI with Redocly:
-
-```bash
-redocly lint api/user-service.yaml
-redocly lint api/course-service.yaml
-redocly lint api/roadmap-service.yaml
-redocly lint api/genai-service.yaml
-```
-
 ## CI/CD
 
 GitHub Actions workflows are defined in `.github/workflows/`.
@@ -286,10 +313,10 @@ GitHub Actions workflows are defined in `.github/workflows/`.
 | Workflow | Trigger | Purpose |
 |---|---|---|
 | `lint.yml` | Pull requests to `main`, pushes to non-`main` branches | Runs frontend ESLint, Java checks, actionlint, Helm lint, and OpenAPI lint |
-| `build_and_deploy_docker_VM.yml` | Push to `main` | Builds Docker images, pushes them to GHCR, and deploys to the Azure VM with Docker Compose |
+| `build.yml` | Push to `main` | Builds Docker images for all services and pushes them to GHRC |
+| `deploy-vm.yml` | Automatically after `build.yml` completes successfully on `main` (via `workflow_run`) | Temporarily opens SSH access for the runner's IP, deploys the latest images to the Azure VM with Docker Compose, then closes SSH access again |
 | `deploy-k8s.yml` | Push to `main`, manual dispatch | Deploys the Helm chart to the AET Kubernetes cluster |
-| `provision.yml` | Manual dispatch | Provisions or imports Azure resources with Terraform, configures the VM with Ansible, and updates the Azure public IP GitHub variable |
-| `testing.yml` | Pushes and Pull requests | Runs automated tests for all backend services, including Spring Boot unit tests (for `api-gateway`, `user-service`, `course-service`, `roadmap-service`) and Python tests for the `llm-service` |
+| `provision.yml` | Manual dispatch | Provisions or imports Azure resources with Terraform, temporarily opens SSH for the runner's IP, configures the VM with Ansible, and updates the Azure public IP GitHub variable, then closes SSH access again |
 
 Required GitHub configuration:
 
@@ -300,7 +327,7 @@ For Azure VM:
 | `AZURE_PUBLIC_IP` | variable | Public IP of Azure VM |
 | `AZURE_USER` | variable | SSH username (`azureuser`) |
 | `AZURE_PRIVATE_KEY` | secret | SSH private key |
-| `ARM_CLIENT_ID` | secret | Azure service principal client ID |
+| `ARM_CLIENT_ID` | secret | Azure service principal client ID *(has Network Contributor role on the NSG to manage the temporary CI SSH rule)* |
 | `ARM_CLIENT_SECRET` | secret | Azure service principal client secret |
 | `ARM_SUBSCRIPTION_ID` | secret | Azure subscription ID |
 | `ARM_TENANT_ID` | secret | Azure tenant ID |
@@ -313,6 +340,12 @@ For AET Kubernetes:
 | `KUBECONFIG` | secret | Kubeconfig for AET cluster access |
 | `POSTGRES_USER` | secret | Database username |
 | `POSTGRES_PASSWORD` | secret | Database password |
+| `POSTGRES_REPLICATION_USER` | secret | Replication username |
+| `POSTGRES_REPLICATION_PASSWORD` | secret | Replication password |
+| `GRAFANA_ADMIN_USER` | secret | Grafana admin username |
+| `GRAFANA_ADMIN_PASSWORD` | secret | Grafana admin password |
+| `GROQ_API_KEY` | secret | Groq API key for llm-service |
+| `LOGOS_API_KEY` | secret | Logos API key for llm-service (optional) |
 | `K8S_NAMESPACE` | variable | Kubernetes namespace (`team-devvopps`) |
 
 ### Azure VM (Staging/Demo)
@@ -330,8 +363,8 @@ The application is automatically built and deployed to an Azure VM on every merg
    - Terraform creates VM + Ansible configures Docker
 
 2. **Deployment (automatic on merge to main):**
-   - Build job: Creates 5 Docker images → pushes to ghcr.io
-   - Deploy job: Copies docker-compose to VM → starts services with Traefik for HTTPS
+   - `build.yml`: Creates 5 Docker images → pushes to ghcr.io
+   - `deploy-vm.yml`: Temporarily allows the runner's IP through the VM's NSG → Copies docker-compose to VM → starts services with Traefik for HTTPS
 
 **Stack on VM:**
 - Traefik (reverse proxy + Let's Encrypt HTTPS)
@@ -344,6 +377,13 @@ The application is automatically built and deployed to an Azure VM on every merg
 - SSH Key Pair: For accessing VM
 - All configured in GitHub Secrets
 
+**Network Security:**
+- SSH (port 22) on the Azure VM's Network Security Group is restricted to the MWN (Münchner Wissenschaftsnetz) range `129.187.0.0/16`, which covers TUM, LMU, BADW, and LRZ.
+- To SSH into the VM, connect to TUM's eduVPN first.
+- The allowed range is set via the `allowed_ssh_eduVPN` Terraform variable in `terraform/` and defaults to `129.187.0.0/16`. Update it there (and re-run `terraform apply` or the `provision.yml` workflow) if the MWN allocation changes.
+- HTTP (80) and HTTPS (443) remain open to all sources, since the application's frontend/API are intended to be publicly available. Only SSH is access-restricted.
+- **CI/CD SSH access**: Since the GitHub Actions runners don't have IPs within the MWN range, both `provision.yml` (which runs the Ansible playbook to configure the VM) and `deploy-vm.yml` (which deploys updated images) add a `/32` NSG rule for the runner's own public IP just before connecting over SSH, then delete that rule immediately afterward (even on failure, via `if: always()`). This keeps the NSG closed to the public internet while still allowing automated provisioning and deploys.
+
 See [README.md section on Azure](README.md#azure-vm-stagingdemo) for detailed setup.
 
 ### AET Kubernetes Cluster (Production)
@@ -352,6 +392,9 @@ For deployment to the AET Kubernetes cluster used in the course:
 
 - See [DEPLOYMENT.md](DEPLOYMENT.md) for full instructions
 - Two deployment options: GitHub Actions (automatic) or manual Helm command
+- **PostgreSQL High Availability:** postgres-0 (primary) + postgres-1 (replica) with streaming replication
+  - Replicas stay in sync automatically
+  - On primary failure, Kubernetes restarts it and replication resumes
 - Supports multiple environments with Helm values files
 
 ## Monitoring And Operations
@@ -366,6 +409,21 @@ tail -f logs/user-service.log
 tail -f logs/course-service.log
 tail -f logs/roadmap-service.log
 ```
+
+### For AET Kubernetes
+| Name | Type | Description |
+|---|---|---|
+| `KUBECONFIG` | secret | Kubeconfig for AET cluster access |
+| `POSTGRES_USER` | secret | PostgreSQL superuser name (typically "postgres") |
+| `POSTGRES_PASSWORD` | secret | PostgreSQL superuser password |
+| `POSTGRES_REPLICATION_USER` | secret | Replication username |
+| `POSTGRES_REPLICATION_PASSWORD` | secret | Replication password |
+| `GRAFANA_ADMIN_USER` | secret | Grafana admin username |
+| `GRAFANA_ADMIN_PASSWORD` | secret | Grafana admin password |
+| `GROQ_API_KEY` | secret | Groq API key for llm-service |
+| `LOGOS_API_KEY` | secret | Logos API key for llm-service (optional) |
+| `K8S_NAMESPACE` | variable | Kubernetes namespace (`team-devvopps`) |
+
 
 ## Testing
 

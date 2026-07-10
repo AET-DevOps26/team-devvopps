@@ -1,20 +1,53 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
-const LLM_SERVICE_URL = import.meta.env.VITE_LLM_SERVICE_URL || "http://localhost:8004";
+const API_URL = "/api";
+// nginx proxies /llm/ straight to llm-service (see client/nginx.conf).
+const LLM_URL = "/llm";
+// roadmaps/generate defaults to userId=1 server-side, so token usage is keyed
+// by the same id. Kept as a constant so it's easy to wire to real auth later.
+const USER_ID = 1;
+
+// Mirrors MAX_GOAL_CHARS in llm-service — requests longer than this are
+// rejected server-side with 422, so block them in the input directly.
+const MAX_GOAL_LENGTH = 200;
 
 interface Task {
+  task_id: number;
   title: string;
   completed: boolean;
+  order_index: number;
 }
 
 interface Milestone {
+  milestone_id: number;
   title: string;
   description: string;
+  status: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED";
   tasks: Task[];
 }
 
 interface RoadmapResponse {
+  roadmap_id: number;
   milestones: Milestone[];
+}
+
+interface TokenUsage {
+  used: number;
+  limit: number;
+  remaining: number;
+}
+
+// Fetches token usage without touching React state, so it can be called from
+// an effect without tripping the react-hooks/set-state-in-effect rule.
+// Returns null on any failure — the usage badge is non-critical.
+async function fetchUsageData(): Promise<TokenUsage | null> {
+  try {
+    const res = await fetch(`${LLM_URL}/usage/${USER_ID}`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
 }
 
 export default function RoadmapChat() {
@@ -22,6 +55,25 @@ export default function RoadmapChat() {
   const [roadmap, setRoadmap] = useState<RoadmapResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [togglingTaskId, setTogglingTaskId] = useState<number | null>(null);
+  const [usage, setUsage] = useState<TokenUsage | null>(null);
+
+  // Token usage is best-effort: fetch on mount and refresh after each
+  // generation so the remaining balance stays in sync. Failures are ignored
+  // silently — the badge just won't render.
+  async function fetchUsage() {
+    const data = await fetchUsageData();
+    if (data) setUsage(data);
+  }
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const data = await fetchUsageData();
+      if (active && data) setUsage(data);
+    })();
+    return () => { active = false; };
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -32,21 +84,109 @@ export default function RoadmapChat() {
     setRoadmap(null);
 
     try {
-      const res = await fetch(`${LLM_SERVICE_URL}/recommend`, {
+      const res = await fetch(`${API_URL}/roadmaps/generate?goal=${encodeURIComponent(goal)}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ goal }),
       });
+
+      if (res.status === 429) {
+        const data = await res.json();
+        setError(data.detail || "Token quota exceeded.");
+        fetchUsage();
+        return;
+      }
+
+      if (res.status === 422) {
+        let detail: string | undefined;
+        try {
+          const data = await res.json();
+          detail = data.detail;
+        } catch {
+          // body wasn't JSON — fall through to default message
+        }
+        setError(detail || "Your goal is too long. Please shorten it.");
+        return;
+      }
 
       if (!res.ok) throw new Error(`Error ${res.status}: ${res.statusText}`);
       const data: RoadmapResponse = await res.json();
       setRoadmap(data);
+      fetchUsage();
+
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setLoading(false);
     }
   }
+
+  async function handleToggleTask(taskId: number) {
+    if (!roadmap) return;
+    if (togglingTaskId !== null) return;
+    setTogglingTaskId(taskId);
+
+    // Optimistic update
+    const prevRoadmap = roadmap;
+    setRoadmap(optimisticallyToggle(roadmap, taskId));
+
+    try {
+      const res = await fetch(
+        `${API_URL}/roadmaps/${roadmap.roadmap_id}/tasks/${taskId}/complete`,
+        { method: "PATCH" }
+      );
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const updated: RoadmapResponse = await res.json();
+
+      setRoadmap(prev => {
+        if (!prev) return updated;
+
+        return {
+          ...updated,
+          milestones: updated.milestones.map(updatedMilestone => {
+            const oldMilestone = prev.milestones.find(
+              m => m.milestone_id === updatedMilestone.milestone_id
+            );
+
+            if (!oldMilestone) return updatedMilestone;
+
+            return {
+              ...updatedMilestone,
+              tasks: oldMilestone.tasks.map(oldTask => {
+                const newTask = updatedMilestone.tasks.find(
+                  t => t.task_id === oldTask.task_id
+                );
+
+                return newTask ?? oldTask;
+              }),
+            };
+          }),
+        };
+      });
+    } catch {
+      setRoadmap(prevRoadmap);
+      setError("Couldn't update task. Try again.");
+      setTimeout(() => setError(null), 3000);
+    } finally {
+      setTogglingTaskId(null);
+    }
+  }
+
+  const allTasks = roadmap?.milestones.flatMap(m => m.tasks) ?? [];
+  const doneTasks = allTasks.filter(t => t.completed).length;
+  const pct = allTasks.length > 0 ? Math.round((doneTasks / allTasks.length) * 100) : 0;
+  const completedMilestones = roadmap?.milestones.filter(m => m.status === "COMPLETED").length ?? 0;
+  // Keep a stable order so completing a task doesn't reorder the list —
+  // completed items just change color/style, they don't move down.
+  const sortedMilestones = [...(roadmap?.milestones ?? [])].sort(
+    (a, b) => a.milestone_id - b.milestone_id
+  );
+
+  // Token badge: color shifts green → orange → red as the balance runs low.
+  const tokenRatio = usage && usage.limit > 0 ? usage.remaining / usage.limit : 1;
+  const tokenColor = tokenRatio > 0.5 ? "#2e7d32" : tokenRatio > 0.2 ? "#e08600" : "#c62828";
+
+  // Character counter: warn as the goal approaches the server-enforced max.
+  const charRatio = goal.length / MAX_GOAL_LENGTH;
+  const charColor = charRatio >= 1 ? "#c62828" : charRatio >= 0.8 ? "#e08600" : "#888";
 
   return (
     <div style={styles.container}>
@@ -55,25 +195,46 @@ export default function RoadmapChat() {
         <p style={styles.subtitle}>Tell us your learning goal — we'll build your roadmap.</p>
       </div>
 
+      {usage && (
+        <div style={styles.tokenBar}>
+          <div style={styles.tokenRow}>
+            <span style={styles.tokenLabel}>🎫 Remaining tokens</span>
+            <span style={{ ...styles.tokenValue, color: tokenColor }}>
+              {usage.remaining.toLocaleString()} / {usage.limit.toLocaleString()}
+            </span>
+          </div>
+          <div style={styles.tokenTrack}>
+            <div style={{
+              ...styles.tokenFill,
+              width: `${Math.max(0, Math.min(100, tokenRatio * 100))}%`,
+              background: tokenColor,
+            }} />
+          </div>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} style={styles.form}>
         <input
           style={styles.input}
           type="text"
           placeholder="e.g. I want to learn Machine Learning"
           value={goal}
-          onChange={(e) => setGoal(e.target.value)}
+          onChange={(e) => setGoal(e.target.value.slice(0, MAX_GOAL_LENGTH))}
+          maxLength={MAX_GOAL_LENGTH}
           disabled={loading}
         />
         <button style={styles.button} type="submit" disabled={loading || !goal.trim()}>
           {loading ? "Generating..." : "Generate Roadmap"}
         </button>
       </form>
+      <div style={styles.charHintRow}>
+        <span style={{ color: charColor, fontWeight: charRatio >= 0.8 ? 600 : 400 }}>
+          {goal.length} / {MAX_GOAL_LENGTH} characters
+        </span>
+        {charRatio >= 1 && <span style={{ color: "#c62828" }}>Maximum length reached</span>}
+      </div>
 
-      {error && (
-        <div style={styles.error}>
-          ⚠️ {error}
-        </div>
-      )}
+      {error && <div style={styles.error}>⚠️ {error}</div>}
 
       {loading && (
         <div style={styles.loadingBox}>
@@ -83,31 +244,113 @@ export default function RoadmapChat() {
       )}
 
       {roadmap && roadmap.milestones.length > 0 && (
-        <div style={styles.roadmap}>
-          <h2 style={styles.roadmapTitle}>Your Learning Roadmap</h2>
-          {roadmap.milestones.map((milestone, i) => (
-            <div key={i} style={styles.milestone}>
-              <div style={styles.milestoneHeader}>
-                <span style={styles.milestoneNumber}>{i + 1}</span>
-                <div>
-                  <h3 style={styles.milestoneTitle}>{milestone.title}</h3>
-                  <p style={styles.milestoneDesc}>{milestone.description}</p>
-                </div>
-              </div>
-              <ul style={styles.taskList}>
-                {milestone.tasks?.map((task, j) => (
-                  <li key={j} style={styles.task}>
-                    <span style={styles.taskDot}>→</span>
-                    {task.title}
-                  </li>
-                ))}
-              </ul>
+        <>
+          {/* Progress bar */}
+          <div style={styles.progressWrap}>
+            <div style={styles.progressLabels}>
+              <span>{completedMilestones} / {roadmap.milestones.length} milestones</span>
+              <span>{doneTasks} / {allTasks.length} tasks</span>
+              <span style={{ fontWeight: 700, color: pct === 100 ? "#2e7d32" : "#0065BD" }}>{pct}%</span>
             </div>
-          ))}
-        </div>
+            <div style={styles.progressTrack}>
+              <div style={{
+                ...styles.progressFill,
+                width: `${pct}%`,
+                background: pct === 100 ? "#2e7d32" : "#0065BD",
+              }} />
+            </div>
+          </div>
+
+          <div style={styles.roadmap}>
+            <h2 style={styles.roadmapTitle}>Your Learning Roadmap</h2>
+            {sortedMilestones.map((milestone, i) => {
+              const badgeColor = {
+                NOT_STARTED: "#999",
+                IN_PROGRESS: "#0065BD",
+                COMPLETED: "#2e7d32",
+              }[milestone.status ?? "NOT_STARTED"];
+
+              return (
+                <div key={milestone.milestone_id} style={styles.milestone}>
+                  <div style={styles.milestoneHeader}>
+                    <span style={{
+                      ...styles.milestoneNumber,
+                      background: milestone.status === "COMPLETED" ? "#2e7d32" : "#0065BD",
+                    }}>
+                      {i + 1}
+                    </span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <h3 style={styles.milestoneTitle}>{milestone.title}</h3>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: badgeColor, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                          {(milestone.status ?? "NOT_STARTED").replace("_", " ")}
+                        </span>
+                      </div>
+                      <p style={styles.milestoneDesc}>{milestone.description}</p>
+                    </div>
+                  </div>
+                  <ul style={{
+                        ...styles.taskList,
+                        pointerEvents: togglingTaskId !== null ? "none" : "auto",
+                        opacity: togglingTaskId !== null ? 0.6 : 1,
+                      }}>
+                    {[...milestone.tasks]
+                      .sort((a, b) => a.order_index - b.order_index)
+                      .map((task) => (
+                      <li
+                        key={task.task_id}
+                        style={{
+                          ...styles.task,
+                          cursor: "pointer",
+                          opacity: togglingTaskId === task.task_id ? 0.5 : 1,
+                        }}
+                        onClick={() => task.task_id && handleToggleTask(task.task_id)}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={task.completed}
+                          readOnly
+                          style={{ accentColor: "#0065BD", marginRight: 6, marginTop: 2, flexShrink: 0 }}
+                        />
+                        <span style={{
+                          textDecoration: task.completed ? "line-through" : "none",
+                          color: task.completed ? "#999" : "#333",
+                        }}>
+                          {task.title}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
+
+          <button
+            style={{ ...styles.button, marginTop: 32, width: "100%" }}
+            onClick={() => { setRoadmap(null); setGoal(""); }}
+          >
+            Start Over
+          </button>
+        </>
       )}
     </div>
   );
+}
+
+function optimisticallyToggle(roadmap: RoadmapResponse, taskId: number): RoadmapResponse {
+  return {
+    ...roadmap,
+    milestones: roadmap.milestones.map((m) => {
+      const tasks = m.tasks.map((t) =>
+        t.task_id === taskId ? { ...t, completed: !t.completed } : t
+      );
+      const allDone = tasks.every((t) => t.completed);
+      const noneDone = tasks.every((t) => !t.completed);
+      const status: Milestone["status"] = allDone ? "COMPLETED" : noneDone ? "NOT_STARTED" : "IN_PROGRESS";
+      return { ...m, tasks, status };
+    }),
+  };
 }
 
 const styles: Record<string, React.CSSProperties> = {
@@ -157,6 +400,46 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     whiteSpace: "nowrap",
   },
+  charHintRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    fontSize: 13,
+    margin: "-24px 0 24px 4px",
+  },
+  tokenBar: {
+    background: "#f7f9fc",
+    border: "1px solid #e0e6ef",
+    borderRadius: 10,
+    padding: "12px 16px",
+    marginBottom: 24,
+  },
+  tokenRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  tokenLabel: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: "#555",
+  },
+  tokenValue: {
+    fontSize: 14,
+    fontWeight: 700,
+    fontVariantNumeric: "tabular-nums",
+  },
+  tokenTrack: {
+    background: "#e5e5e5",
+    borderRadius: 6,
+    height: 8,
+    overflow: "hidden",
+  },
+  tokenFill: {
+    height: "100%",
+    borderRadius: 6,
+    transition: "width 0.4s ease, background 0.4s ease",
+  },
   error: {
     background: "#fff3f3",
     border: "1px solid #ffcdd2",
@@ -178,10 +461,32 @@ const styles: Record<string, React.CSSProperties> = {
     animation: "spin 0.8s linear infinite",
     margin: "0 auto",
   },
+  progressWrap: { 
+    marginBottom: 28 
+  },
+  progressLabels: { 
+    display: "flex", 
+    justifyContent: "space-between", 
+    fontSize: 13, 
+    color: "#555", 
+    marginBottom: 6 
+  },
+  progressTrack: { 
+    background: "#e5e5e5", 
+    borderRadius: 8, 
+    height: 10, 
+    overflow: "hidden" 
+  },
+  progressFill: { 
+    height: "100%", 
+    borderRadius: 8, 
+    transition: "width 0.4s ease" 
+  },
   roadmap: {
     display: "flex",
     flexDirection: "column",
     gap: 20,
+    transition: "all 0.4s ease",
   },
   roadmapTitle: {
     fontSize: 22,
@@ -194,6 +499,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid #dde3ff",
     borderRadius: 12,
     padding: "20px 24px",
+    transition: "transform 0.4s ease, opacity 0.4s ease",
   },
   milestoneHeader: {
     display: "flex",

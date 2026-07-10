@@ -1,0 +1,29 @@
+# Values for local development (docker-desktop Kubernetes)
+# Used by `make k8s-deploy` — same chart as the AET cluster, local-only overrides.
+# Access after deploy: client http://localhost:30000, API gateway http://localhost:30080
+
+# Images are built locally by `make k8s-build`, never pulled from a registry
+imageRegistry: team-devvopps
+imagePullPolicy: Never
+
+# Empty = no ingress rendered; NodePort services are used instead
+ingressHost: ""
+
+postgres:
+  # Single instance locally — no replication needed for development
+  replicas: 1
+  storage: 1Gi
+  # Local-only credentials (production credentials come from GitHub Secrets via --set)
+  credentials:
+    username: postgres
+    password: postgres
+  replicationUser: replication
+  replicationPassword: replication
+
+# groqApiKey is injected by `make k8s-deploy` via --set from the git-ignored infra/.env
+llmService:
+  groqApiKey: ""
+
+# docker-desktop uses the docker log format (JSON), not containerd's cri format
+promtail:
+  pipelineStage: docker
