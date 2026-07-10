@@ -9,8 +9,11 @@ metadata:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/use-regex: "true"
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+    # Logos (gpt-oss-120b) roadmap generation takes 130-160s. Must stay
+    # strictly ABOVE the llm-service request timeout (300s): its timer starts
+    # earlier, so an equal value would 504 before the backend can respond.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "330"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "330"
 spec:
   ingressClassName: nginx
   tls:
