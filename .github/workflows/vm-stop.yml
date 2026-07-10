@@ -3,9 +3,6 @@ name: Stop VM
 on:
   workflow_dispatch:
 
-permissions:
-  contents: read
-
 jobs:
   stop:
     runs-on: ubuntu-latest
