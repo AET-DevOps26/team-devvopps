@@ -47,8 +47,14 @@ export default function RoadmapChat() {
       }
 
       if (res.status === 422) {
-        const data = await res.json();
-        setError(data.detail || "Your goal is too long. Please shorten it.");
+        let detail: string | undefined;
+        try {
+          const data = await res.json();
+          detail = data.detail;
+        } catch {
+          // body wasn't JSON — fall through to default message
+        }
+        setError(detail || "Your goal is too long. Please shorten it.");
         return;
       }
 
