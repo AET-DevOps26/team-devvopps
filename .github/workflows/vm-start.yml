@@ -1,9 +1,6 @@
 name: Start VM 
 
 on:
-  push:
-    branches:
-    - fix/vm
   workflow_dispatch:
 
 jobs:
