@@ -1,4 +1,4 @@
-package com.tum.gateway;
+package com.tum.gateway.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
@@ -39,7 +39,11 @@ public class GatewayController {
     @Value("${services.roadmap.url}")
     private String roadmapServiceUrl;
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final RestTemplate restTemplate;
+
+    public GatewayController(RestTemplate restTemplate) {
+        this.restTemplate = restTemplate;
+    }
 
     @RequestMapping("/users/**")
     public ResponseEntity<byte[]> forwardUser(HttpServletRequest request, HttpEntity<byte[]> entity) {
@@ -51,7 +55,16 @@ public class GatewayController {
         return forward(request, entity, courseServiceUrl);
     }
 
-    @RequestMapping("/roadmaps/**")
+    @RequestMapping(
+        value = "/roadmaps/**", 
+        method = {
+            RequestMethod.GET,
+            RequestMethod.POST,
+            RequestMethod.PUT,
+            RequestMethod.PATCH,
+            RequestMethod.DELETE
+        }
+    )
     public ResponseEntity<byte[]> forwardRoadmap(HttpServletRequest request, HttpEntity<byte[]> entity) {
         return forward(request, entity, roadmapServiceUrl);
     }

@@ -32,4 +32,16 @@ public class RoadmapController {
     public ResponseEntity<Roadmap> getRoadmap(@PathVariable Long id) {
         return ResponseEntity.ok(roadmapService.getRoadmap(id));
     }
+
+    @PatchMapping("/{roadmapId}/tasks/{taskId}/complete")
+    public ResponseEntity<Roadmap> toggleCompletionTask(
+            @PathVariable Long roadmapId,
+            @PathVariable Long taskId) {
+        return ResponseEntity.ok(roadmapService.toggleCompletionTask(roadmapId, taskId));
+    }
+
+    @GetMapping("/{roadmapId}/progress")
+    public ResponseEntity<RoadmapService.RoadmapProgress> getProgress(@PathVariable Long roadmapId) {
+        return ResponseEntity.ok(roadmapService.getProgress(roadmapId));
+    }
 }
