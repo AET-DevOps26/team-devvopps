@@ -27,14 +27,14 @@ help:
 
 helm-install-aet:
 	@echo "Installing Helm chart to AET Kubernetes cluster..."
-	@if [ -z "$(POSTGRES_USER)" ] || [ -z "$(POSTGRES_PASSWORD)" ] || [ -z "$(POSTGRES_REPLICATION_USER)" ] || [ -z "$(POSTGRES_REPLICATION_PASSWORD)" ] || [ -z "$(GRAFANA_ADMIN_USER)" ] || [ -z "$(GRAFANA_ADMIN_PASSWORD)" ] || [ -z "$(GROQ_API_KEY)" ]; then \
+	@if [ -z "$(POSTGRES_USER)" ] || [ -z "$(POSTGRES_PASSWORD)" ] || [ -z "$(POSTGRES_REPLICATION_USER)" ] || [ -z "$(POSTGRES_REPLICATION_PASSWORD)" ] || [ -z "$(GRAFANA_ADMIN_USER)" ] || [ -z "$(GRAFANA_ADMIN_PASSWORD)" ] || [ -z "$(GROQ_API_KEY)" ] || [ -z "$(JWT_SIGNING_KEY)" ]; then \
 		echo ""; \
-		echo "ERROR: Database, Grafana, and Groq credentials required"; \
+		echo "ERROR: Database, Grafana, Groq, and JWT credentials required"; \
 		echo ""; \
-		echo "Usage: POSTGRES_USER=<user> POSTGRES_PASSWORD=<pass> POSTGRES_REPLICATION_USER=<user> POSTGRES_REPLICATION_PASSWORD=<pass> GRAFANA_ADMIN_USER=<user> GRAFANA_ADMIN_PASSWORD=<pass> GROQ_API_KEY=<key> make helm-install-aet"; \
+		echo "Usage: POSTGRES_USER=<user> POSTGRES_PASSWORD=<pass> POSTGRES_REPLICATION_USER=<user> POSTGRES_REPLICATION_PASSWORD=<pass> GRAFANA_ADMIN_USER=<user> GRAFANA_ADMIN_PASSWORD=<pass> GROQ_API_KEY=<key> JWT_SIGNING_KEY=<key> make helm-install-aet"; \
 		echo ""; \
 		echo "OR use GitHub Actions (recommended):"; \
-		echo "  1. Set GitHub Secrets: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_REPLICATION_USER, POSTGRES_REPLICATION_PASSWORD, GRAFANA_ADMIN_USER, GRAFANA_ADMIN_PASSWORD, GROQ_API_KEY"; \
+		echo "  1. Set GitHub Secrets: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_REPLICATION_USER, POSTGRES_REPLICATION_PASSWORD, GRAFANA_ADMIN_USER, GRAFANA_ADMIN_PASSWORD, GROQ_API_KEY, JWT_SIGNING_KEY"; \
 		echo "  2. Push to main or trigger workflow manually"; \
 		echo ""; \
 		exit 1; \
@@ -50,6 +50,9 @@ helm-install-aet:
 		--set grafana.adminPassword=$(GRAFANA_ADMIN_PASSWORD) \
 		--set llmService.groqApiKey=$(GROQ_API_KEY) \
 		--set llmService.logosApiKey=$(LOGOS_API_KEY) \
+		--set auth.jwtSigningKey=$(JWT_SIGNING_KEY) \
+		--set auth.adminEmail=$(ADMIN_EMAIL) \
+		--set auth.adminPassword=$(ADMIN_PASSWORD) \
 		-n team-devvopps
 	@echo ""
 	@echo "Deployment complete!"
@@ -82,10 +85,17 @@ k8s-deploy: k8s-build
 	fi
 	@GROQ_KEY=$$(grep -E '^GROQ_API_KEY=' infra/.env 2>/dev/null | cut -d= -f2-); \
 	if [ -z "$$GROQ_KEY" ]; then echo "WARNING: no GROQ_API_KEY in infra/.env — LLM calls will fail"; fi; \
+	JWT_KEY=$$(grep -E '^JWT_SIGNING_KEY=' infra/.env 2>/dev/null | cut -d= -f2-); \
+	if [ -z "$$JWT_KEY" ]; then JWT_KEY=$$(openssl rand -hex 32); echo "NOTE: no JWT_SIGNING_KEY in infra/.env — generated an ephemeral key (sessions reset each deploy)"; fi; \
+	ADMIN_EMAIL=$$(grep -E '^ADMIN_EMAIL=' infra/.env 2>/dev/null | cut -d= -f2-); \
+	ADMIN_PASSWORD=$$(grep -E '^ADMIN_PASSWORD=' infra/.env 2>/dev/null | cut -d= -f2-); \
 	kubectl delete job course-seeder -n $(NAMESPACE) --ignore-not-found 2>/dev/null; \
 	helm upgrade --install team-devvopps helm/team-devvopps/ \
 		-f helm/team-devvopps/values-local.yaml \
 		--set llmService.groqApiKey="$$GROQ_KEY" \
+		--set auth.jwtSigningKey="$$JWT_KEY" \
+		--set auth.adminEmail="$$ADMIN_EMAIL" \
+		--set auth.adminPassword="$$ADMIN_PASSWORD" \
 		-n $(NAMESPACE) --create-namespace \
 		--wait --timeout 5m
 	@echo ""

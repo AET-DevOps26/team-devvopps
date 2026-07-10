@@ -11,7 +11,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, List, Optional
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -360,12 +360,17 @@ async def health_check():
     return {"status": "healthy", "service": "LLM Roadmap Generation Service", "model": MODEL_NAME}
 
 
-@app.get("/usage/{user_id}")
-async def get_usage(user_id: str):
-    """Returns the user's cumulative token usage and remaining quota."""
-    used = _user_token_usage[user_id]
+@app.get("/usage")
+async def get_usage(x_user_id: str = Header(...)):
+    """
+    Returns the caller's cumulative token usage and remaining quota.
+
+    The user id comes from the gateway-injected, JWT-verified X-User-Id header,
+    so the client cannot query another user's usage.
+    """
+    used = _user_token_usage[x_user_id]
     return {
-        "user_id": user_id,
+        "user_id": x_user_id,
         "used": used,
         "limit": MAX_TOKENS_PER_USER,
         "remaining": max(0, MAX_TOKENS_PER_USER - used),
