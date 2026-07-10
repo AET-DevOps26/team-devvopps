@@ -1,7 +1,7 @@
 NAMESPACE = team-devvopps
 IMAGE_PREFIX = team-devvopps
 
-.PHONY: help helm-install-aet helm-delete k8s-build k8s-deploy k8s-seed k8s-deploy-old k8s-secrets-old k8s-seed-old k8s-down docker-up docker-down dev dev-stop k8s-status
+.PHONY: help helm-install-aet helm-delete k8s-build k8s-deploy k8s-seed k8s-down docker-up docker-down dev dev-stop k8s-status
 
 help:
 	@echo "Available commands:"
@@ -13,7 +13,6 @@ help:
 	@echo "Kubernetes (local, docker-desktop):"
 	@echo "  make k8s-build       - Build all Docker images for Kubernetes"
 	@echo "  make k8s-deploy      - Build images and deploy locally via Helm chart"
-	@echo "  make k8s-deploy-old  - Same but with plain YAML manifests (infra/k8s/)"
 	@echo "  make k8s-down        - Tear down Kubernetes deployment"
 	@echo ""
 	@echo "Docker Compose:"
@@ -97,50 +96,6 @@ k8s-deploy: k8s-build
 	@echo "  Client:      http://localhost:30000"
 	@echo "  API Gateway: http://localhost:30080"
 	@echo "  Seeder:      kubectl logs -n $(NAMESPACE) job/course-seeder -f"
-
-# ── Kubernetes (OLD — plain YAML manifests from infra/k8s/) ──────────────────
-# Kept for reference/fallback. Uses the hand-written manifests instead of the
-# Helm chart. Do NOT mix with the Helm-based k8s-deploy in the same namespace —
-# wipe first with `make k8s-down` when switching between the two methods.
-
-k8s-deploy-old: k8s-build
-	kubectl apply -f infra/k8s/namespace.yaml
-	$(MAKE) k8s-secrets-old
-	kubectl apply -f infra/k8s/
-	kubectl apply -f infra/k8s/postgres/
-	kubectl apply -f infra/k8s/user-service/
-	kubectl apply -f infra/k8s/course-service/
-	kubectl apply -f infra/k8s/roadmap-service/
-	kubectl apply -f infra/k8s/llm-service/
-	kubectl apply -f infra/k8s/api-gateway/
-	kubectl apply -f infra/k8s/client/
-	@echo ""
-	@echo "Waiting for pods to be ready..."
-	kubectl wait --for=condition=ready pod --all -n $(NAMESPACE) --timeout=120s
-	$(MAKE) k8s-seed-old
-	@echo ""
-	@echo "Deployment complete!"
-	@echo "  Client:      http://localhost:30000"
-	@echo "  API Gateway: http://localhost:30080"
-
-# Create the llm-secret from infra/.env (GROQ_API_KEY) — the .env file is
-# git-ignored, so the key never ends up in the repo. Safe to re-run (apply).
-k8s-secrets-old:
-	@if [ -f infra/.env ]; then \
-		GROQ_KEY=$$(grep -E '^GROQ_API_KEY=' infra/.env | cut -d= -f2-); \
-		kubectl create secret generic llm-secret -n $(NAMESPACE) \
-			--from-literal=groq-api-key="$$GROQ_KEY" \
-			--dry-run=client -o yaml | kubectl apply -f -; \
-		echo "llm-secret created from infra/.env"; \
-	else \
-		echo "WARNING: infra/.env not found — llm-service will have no GROQ_API_KEY"; \
-	fi
-
-k8s-seed-old:
-	@echo "Running course seeder (checks if data exists first)..."
-	kubectl delete job course-seeder -n $(NAMESPACE) --ignore-not-found
-	kubectl apply -f infra/k8s/seeder/job.yaml
-	@echo "Seeder job started. Follow with: kubectl logs -n $(NAMESPACE) job/course-seeder -f"
 
 # Re-run the course seeder (renders the job from the Helm chart)
 k8s-seed:
