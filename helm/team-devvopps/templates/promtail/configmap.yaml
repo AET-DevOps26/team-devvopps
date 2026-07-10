@@ -1,0 +1,48 @@
+# Promtail configuration — Kubernetes counterpart of infra/promtail/promtail-config.yaml.
+# Discovers pods in this namespace via the Kubernetes API and tails their log
+# files from /var/log/pods on the node.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: promtail-config
+  namespace: {{ .Values.namespace }}
+data:
+  promtail-config.yaml: |
+    server:
+      http_listen_port: 9080
+
+    positions:
+      filename: /run/promtail/positions.yaml  # emptyDir — avoids a writable hostPath
+
+    clients:
+      - url: http://loki:3100/loki/api/v1/push
+
+    scrape_configs:
+      - job_name: kubernetes-pods
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - {{ .Values.namespace }}
+
+        # Log line wrapper format depends on the container runtime:
+        # cri (containerd, AET) vs docker (docker-desktop). Set via values.
+        pipeline_stages:
+          - {{ .Values.promtail.pipelineStage }}: {}
+
+        relabel_configs:
+          # "service" label keeps parity with docker-compose so the Grafana
+          # Logs dashboard queries ({service=~".+"}) work unchanged.
+          - source_labels: ['__meta_kubernetes_pod_label_app']
+            target_label: 'service'
+          - source_labels: ['__meta_kubernetes_namespace']
+            target_label: 'namespace'
+          - source_labels: ['__meta_kubernetes_pod_name']
+            target_label: 'pod'
+          - source_labels: ['__meta_kubernetes_pod_container_name']
+            target_label: 'container'
+          # Kubelet writes logs to /var/log/pods/<ns>_<pod>_<uid>/<container>/N.log
+          - source_labels: ['__meta_kubernetes_pod_uid', '__meta_kubernetes_pod_container_name']
+            separator: '/'
+            replacement: '/var/log/pods/*$1/*.log'
+            target_label: '__path__'

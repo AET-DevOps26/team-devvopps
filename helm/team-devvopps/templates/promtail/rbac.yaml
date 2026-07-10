@@ -1,0 +1,33 @@
+# Promtail needs to list pods in the namespace to discover which log files
+# belong to which pod/container. Namespace-scoped Role (not ClusterRole) —
+# sufficient because kubernetes_sd is restricted to this namespace, and
+# friendlier to the shared AET cluster's RBAC.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: promtail
+  namespace: {{ .Values.namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: promtail
+  namespace: {{ .Values.namespace }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: promtail
+  namespace: {{ .Values.namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: promtail
+subjects:
+  - kind: ServiceAccount
+    name: promtail
+    namespace: {{ .Values.namespace }}

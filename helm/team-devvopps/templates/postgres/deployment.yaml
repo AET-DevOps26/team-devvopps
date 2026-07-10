@@ -8,6 +8,7 @@ spec:
   # Required for StatefulSet pods to discover each other for replication
   serviceName: postgres
   replicas: {{ .Values.postgres.replicas }}
+  revisionHistoryLimit: 3
   selector:
     matchLabels:
       app: postgres
@@ -34,11 +35,11 @@ spec:
           # init-postgres only runs once during pod initialization (brief, light workload)
           resources:
             requests:
-              cpu: 100m
-              memory: 128Mi
+              cpu: {{ .Values.postgres.initResources.requests.cpu }}
+              memory: {{ .Values.postgres.initResources.requests.memory }}
             limits:
-              cpu: 200m
-              memory: 256Mi
+              cpu: {{ .Values.postgres.initResources.limits.cpu }}
+              memory: {{ .Values.postgres.initResources.limits.memory }}
           env:
             - name: POSTGRES_USER
               valueFrom:
@@ -124,11 +125,11 @@ spec:
             - containerPort: {{ .Values.services.postgres.port }}
           resources:
             requests:
-              cpu: 250m
-              memory: 256Mi
+              cpu: {{ .Values.postgres.resources.requests.cpu }}
+              memory: {{ .Values.postgres.resources.requests.memory }}
             limits:
-              cpu: 300m
-              memory: 512Mi
+              cpu: {{ .Values.postgres.resources.limits.cpu }}
+              memory: {{ .Values.postgres.resources.limits.memory }}
           env:
             - name: POSTGRES_USER
               valueFrom:

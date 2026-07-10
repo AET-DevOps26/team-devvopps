@@ -162,7 +162,11 @@ Commands:
 ```bash
 make docker-up      # Start full stack
 make docker-down    # Stop stack
-make docker-reset   # Stop and delete all data
+```
+
+To stop the stack and delete all data:
+```bash
+cd infra && docker-compose down -v
 ```
 
 Access:
@@ -336,6 +340,12 @@ For AET Kubernetes:
 | `KUBECONFIG` | secret | Kubeconfig for AET cluster access |
 | `POSTGRES_USER` | secret | Database username |
 | `POSTGRES_PASSWORD` | secret | Database password |
+| `POSTGRES_REPLICATION_USER` | secret | Replication username |
+| `POSTGRES_REPLICATION_PASSWORD` | secret | Replication password |
+| `GRAFANA_ADMIN_USER` | secret | Grafana admin username |
+| `GRAFANA_ADMIN_PASSWORD` | secret | Grafana admin password |
+| `GROQ_API_KEY` | secret | Groq API key for llm-service |
+| `LOGOS_API_KEY` | secret | Logos API key for llm-service (optional) |
 | `K8S_NAMESPACE` | variable | Kubernetes namespace (`team-devvopps`) |
 
 ### Azure VM (Staging/Demo)
@@ -399,6 +409,12 @@ For deployment to the AET Kubernetes cluster used in the course:
 | `KUBECONFIG` | secret | Kubeconfig for AET cluster access |
 | `POSTGRES_USER` | secret | PostgreSQL superuser name (typically "postgres") |
 | `POSTGRES_PASSWORD` | secret | PostgreSQL superuser password |
+| `POSTGRES_REPLICATION_USER` | secret | Replication username |
+| `POSTGRES_REPLICATION_PASSWORD` | secret | Replication password |
+| `GRAFANA_ADMIN_USER` | secret | Grafana admin username |
+| `GRAFANA_ADMIN_PASSWORD` | secret | Grafana admin password |
+| `GROQ_API_KEY` | secret | Groq API key for llm-service |
+| `LOGOS_API_KEY` | secret | Logos API key for llm-service (optional) |
 | `K8S_NAMESPACE` | variable | Kubernetes namespace (`team-devvopps`) |
 
 ## Student Responsibilities

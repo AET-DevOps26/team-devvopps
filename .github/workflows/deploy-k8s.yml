@@ -68,12 +68,18 @@ jobs:
           # Replication credentials: ensure they're set in GitHub Secrets for production
           POSTGRES_REPLICATION_USER: ${{ secrets.POSTGRES_REPLICATION_USER || 'replication' }}
           POSTGRES_REPLICATION_PASSWORD: ${{ secrets.POSTGRES_REPLICATION_PASSWORD || 'replication' }}
+          # Fallback values are safe here: lint only renders templates,
+          # nothing is deployed. The deploy step below fails fast instead.
+          GRAFANA_ADMIN_USER: ${{ secrets.GRAFANA_ADMIN_USER || 'admin' }}
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD || 'admin' }}
         run: |
           helm lint helm/team-devvopps/ \
             --set postgres.credentials.username="$POSTGRES_USER" \
             --set postgres.credentials.password="$POSTGRES_PASSWORD" \
             --set postgres.replicationUser="$POSTGRES_REPLICATION_USER" \
-            --set postgres.replicationPassword="$POSTGRES_REPLICATION_PASSWORD"
+            --set postgres.replicationPassword="$POSTGRES_REPLICATION_PASSWORD" \
+            --set grafana.adminUser="$GRAFANA_ADMIN_USER" \
+            --set grafana.adminPassword="$GRAFANA_ADMIN_PASSWORD"
 
       # Remove pods stuck in Failed/Unknown state that would block the Helm rollout.
       # Also delete the course-seeder job: completed Jobs are immutable, so helm
@@ -90,17 +96,42 @@ jobs:
       # helm upgrade --install: creates the release if it doesn't exist, upgrades if it does.
       # Sensitive values (DB credentials, API keys) are passed at deploy time, not stored in values files.
       # PostgreSQL replication credentials enable primary-replica streaming replication for HA.
+      # Grafana credentials from GitHub Secrets ensure secure admin access.
       # --wait blocks until all pods are ready or the timeout is hit (ensures postgres starts).
       - name: Deploy with Helm
         env:
           POSTGRES_USER: ${{ secrets.POSTGRES_USER || 'postgres' }}
-          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD || 'postgres' }}
+          # No fallback for passwords: deploying with well-known defaults on
+          # the shared cluster would be a security risk (fail-fast check below).
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           # Replication credentials passed via --set (used for pg_basebackup on replica pods)
           POSTGRES_REPLICATION_USER: ${{ secrets.POSTGRES_REPLICATION_USER || 'replication' }}
-          POSTGRES_REPLICATION_PASSWORD: ${{ secrets.POSTGRES_REPLICATION_PASSWORD || 'replication' }}
+          POSTGRES_REPLICATION_PASSWORD: ${{ secrets.POSTGRES_REPLICATION_PASSWORD }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           LOGOS_API_KEY: ${{ secrets.LOGOS_API_KEY }}
+          # No fallback: Grafana is exposed via ingress, deploying with
+          # admin/admin on the shared cluster would be a security risk.
+          GRAFANA_ADMIN_USER: ${{ secrets.GRAFANA_ADMIN_USER }}
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
         run: |
+          if [ -z "$GRAFANA_ADMIN_USER" ] || [ -z "$GRAFANA_ADMIN_PASSWORD" ]; then
+            echo "ERROR: GRAFANA_ADMIN_USER or GRAFANA_ADMIN_PASSWORD secret not configured"
+            echo "Refusing to deploy Grafana with default admin/admin credentials"
+            exit 1
+          fi
+
+          if [ -z "$POSTGRES_PASSWORD" ] || [ -z "$POSTGRES_REPLICATION_PASSWORD" ]; then
+            echo "ERROR: POSTGRES_PASSWORD or POSTGRES_REPLICATION_PASSWORD secret not configured"
+            echo "Refusing to deploy postgres with well-known default credentials"
+            exit 1
+          fi
+
+          if [ -z "$GROQ_API_KEY" ] && [ -z "$LOGOS_API_KEY" ]; then
+            echo "ERROR: neither GROQ_API_KEY nor LOGOS_API_KEY secret is configured"
+            echo "Refusing to deploy llm-service without an LLM provider key (llm-service falls back Groq -> Logos)"
+            exit 1
+          fi
+
           helm upgrade --install "$HELM_RELEASE_NAME" helm/team-devvopps/ \
             -f helm/team-devvopps/values-aet.yaml \
             --set postgres.credentials.username="$POSTGRES_USER" \
@@ -109,9 +140,11 @@ jobs:
             --set postgres.replicationPassword="$POSTGRES_REPLICATION_PASSWORD" \
             --set llmService.groqApiKey="$GROQ_API_KEY" \
             --set llmService.logosApiKey="$LOGOS_API_KEY" \
+            --set grafana.adminUser="$GRAFANA_ADMIN_USER" \
+            --set grafana.adminPassword="$GRAFANA_ADMIN_PASSWORD" \
             -n "$K8S_NAMESPACE" \
             --wait \
-            --timeout 5m
+            --timeout 10m
 
       # All images use the :latest tag, so helm upgrade alone does not restart
       # pods when only the image content changed. Force a rollout so every
@@ -136,7 +169,7 @@ jobs:
           failed=0
           for d in $deployments; do
             echo "Waiting for rollout of deployment/$d"
-            if ! kubectl rollout status deployment/"$d" -n "$K8S_NAMESPACE" --timeout=5m; then
+            if ! kubectl rollout status deployment/"$d" -n "$K8S_NAMESPACE" --timeout=10m; then
               echo "::error::Rollout failed for deployment/$d"
               failed=1
             fi
@@ -144,6 +177,38 @@ jobs:
 
           if [ "$failed" -ne 0 ]; then
             echo "One or more deployments failed to roll out"
+            exit 1
+          fi
+
+      # DaemonSets (e.g. promtail) are not covered by the Deployment restart loop above.
+      # Without this, DaemonSet pods keep running with whatever resource limits they
+      # started with, even after values.yaml/template changes are deployed via helm upgrade.
+      - name: Restart daemonsets to pull latest images
+        run: |
+          set -euo pipefail
+          daemonsets=$(kubectl get daemonsets -n "$K8S_NAMESPACE" -o jsonpath='{.items[*].metadata.name}')
+
+          if [ -z "$daemonsets" ]; then
+            echo "No daemonsets found in namespace $K8S_NAMESPACE"
+            exit 0
+          fi
+
+          for ds in $daemonsets; do
+            echo "Restarting daemonset/$ds"
+            kubectl rollout restart daemonset/"$ds" -n "$K8S_NAMESPACE"
+          done
+
+          failed=0
+          for ds in $daemonsets; do
+            echo "Waiting for rollout of daemonset/$ds"
+            if ! kubectl rollout status daemonset/"$ds" -n "$K8S_NAMESPACE" --timeout=10m; then
+              echo "::error::Rollout failed for daemonset/$ds"
+              failed=1
+            fi
+          done
+
+          if [ "$failed" -ne 0 ]; then
+            echo "One or more daemonsets failed to roll out"
             exit 1
           fi
 

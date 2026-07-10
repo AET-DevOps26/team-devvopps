@@ -1,8 +1,8 @@
 # Default values for team-devvopps Helm chart
 # Used for all deployments (local, AET staging, production)
 # Environment-specific values overridden by:
+#   - values-local.yaml (for local docker-desktop Kubernetes)
 #   - values-aet.yaml (for AET cluster)
-#   - values-secrets.yaml (for credentials, gitignored)
 
 namespace: team-devvopps
 
@@ -32,25 +32,168 @@ postgres:
   # Storage per pod (StatefulSet creates separate PVC for each: postgres-storage-postgres-0, postgres-storage-postgres-1)
   # Total storage used = 2 × storage value
   storage: 1Gi
+  # Superuser credentials (overridden by values-local.yaml or --set)
+  credentials:
+    username: postgres
+    password: postgres
+  # Replication user credentials for primary-replica streaming replication
+  # Limited permissions: can only stream WAL, cannot modify data
+  replicationUser: replication
+  replicationPassword: replication
+  # Resource limits required by AET cluster ResourceQuota.
+  # initResources: init-postgres container (runs once during pod init, brief/light workload)
+  # resources: main postgres container (primary and replica share the same limits)
+  initResources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+  resources:
+    requests:
+      cpu: 75m
+      memory: 128Mi
+    limits:
+      cpu: 150m
+      memory: 256Mi
 
-# Service ports (should not change)
+# Service ports (should not change) and resource requests/limits
+# Requests/limits set from measured usage (~245-255Mi actual, spikes during
+# roadmap generation) — see Fair Use Policy: reserve only what's measured.
 services:
   postgres:
     port: 5432
   userService:
     port: 8081
+    resources:
+      requests:
+        cpu: 50m
+        memory: 256Mi
+      limits:
+        cpu: 200m
+        memory: 350Mi
   courseService:
     port: 8082
+    resources:
+      requests:
+        cpu: 50m
+        memory: 256Mi
+      limits:
+        cpu: 200m
+        memory: 350Mi
   roadmapService:
     port: 8083
+    resources:
+      requests:
+        cpu: 50m
+        memory: 256Mi
+      limits:
+        cpu: 200m
+        memory: 350Mi
   apiGateway:
     port: 8080
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 100m
+        memory: 256Mi
   client:
     port: 80
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        cpu: 50m
+        memory: 128Mi
   llmService:
     port: 8084
+    resources:
+      requests:
+        cpu: 50m
+        memory: 256Mi
+      limits:
+        cpu: 200m
+        memory: 350Mi
 
 # LLM Service API keys (override in values-aet.yaml or via --set)
 llmService:
   groqApiKey: ""
   logosApiKey: ""
+
+# Prometheus Configuration
+# Requests match measured usage (Fair Use: reserve only what's measured).
+# Limits raised well above requests so query/scrape bursts aren't CFS-throttled
+# (measured via /sys/fs/cgroup/cpu.stat: old 50m limit throttled ~30% of periods).
+prometheus:
+  retention: 15d
+  scrapeInterval: 15s
+  evaluationInterval: 15s
+  resources:
+    requests:
+      cpu: 20m
+      memory: 64Mi
+    limits:
+      cpu: 400m
+      memory: 256Mi
+
+# Grafana Configuration
+# Requests match measured usage. Limits raised so dashboard-load bursts finish
+# within a scheduling period instead of being throttled (old 25m limit
+# throttled 74-78% of periods during a live dashboard refresh).
+grafana:
+  adminUser: admin
+  adminPassword: admin
+  replicas: 1
+  resources:
+    requests:
+      cpu: 20m
+      memory: 64Mi
+    limits:
+      cpu: 300m
+      memory: 128Mi
+
+# Loki Configuration (log aggregation, ephemeral emptyDir storage)
+# Requests match measured usage. Limits raised so query bursts aren't
+# throttled (old 25m limit throttled ~34% of periods).
+loki:
+  image: grafana/loki:2.9.0
+  retention: 168h
+  resources:
+    requests:
+      cpu: 20m
+      memory: 32Mi
+    limits:
+      cpu: 300m
+      memory: 128Mi
+
+# Promtail Configuration (log shipper, runs as DaemonSet on every node --
+# requests/limits below apply PER NODE, so the AET Fair Use budget cost is
+# this value times the AET node count (28 nodes observed on AET). The AET
+# ResourceQuota (default-85gsk) hard-caps limits.cpu at 4 and limits.memory
+# at 6Gi for the WHOLE namespace -- a 200m promtail limit x 28 nodes alone
+# blew past the 4-core cap (7850m total, quota rejected pod creation with
+# "exceeded quota" and stalled the DaemonSet rollout at 27/28 nodes).
+# Request lowered toward AET-measured actual usage (~3.5m cpu, ~20Mi mem
+# average per pod); limit raised modestly (not aggressively, due to the x28
+# multiplier) so tailing+pushing bursts aren't throttled as badly as the old
+# 10m limit (94.6% throttled periods, causing failed pushes to Loki and
+# empty log dashboards) while keeping total namespace limits.cpu/memory
+# well under the quota.
+promtail:
+  image: grafana/promtail:3.0.0
+  # Log line format of the container runtime:
+  #   cri    = containerd (AET cluster)
+  #   docker = docker-desktop (values-local.yaml overrides to this)
+  pipelineStage: cri
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 20m
+      memory: 64Mi
+

@@ -1,7 +1,5 @@
 package com.tum.gateway.controller;
 
-import java.net.URI;
-
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
@@ -12,8 +10,8 @@ import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.client.HttpStatusCodeException;
+import org.springframework.web.client.RestTemplate;
 
 /**
  * API Gateway controller that proxies all incoming requests to the appropriate downstream service.
@@ -28,7 +26,8 @@ import org.springframework.web.client.HttpStatusCodeException;
  * which is stripped to avoid chunked-encoding conflicts with Spring's response writing.
  */
 @RestController
-@CrossOrigin
+@CrossOrigin(methods = {RequestMethod.GET, RequestMethod.HEAD, RequestMethod.POST,
+        RequestMethod.PUT, RequestMethod.PATCH, RequestMethod.DELETE, RequestMethod.OPTIONS})
 public class GatewayController {
 
     @Value("${services.user.url}")
@@ -85,34 +84,25 @@ public class GatewayController {
         String path = request.getRequestURI();
         String query = request.getQueryString();
         String url = targetBaseUrl + path + (query != null ? "?" + query : "");
-        // getRequestURI()/getQueryString() return the RAW (already percent-encoded)
-        // values. Pass a URI object so RestTemplate forwards them as-is — the
-        // String overload would encode a second time (%20 → %2520), making
-        // downstream services see literal "%20" in parameter values.
-        
+
+        ResponseEntity<byte[]> response;
         try {
-            ResponseEntity<byte[]> response = restTemplate.exchange(URI.create(url), HttpMethod.valueOf(request.getMethod()), entity, byte[].class);
-            // Copy response headers, excluding Transfer-Encoding to avoid chunked encoding conflicts.
-
-            HttpHeaders headers = new HttpHeaders();
-            response.getHeaders().forEach((key, values) -> {
-                if (!key.equalsIgnoreCase("Transfer-Encoding")) {
-                    headers.put(key, values);
-                }
-            });
-            return ResponseEntity.status(response.getStatusCode()).headers(headers).body(response.getBody());
+            response = restTemplate.exchange(url, HttpMethod.valueOf(request.getMethod()), entity, byte[].class);
         } catch (HttpStatusCodeException e) {
-            HttpHeaders headers = new HttpHeaders();
-
-            e.getResponseHeaders().forEach((key, values) -> {
-                if (!key.equalsIgnoreCase("Transfer-Encoding")) {
-                    headers.put(key, values);
-                }
-            });
-            
-            return ResponseEntity.status(e.getStatusCode()).headers(headers).body(e.getResponseBodyAsByteArray());
+            // RestTemplate throws on non-2xx responses instead of returning them.
+            // Re-wrap so the downstream service's real status/body reaches the caller
+            // instead of being flattened into a 500 by Spring's default error handling.
+            response = ResponseEntity.status(e.getStatusCode()).headers(e.getResponseHeaders()).body(e.getResponseBodyAsByteArray());
         }
-        
-        
+
+        // Copy response headers, excluding Transfer-Encoding to avoid chunked encoding conflicts.
+
+        HttpHeaders headers = new HttpHeaders();
+        response.getHeaders().forEach((key, values) -> {
+            if (!key.equalsIgnoreCase("Transfer-Encoding")) {
+                headers.put(key, values);
+            }
+        });
+        return ResponseEntity.status(response.getStatusCode()).headers(headers).body(response.getBody());
     }
 }

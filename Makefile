@@ -1,15 +1,13 @@
 NAMESPACE = team-devvopps
 IMAGE_PREFIX = team-devvopps
 
-.PHONY: help helm-install helm-install-aet helm-upgrade helm-delete k8s-build k8s-deploy k8s-seed k8s-deploy-old k8s-secrets-old k8s-seed-old k8s-down docker-up docker-down dev dev-stop k8s-status
+.PHONY: help helm-install-aet helm-delete k8s-build k8s-deploy k8s-seed k8s-deploy-old k8s-secrets-old k8s-seed-old k8s-down docker-up docker-down dev dev-stop k8s-status
 
 help:
 	@echo "Available commands:"
 	@echo ""
-	@echo "Helm (Recommended for AET deployment):"
-	@echo "  make helm-install      - Deploy to local Kubernetes using Helm"
+	@echo "Helm (AET deployment):"
 	@echo "  make helm-install-aet  - Deploy to AET cluster using Helm"
-	@echo "  make helm-upgrade      - Upgrade existing Helm deployment"
 	@echo "  make helm-delete       - Delete Helm deployment"
 	@echo ""
 	@echo "Kubernetes (local, docker-desktop):"
@@ -27,32 +25,16 @@ help:
 
 # ── Helm ───────────────────────────────────────────────────────────────────────
 
-helm-install:
-	@if [ ! -f helm/team-devvopps/values-secrets.yaml ]; then \
-		echo "Creating values-secrets.yaml from example..."; \
-		cp helm/team-devvopps/values-secrets.example.yaml helm/team-devvopps/values-secrets.yaml; \
-		echo "Edit helm/team-devvopps/values-secrets.yaml with your credentials before deploying"; \
-		exit 1; \
-	fi
-	@echo "Installing Helm chart to local Kubernetes..."
-	helm install team-devvopps helm/team-devvopps/ \
-		-f helm/team-devvopps/values-secrets.yaml \
-		-n team-devvopps --create-namespace
-	@echo ""
-	@echo "Deployment complete!"
-	@echo "  Client:      http://localhost:30000"
-	@echo "  API Gateway: http://localhost:30080"
-
 helm-install-aet:
 	@echo "Installing Helm chart to AET Kubernetes cluster..."
-	@if [ -z "$(POSTGRES_USER)" ] || [ -z "$(POSTGRES_PASSWORD)" ] || [ -z "$(POSTGRES_REPLICATION_USER)" ] || [ -z "$(POSTGRES_REPLICATION_PASSWORD)" ]; then \
+	@if [ -z "$(POSTGRES_USER)" ] || [ -z "$(POSTGRES_PASSWORD)" ] || [ -z "$(POSTGRES_REPLICATION_USER)" ] || [ -z "$(POSTGRES_REPLICATION_PASSWORD)" ] || [ -z "$(GRAFANA_ADMIN_USER)" ] || [ -z "$(GRAFANA_ADMIN_PASSWORD)" ] || [ -z "$(GROQ_API_KEY)" ]; then \
 		echo ""; \
-		echo "ERROR: Database credentials required"; \
+		echo "ERROR: Database, Grafana, and Groq credentials required"; \
 		echo ""; \
-		echo "Usage: POSTGRES_USER=<user> POSTGRES_PASSWORD=<pass> POSTGRES_REPLICATION_USER=<user> POSTGRES_REPLICATION_PASSWORD=<pass> make helm-install-aet"; \
+		echo "Usage: POSTGRES_USER=<user> POSTGRES_PASSWORD=<pass> POSTGRES_REPLICATION_USER=<user> POSTGRES_REPLICATION_PASSWORD=<pass> GRAFANA_ADMIN_USER=<user> GRAFANA_ADMIN_PASSWORD=<pass> GROQ_API_KEY=<key> make helm-install-aet"; \
 		echo ""; \
 		echo "OR use GitHub Actions (recommended):"; \
-		echo "  1. Set GitHub Secrets: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_REPLICATION_USER, POSTGRES_REPLICATION_PASSWORD"; \
+		echo "  1. Set GitHub Secrets: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_REPLICATION_USER, POSTGRES_REPLICATION_PASSWORD, GRAFANA_ADMIN_USER, GRAFANA_ADMIN_PASSWORD, GROQ_API_KEY"; \
 		echo "  2. Push to main or trigger workflow manually"; \
 		echo ""; \
 		exit 1; \
@@ -64,20 +46,14 @@ helm-install-aet:
 		--set postgres.credentials.password=$(POSTGRES_PASSWORD) \
 		--set postgres.replicationUser=$(POSTGRES_REPLICATION_USER) \
 		--set postgres.replicationPassword=$(POSTGRES_REPLICATION_PASSWORD) \
+		--set grafana.adminUser=$(GRAFANA_ADMIN_USER) \
+		--set grafana.adminPassword=$(GRAFANA_ADMIN_PASSWORD) \
+		--set llmService.groqApiKey=$(GROQ_API_KEY) \
+		--set llmService.logosApiKey=$(LOGOS_API_KEY) \
 		-n team-devvopps
 	@echo ""
 	@echo "Deployment complete!"
 	@echo "Check status with: kubectl get pods -n team-devvopps"
-
-helm-upgrade:
-	@if [ ! -f helm/team-devvopps/values-secrets.yaml ]; then \
-		echo "Error: helm/team-devvopps/values-secrets.yaml not found"; \
-		exit 1; \
-	fi
-	@echo "Upgrading Helm chart..."
-	helm upgrade team-devvopps helm/team-devvopps/ \
-		-f helm/team-devvopps/values-secrets.yaml \
-		-n team-devvopps
 
 helm-delete:
 	@echo "Deleting Helm deployment..."
