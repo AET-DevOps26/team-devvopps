@@ -5,6 +5,7 @@ metadata:
   namespace: {{ .Values.namespace }}
 spec:
   replicas: {{ .Values.replicas }}
+  revisionHistoryLimit: 3
   selector:
     matchLabels:
       app: api-gateway
@@ -24,11 +25,11 @@ spec:
             - containerPort: {{ .Values.services.apiGateway.port }}
           resources:
             requests:
-              cpu: 150m
-              memory: 256Mi
+              cpu: {{ .Values.services.apiGateway.resources.requests.cpu }}
+              memory: {{ .Values.services.apiGateway.resources.requests.memory }}
             limits:
-              cpu: 200m
-              memory: 512Mi
+              cpu: {{ .Values.services.apiGateway.resources.limits.cpu }}
+              memory: {{ .Values.services.apiGateway.resources.limits.memory }}
           env:
             - name: USER_SERVICE_HOST
               value: user-service

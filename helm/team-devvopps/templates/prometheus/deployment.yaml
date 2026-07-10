@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: {{ .Values.namespace }}
+spec:
+  # Run exactly 1 Prometheus instance (single replica for simplicity)
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      containers:
+        - name: prometheus
+          # Use specific version for reproducibility (not 'latest')
+          image: prom/prometheus:v2.52.0
+          ports:
+            # Prometheus HTTP API and web UI on port 9090
+            - containerPort: 9090
+          resources:
+            # Minimum CPU/memory guaranteed by Kubernetes scheduler
+            requests:
+              cpu: {{ .Values.prometheus.resources.requests.cpu }}
+              memory: {{ .Values.prometheus.resources.requests.memory }}
+            # Maximum resources this pod can consume
+            limits:
+              cpu: {{ .Values.prometheus.resources.limits.cpu }}
+              memory: {{ .Values.prometheus.resources.limits.memory }}
+          volumeMounts:
+            - name: prometheus-config
+              mountPath: /etc/prometheus
+            - name: prometheus-alerts
+              mountPath: /etc/prometheus/alerts
+            - name: prometheus-storage
+              mountPath: /prometheus
+          # Arguments passed to Prometheus binary at startup
+          args:
+            - '--config.file=/etc/prometheus/prometheus.yml'
+            - '--storage.tsdb.path=/prometheus'
+      volumes:
+        # Volume 1: Configuration file from ConfigMap (prometheus.yml)
+        - name: prometheus-config
+          configMap:
+            name: prometheus-config
+        # Volume 2: Alert rules from ConfigMap (alerts.yaml)
+        - name: prometheus-alerts
+          configMap:
+            name: prometheus-alerts
+        # Volume 3: Temporary storage for metrics (emptyDir = ephemeral, cleared on pod restart)
+        # For production, replace with PersistentVolume to keep metrics across restarts
+        - name: prometheus-storage
+          emptyDir: {}

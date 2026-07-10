@@ -5,6 +5,7 @@ metadata:
   namespace: {{ .Values.namespace }}
 spec:
   replicas: {{ .Values.replicas }}
+  revisionHistoryLimit: 3
   selector:
     matchLabels:
       app: course-service
@@ -25,11 +26,11 @@ spec:
             - containerPort: {{ .Values.services.courseService.port }}
           resources:
             requests:
-              cpu: 150m
-              memory: 256Mi
+              cpu: {{ .Values.services.courseService.resources.requests.cpu }}
+              memory: {{ .Values.services.courseService.resources.requests.memory }}
             limits:
-              cpu: 200m
-              memory: 512Mi
+              cpu: {{ .Values.services.courseService.resources.limits.cpu }}
+              memory: {{ .Values.services.courseService.resources.limits.memory }}
           env:
             - name: DB_HOST
               value: postgres-0.postgres

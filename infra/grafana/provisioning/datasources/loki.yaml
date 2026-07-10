@@ -1,0 +1,8 @@
+# Grafana datasource provisioning: registers Loki as a data source on startup
+# This allows Grafana dashboards to query logs from Loki without manual setup
+apiVersion: 1
+datasources:
+  - name: Loki
+    type: loki  # Log aggregation data source
+    access: proxy  # Grafana proxies queries to Loki
+    url: http://loki:3100  # Internal Docker network address

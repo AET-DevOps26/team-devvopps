@@ -5,6 +5,7 @@ metadata:
   namespace: {{ .Values.namespace }}
 spec:
   replicas: {{ .Values.replicas }}
+  revisionHistoryLimit: 3
   selector:
     matchLabels:
       app: client
@@ -24,11 +25,11 @@ spec:
             - containerPort: {{ .Values.services.client.port }}
           resources:
             requests:
-              cpu: 100m
-              memory: 128Mi
+              cpu: {{ .Values.services.client.resources.requests.cpu }}
+              memory: {{ .Values.services.client.resources.requests.memory }}
             limits:
-              cpu: 200m
-              memory: 256Mi
+              cpu: {{ .Values.services.client.resources.limits.cpu }}
+              memory: {{ .Values.services.client.resources.limits.memory }}
           volumeMounts:
             - name: cache
               mountPath: /var/cache/nginx

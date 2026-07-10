@@ -11,6 +11,23 @@ postgres:
   # Higher storage quota for production/staging workloads
   # Inherits postgres.replicas: 2 from values.yaml (HA setup same as local dev)
   storage: 10Gi
-
+  # Passwords intentionally empty: the deploy workflow passes real values via
+  # --set from GitHub Secrets. Manual deploys without --set fail at template
+  # time (see templates/secret.yaml `required`).
+  credentials:
+    password: ""
+  replicationPassword: ""
 # AET uses ingress for external access (not NodePort like local dev)
 ingressHost: team-devvopps.stud.k8s.aet.cit.tum.de
+
+
+prometheus:
+  retention: 30d
+
+grafana:
+  # Intentionally empty: the deploy workflow passes the real username/password
+  # via --set grafana.adminUser=... / --set grafana.adminPassword=... from
+  # GitHub Secrets. Manual deploys without --set fail at template time
+  # (see grafana/secret.yaml `required`).
+  adminUser: ""
+  adminPassword: ""

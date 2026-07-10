@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: {{ .Values.namespace }}
+spec:
+  # ClusterIP = accessible only within the cluster (no external access)
+  # Use kubectl port-forward for external access: kubectl port-forward -n team-devvopps svc/grafana 3001:3000
+  # Then access at http://localhost:3001
+  type: ClusterIP
+  selector:
+    app: grafana
+  ports:
+    - port: 3000
+      targetPort: 3000
