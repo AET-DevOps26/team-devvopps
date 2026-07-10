@@ -3,9 +3,6 @@ name: Start VM
 on:
   workflow_dispatch:
 
-permissions:
-  contents: read
-
 jobs:
   start:
     runs-on: ubuntu-latest
