@@ -130,21 +130,11 @@ export default function RoadmapChat() {
   const doneTasks = allTasks.filter(t => t.completed).length;
   const pct = allTasks.length > 0 ? Math.round((doneTasks / allTasks.length) * 100) : 0;
   const completedMilestones = roadmap?.milestones.filter(m => m.status === "COMPLETED").length ?? 0;
-  const sortedMilestones = [...(roadmap?.milestones ?? [])].sort((a, b) => {
-    const aCompleted = isMilestoneCompleted(a);
-    const bCompleted = isMilestoneCompleted(b);
-
-    // completed milestones go down
-    if (aCompleted && !bCompleted) return 1;
-    if (!aCompleted && bCompleted) return -1;
-
-    return a.milestone_id - b.milestone_id;
-  });
-
-  function isMilestoneCompleted(milestone: Milestone) {
-    return milestone.tasks.length > 0 &&
-      milestone.tasks.every(task => task.completed);
-  }
+  // Keep a stable order so completing a task doesn't reorder the list —
+  // completed items just change color/style, they don't move down.
+  const sortedMilestones = [...(roadmap?.milestones ?? [])].sort(
+    (a, b) => a.milestone_id - b.milestone_id
+  );
 
   return (
     <div style={styles.container}>
