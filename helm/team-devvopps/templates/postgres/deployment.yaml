@@ -86,9 +86,38 @@ spec:
                   chmod 700 "$PGDATA"
                 fi
               else
-                # Replica pod: clone database from primary using pg_basebackup
+                # Replica pod: clone database from primary using pg_basebackup.
+                #
+                # Self-healing note: on every restart, this checks not just whether
+                # data exists (PG_VERSION) but whether it's actually a valid standby
+                # (standby.signal). We hit this in production -- a replica had cloned
+                # once, lost standby.signal, and silently kept booting as an
+                # independent read-write primary ever after (confirmed via
+                # pg_stat_replication showing 0 connected replicas on the primary,
+                # even though the replica's data happened to still match at the time).
+                # Since the init container only checked PG_VERSION before, a replica
+                # in that state could never recover on its own. Now it re-clones
+                # automatically instead of staying silently broken.
                 echo "Setting up replica from postgres-0..."
+
+                # NEEDS_CLONE covers two cases:
+                #   1. First-ever start: PG_VERSION doesn't exist yet.
+                #   2. Broken replica: data exists but standby.signal is missing, meaning
+                #      a previous pg_basebackup -R didn't leave this pod in standby mode
+                #      (it would have booted as an independent read-write primary instead
+                #      of a streaming standby, silently going stale with no replication).
+                #      Re-clone from scratch rather than trying to repair in place, since
+                #      a pod that ran as a standalone primary may have diverged.
+                NEEDS_CLONE=0
                 if [ ! -f "$PGDATA/PG_VERSION" ]; then
+                  NEEDS_CLONE=1
+                elif [ ! -f "$PGDATA/standby.signal" ]; then
+                  echo "WARNING: data exists but standby.signal is missing -- this replica was not in standby mode and may be stale. Re-cloning from primary..."
+                  rm -rf "${PGDATA:?}"/*
+                  NEEDS_CLONE=1
+                fi
+
+                if [ "$NEEDS_CLONE" -eq 1 ]; then
                   mkdir -p "$PGDATA"
                   chmod 700 "$PGDATA"
 
@@ -108,6 +137,15 @@ spec:
                     -D "$PGDATA" \
                     -R \
                     -v -P --wal-method=stream
+
+                  # Verify the clone actually produced a valid standby before declaring success --
+                  # if pg_basebackup silently failed to write standby.signal again, fail loudly
+                  # here instead of letting the main container boot as a broken primary (again).
+                  if [ ! -f "$PGDATA/standby.signal" ]; then
+                    echo "ERROR: pg_basebackup completed but standby.signal is still missing. Refusing to start as a broken replica."
+                    exit 1
+                  fi
+                  echo "Replica clone verified: standby.signal present."
                 fi
               fi
           volumeMounts:
