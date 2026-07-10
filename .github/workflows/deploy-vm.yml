@@ -21,6 +21,10 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    environment:
+      name: Azure
+      url: 'https://client.${{ vars.AZURE_PUBLIC_IP }}.nip.io'
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
