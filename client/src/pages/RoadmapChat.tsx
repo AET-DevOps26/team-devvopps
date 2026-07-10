@@ -1,6 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const API_URL = "/api";
+// nginx proxies /llm/ straight to llm-service (see client/nginx.conf).
+const LLM_URL = "/llm";
+// roadmaps/generate defaults to userId=1 server-side, so token usage is keyed
+// by the same id. Kept as a constant so it's easy to wire to real auth later.
+const USER_ID = 1;
+
+// Mirrors MAX_GOAL_CHARS in llm-service — requests longer than this are
+// rejected server-side with 422, so block them in the input directly.
+const MAX_GOAL_LENGTH = 200;
 
 interface Task {
   task_id: number;
@@ -22,12 +31,49 @@ interface RoadmapResponse {
   milestones: Milestone[];
 }
 
+interface TokenUsage {
+  used: number;
+  limit: number;
+  remaining: number;
+}
+
+// Fetches token usage without touching React state, so it can be called from
+// an effect without tripping the react-hooks/set-state-in-effect rule.
+// Returns null on any failure — the usage badge is non-critical.
+async function fetchUsageData(): Promise<TokenUsage | null> {
+  try {
+    const res = await fetch(`${LLM_URL}/usage/${USER_ID}`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
 export default function RoadmapChat() {
   const [goal, setGoal] = useState("");
   const [roadmap, setRoadmap] = useState<RoadmapResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [togglingTaskId, setTogglingTaskId] = useState<number | null>(null);
+  const [usage, setUsage] = useState<TokenUsage | null>(null);
+
+  // Token usage is best-effort: fetch on mount and refresh after each
+  // generation so the remaining balance stays in sync. Failures are ignored
+  // silently — the badge just won't render.
+  async function fetchUsage() {
+    const data = await fetchUsageData();
+    if (data) setUsage(data);
+  }
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const data = await fetchUsageData();
+      if (active && data) setUsage(data);
+    })();
+    return () => { active = false; };
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -42,9 +88,29 @@ export default function RoadmapChat() {
         method: "POST",
       });
 
+      if (res.status === 429) {
+        const data = await res.json();
+        setError(data.detail || "Token quota exceeded.");
+        fetchUsage();
+        return;
+      }
+
+      if (res.status === 422) {
+        let detail: string | undefined;
+        try {
+          const data = await res.json();
+          detail = data.detail;
+        } catch {
+          // body wasn't JSON — fall through to default message
+        }
+        setError(detail || "Your goal is too long. Please shorten it.");
+        return;
+      }
+
       if (!res.ok) throw new Error(`Error ${res.status}: ${res.statusText}`);
       const data: RoadmapResponse = await res.json();
       setRoadmap(data);
+      fetchUsage();
 
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
@@ -108,21 +174,19 @@ export default function RoadmapChat() {
   const doneTasks = allTasks.filter(t => t.completed).length;
   const pct = allTasks.length > 0 ? Math.round((doneTasks / allTasks.length) * 100) : 0;
   const completedMilestones = roadmap?.milestones.filter(m => m.status === "COMPLETED").length ?? 0;
-  const sortedMilestones = [...(roadmap?.milestones ?? [])].sort((a, b) => {
-    const aCompleted = isMilestoneCompleted(a);
-    const bCompleted = isMilestoneCompleted(b);
+  // Keep a stable order so completing a task doesn't reorder the list —
+  // completed items just change color/style, they don't move down.
+  const sortedMilestones = [...(roadmap?.milestones ?? [])].sort(
+    (a, b) => a.milestone_id - b.milestone_id
+  );
 
-    // completed milestones go down
-    if (aCompleted && !bCompleted) return 1;
-    if (!aCompleted && bCompleted) return -1;
+  // Token badge: color shifts green → orange → red as the balance runs low.
+  const tokenRatio = usage && usage.limit > 0 ? usage.remaining / usage.limit : 1;
+  const tokenColor = tokenRatio > 0.5 ? "#2e7d32" : tokenRatio > 0.2 ? "#e08600" : "#c62828";
 
-    return a.milestone_id - b.milestone_id;
-  });
-
-  function isMilestoneCompleted(milestone: Milestone) {
-    return milestone.tasks.length > 0 &&
-      milestone.tasks.every(task => task.completed);
-  }
+  // Character counter: warn as the goal approaches the server-enforced max.
+  const charRatio = goal.length / MAX_GOAL_LENGTH;
+  const charColor = charRatio >= 1 ? "#c62828" : charRatio >= 0.8 ? "#e08600" : "#888";
 
   return (
     <div style={styles.container}>
@@ -131,21 +195,44 @@ export default function RoadmapChat() {
         <p style={styles.subtitle}>Tell us your learning goal — we'll build your roadmap.</p>
       </div>
 
-      {!roadmap && (
-        <form onSubmit={handleSubmit} style={styles.form}>
-          <input
-            style={styles.input}
-            type="text"
-            placeholder="e.g. I want to learn Machine Learning"
-            value={goal}
-            onChange={(e) => setGoal(e.target.value)}
-            disabled={loading}
-          />
-          <button style={styles.button} type="submit" disabled={loading || !goal.trim()}>
-            {loading ? "Generating..." : "Generate Roadmap"}
-          </button>
-        </form>
+      {usage && (
+        <div style={styles.tokenBar}>
+          <div style={styles.tokenRow}>
+            <span style={styles.tokenLabel}>🎫 Remaining tokens</span>
+            <span style={{ ...styles.tokenValue, color: tokenColor }}>
+              {usage.remaining.toLocaleString()} / {usage.limit.toLocaleString()}
+            </span>
+          </div>
+          <div style={styles.tokenTrack}>
+            <div style={{
+              ...styles.tokenFill,
+              width: `${Math.max(0, Math.min(100, tokenRatio * 100))}%`,
+              background: tokenColor,
+            }} />
+          </div>
+        </div>
       )}
+
+      <form onSubmit={handleSubmit} style={styles.form}>
+        <input
+          style={styles.input}
+          type="text"
+          placeholder="e.g. I want to learn Machine Learning"
+          value={goal}
+          onChange={(e) => setGoal(e.target.value.slice(0, MAX_GOAL_LENGTH))}
+          maxLength={MAX_GOAL_LENGTH}
+          disabled={loading}
+        />
+        <button style={styles.button} type="submit" disabled={loading || !goal.trim()}>
+          {loading ? "Generating..." : "Generate Roadmap"}
+        </button>
+      </form>
+      <div style={styles.charHintRow}>
+        <span style={{ color: charColor, fontWeight: charRatio >= 0.8 ? 600 : 400 }}>
+          {goal.length} / {MAX_GOAL_LENGTH} characters
+        </span>
+        {charRatio >= 1 && <span style={{ color: "#c62828" }}>Maximum length reached</span>}
+      </div>
 
       {error && <div style={styles.error}>⚠️ {error}</div>}
 
@@ -312,6 +399,46 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 10,
     cursor: "pointer",
     whiteSpace: "nowrap",
+  },
+  charHintRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    fontSize: 13,
+    margin: "-24px 0 24px 4px",
+  },
+  tokenBar: {
+    background: "#f7f9fc",
+    border: "1px solid #e0e6ef",
+    borderRadius: 10,
+    padding: "12px 16px",
+    marginBottom: 24,
+  },
+  tokenRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  tokenLabel: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: "#555",
+  },
+  tokenValue: {
+    fontSize: 14,
+    fontWeight: 700,
+    fontVariantNumeric: "tabular-nums",
+  },
+  tokenTrack: {
+    background: "#e5e5e5",
+    borderRadius: 6,
+    height: 8,
+    overflow: "hidden",
+  },
+  tokenFill: {
+    height: "100%",
+    borderRadius: 6,
+    transition: "width 0.4s ease, background 0.4s ease",
   },
   error: {
     background: "#fff3f3",
