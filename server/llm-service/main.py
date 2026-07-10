@@ -149,7 +149,6 @@ MAX_TOKENS_PER_USER = 50000  # max cumulative tokens per user
 
 _user_token_usage: dict = defaultdict(int)  # userId -> total tokens used
 _user_locks: dict = defaultdict(threading.Lock)
-_thread_local = threading.local()
 
 def check_user_limit(user_id: str) -> None:
     """Raises HTTPException if user has exceeded their token limit."""
@@ -218,7 +217,7 @@ class OpenAICompatibleLLM(LLM):
     api_url: str = API_URL
     api_key: Optional[str] = LLM_API_KEY
     model_name: str = MODEL_NAME
-    last_usage: dict = Field(default_factory=dict)
+    last_usage: dict = {}
 
     @property
     def _llm_type(self) -> str:
@@ -270,7 +269,7 @@ class OpenAICompatibleLLM(LLM):
                      completion_tokens=usage.get("completion_tokens"),
                      total_tokens=usage.get("total_tokens"),
                 )
-                _thread_local.usage = usage
+                self.last_usage = usage
 
             # Extract the response content
             if "choices" in result and len(result["choices"]) > 0:
@@ -373,6 +372,9 @@ async def recommend(req: RoadmapRequest, user_id: str = "anonymous") -> RoadmapR
         )
     reserved = False
     total_tokens = 0
+    t0 = time.time()      
+    t_llm = time.time()
+
     try:
         # Check user limit before calling llm
         # Add MAX_TOKENS (max output) so as an assumption of tokens used during request so that user cannot generate i+1 roadmaps
@@ -404,7 +406,8 @@ async def recommend(req: RoadmapRequest, user_id: str = "anonymous") -> RoadmapR
     
         raw = await chain.ainvoke({"goal": req.goal, "courses": courses_str})
 
-        usage = getattr(_thread_local, "usage", {})
+        
+        usage = dict(llm.last_usage)
         total_tokens = usage.get("total_tokens", 0)
 
         llm_ms = round((time.time() - t_llm) * 1000)
@@ -412,6 +415,8 @@ async def recommend(req: RoadmapRequest, user_id: str = "anonymous") -> RoadmapR
 
         result = parse_llm_response(raw)
 
+    except HTTPException:
+        raise
     except Exception as e:
         # Catch everything (timeouts, connection errors, provider SDK errors),
         # not just RuntimeError — otherwise failures bypass the structured log.

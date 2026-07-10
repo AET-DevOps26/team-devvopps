@@ -46,6 +46,12 @@ export default function RoadmapChat() {
         return;
       }
 
+      if (res.status === 422) {
+        const data = await res.json();
+        setError(data.detail || "Your goal is too long. Please shorten it.");
+        return;
+      }
+
       if (!res.ok) throw new Error(`Error ${res.status}: ${res.statusText}`);
       const data: RoadmapResponse = await res.json();
       setRoadmap(data);
