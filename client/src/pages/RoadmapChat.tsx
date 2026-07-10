@@ -37,6 +37,19 @@ interface TokenUsage {
   remaining: number;
 }
 
+// Fetches token usage without touching React state, so it can be called from
+// an effect without tripping the react-hooks/set-state-in-effect rule.
+// Returns null on any failure — the usage badge is non-critical.
+async function fetchUsageData(): Promise<TokenUsage | null> {
+  try {
+    const res = await fetch(`${LLM_URL}/usage/${USER_ID}`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
 export default function RoadmapChat() {
   const [goal, setGoal] = useState("");
   const [roadmap, setRoadmap] = useState<RoadmapResponse | null>(null);
@@ -49,17 +62,17 @@ export default function RoadmapChat() {
   // generation so the remaining balance stays in sync. Failures are ignored
   // silently — the badge just won't render.
   async function fetchUsage() {
-    try {
-      const res = await fetch(`${LLM_URL}/usage/${USER_ID}`);
-      if (!res.ok) return;
-      setUsage(await res.json());
-    } catch {
-      // ignore — usage display is non-critical
-    }
+    const data = await fetchUsageData();
+    if (data) setUsage(data);
   }
 
   useEffect(() => {
-    fetchUsage();
+    let active = true;
+    (async () => {
+      const data = await fetchUsageData();
+      if (active && data) setUsage(data);
+    })();
+    return () => { active = false; };
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
