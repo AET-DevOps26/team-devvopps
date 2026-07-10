@@ -1,4 +1,4 @@
-package com.tum.gateway;
+package com.tum.gateway.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
@@ -8,6 +8,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestTemplate;
 
@@ -36,7 +37,11 @@ public class GatewayController {
     @Value("${services.roadmap.url}")
     private String roadmapServiceUrl;
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final RestTemplate restTemplate;
+
+    public GatewayController(RestTemplate restTemplate) {
+        this.restTemplate = restTemplate;
+    }
 
     @RequestMapping("/users/**")
     public ResponseEntity<byte[]> forwardUser(HttpServletRequest request, HttpEntity<byte[]> entity) {
@@ -48,7 +53,16 @@ public class GatewayController {
         return forward(request, entity, courseServiceUrl);
     }
 
-    @RequestMapping("/roadmaps/**")
+    @RequestMapping(
+        value = "/roadmaps/**", 
+        method = {
+            RequestMethod.GET,
+            RequestMethod.POST,
+            RequestMethod.PUT,
+            RequestMethod.PATCH,
+            RequestMethod.DELETE
+        }
+    )
     public ResponseEntity<byte[]> forwardRoadmap(HttpServletRequest request, HttpEntity<byte[]> entity) {
         return forward(request, entity, roadmapServiceUrl);
     }
@@ -68,6 +82,7 @@ public class GatewayController {
         String path = request.getRequestURI();
         String query = request.getQueryString();
         String url = targetBaseUrl + path + (query != null ? "?" + query : "");
+
         ResponseEntity<byte[]> response = restTemplate.exchange(url, HttpMethod.valueOf(request.getMethod()), entity, byte[].class);
         
         // Copy response headers, excluding Transfer-Encoding to avoid chunked encoding conflicts.
