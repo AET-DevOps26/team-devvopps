@@ -86,9 +86,33 @@ spec:
                   chmod 700 "$PGDATA"
                 fi
               else
-                # Replica pod: clone database from primary using pg_basebackup
+                # Replica pod: clone database from primary using pg_basebackup.
+                #
+                # Re-clone if $PGDATA is missing a valid, complete standby setup.
+                # pg_basebackup refuses to write into a non-empty directory, so
+                # any of these cases must clear $PGDATA before retrying:
+                #   - not present yet (first start)
+                #   - PG_VERSION missing but other files exist (a previous clone
+                #     was interrupted partway through)
+                #   - standby.signal missing (a previous clone finished but this
+                #     pod ended up booting as a standalone primary instead of a
+                #     replica, so its data may have diverged)
                 echo "Setting up replica from postgres-0..."
+
+                NEEDS_CLONE=0
                 if [ ! -f "$PGDATA/PG_VERSION" ]; then
+                  if [ -d "$PGDATA" ] && [ -n "$(ls -A "$PGDATA" 2>/dev/null)" ]; then
+                    echo "Clearing incomplete data from an interrupted clone..."
+                    rm -rf "${PGDATA:?}"/*
+                  fi
+                  NEEDS_CLONE=1
+                elif [ ! -f "$PGDATA/standby.signal" ]; then
+                  echo "WARNING: standby.signal missing -- replica may have diverged. Re-cloning..."
+                  rm -rf "${PGDATA:?}"/*
+                  NEEDS_CLONE=1
+                fi
+
+                if [ "$NEEDS_CLONE" -eq 1 ]; then
                   mkdir -p "$PGDATA"
                   chmod 700 "$PGDATA"
 
@@ -108,6 +132,14 @@ spec:
                     -D "$PGDATA" \
                     -R \
                     -v -P --wal-method=stream
+
+                  # Fail loudly if the clone didn't produce standby.signal, instead
+                  # of letting the main container boot as a broken primary.
+                  if [ ! -f "$PGDATA/standby.signal" ]; then
+                    echo "ERROR: pg_basebackup completed but standby.signal is still missing. Refusing to start as a broken replica."
+                    exit 1
+                  fi
+                  echo "Replica clone verified: standby.signal present."
                 fi
               fi
           volumeMounts:
