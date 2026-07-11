@@ -4,7 +4,10 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.*;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
+
+import com.tum.gateway.controller.GatewayController;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -176,4 +179,122 @@ class GatewayControllerTest {
 
         assertArrayEquals(expectedBody, response.getBody());
     }
+
+    /**
+     * Verifies that downstream HTTP errors are forwarded with the original
+     * status code and response body instead of becoming a 500.
+     */
+    @Test
+    void forward_propagatesDownstreamErrorResponse() {
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        GatewayController controller = createController(restTemplate);
+
+        byte[] errorBody = "{\"error\":\"User not found\"}".getBytes();
+
+        HttpStatusCodeException exception =
+            new org.springframework.web.client.HttpClientErrorException(
+                    HttpStatus.NOT_FOUND,
+                    "Not Found",
+                    errorBody,
+                    null
+            );
+
+        when(restTemplate.exchange(anyString(), any(), any(), eq(byte[].class)))
+            .thenThrow(exception);
+
+        ResponseEntity<byte[]> response = controller.forwardUser(
+            mockRequest("/users/99", null, "GET"),
+            new HttpEntity<>(new byte[]{})
+        );
+
+        assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
+        assertArrayEquals(errorBody, response.getBody());
+    }
+
+    /**
+     * Verifies that Transfer-Encoding is removed from downstream responses.
+     */
+     @Test
+     void forward_removesTransferEncodingHeader() {
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        GatewayController controller = createController(restTemplate);
+
+        HttpHeaders responseHeaders = new HttpHeaders();
+        responseHeaders.add("Transfer-Encoding", "chunked");
+        responseHeaders.add("Content-Type", "application/json");
+
+        when(restTemplate.exchange(anyString(), any(), any(), eq(byte[].class)))
+                .thenReturn(new ResponseEntity<>(
+                        new byte[]{},
+                        responseHeaders,
+                        HttpStatus.OK
+                ));
+
+        ResponseEntity<byte[]> response = controller.forwardUser(
+                mockRequest("/users/1", null, "GET"),
+                new HttpEntity<>(new byte[]{})
+        );
+
+        assertNull(response.getHeaders().getFirst("Transfer-Encoding"));
+        assertEquals(
+                "application/json",
+                response.getHeaders().getFirst("Content-Type")
+        );
+     }
+
+     /**
+      * Verifies that DELETE requests are forwarded correctly.
+      */
+      @Test
+      void forward_propagatesDeleteMethod() {
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        GatewayController controller = createController(restTemplate);
+
+        when(restTemplate.exchange(anyString(), any(), any(), eq(byte[].class)))
+                .thenReturn(ResponseEntity.ok(new byte[]{}));
+
+        controller.forwardRoadmap(
+                mockRequest("/roadmaps/1", null, "DELETE"),
+                new HttpEntity<>(new byte[]{})
+        );
+
+        verify(restTemplate).exchange(
+                eq("http://roadmap:8083/roadmaps/1"),
+                eq(HttpMethod.DELETE),
+                any(HttpEntity.class),
+                eq(byte[].class)
+        );
+     }
+
+     /**
+      * Verifies that incoming request headers are forwarded.
+      */
+      @Test
+      void forward_preservesRequestHeaders() {
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        GatewayController controller = createController(restTemplate);
+
+        HttpHeaders requestHeaders = new HttpHeaders();
+        requestHeaders.add("Authorization", "Bearer token");
+
+        HttpEntity<byte[]> entity = new HttpEntity<>(
+                new byte[]{},
+                requestHeaders
+        );
+
+        when(restTemplate.exchange(anyString(), any(), any(), eq(byte[].class)))
+                .thenReturn(ResponseEntity.ok(new byte[]{}));
+
+        controller.forwardUser(
+                mockRequest("/users/1", null, "GET"),
+                entity
+        );
+
+        verify(restTemplate).exchange(
+                eq("http://user:8081/users/1"),
+                eq(HttpMethod.GET),
+                eq(entity),
+                eq(byte[].class)
+        );
+     }
 }

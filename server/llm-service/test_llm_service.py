@@ -11,12 +11,33 @@ Tests cover the critical GenAI logic:
 
 import json
 import pytest
+import sys
 from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
+
+fake_langchain = MagicMock()
+fake_langchain.verbose = False
+sys.modules["langchain"] = fake_langchain
 
 from main import app, parse_llm_response, filter_courses, build_index, RoadmapResponse
 
 client = TestClient(app)
+
+@pytest.fixture(autouse=True)
+def reset_usage():
+    """
+    Clears token usage before and after every test.
+
+    Prevents tests from affecting each other because
+    _user_token_usage is a global in-memory dictionary.
+    """
+    import main
+
+    main._user_token_usage.clear()
+
+    yield
+
+    main._user_token_usage.clear()
 
 # ---------------------------------------------------------------------------
 # parse_llm_response
@@ -355,7 +376,217 @@ class TestRecommendEndpoint:
         assert "description" in milestones
         assert "tasks" in milestones
         assert len(milestones["tasks"]) == 2
+    
+    def test_usage_increases_after_successful_request(self):
+        import main
 
+        mock_chain = MagicMock()
+        mock_chain.ainvoke = AsyncMock(return_value=json.dumps({
+            "milestones": []
+        }))
+
+        mock_usage = {
+            "total_tokens": 123
+        }
+
+        main.llm.last_usage = mock_usage
+
+        with patch("main.chain", mock_chain):
+            response = client.post(
+                "/recommend?user_id=test-user",
+                json={"goal": "Learn AI"}
+            )
+
+        assert response.status_code == 200
+
+        usage = client.get("/usage/test-user").json()
+
+        assert usage["used"] == 123
+
+# ---------------------------------------------------------------------------
+# /usage endpoint
+# ---------------------------------------------------------------------------
+
+class TestUsageEndpoint:
+    """Tests for user token usage tracking endpoint."""
+
+    def test_usage_returns_default_zero(self):
+        """New users have zero token usage."""
+        import main
+        main._user_token_usage.clear()
+
+        response = client.get("/usage/new_user")
+
+        assert response.status_code == 200
+
+        data = response.json()
+
+        assert data["user_id"] == "new_user"
+        assert data["used"] == 0
+        assert data["remaining"] == main.MAX_TOKENS_PER_USER
+
+# ---------------------------------------------------------------------------
+# Token limit handling
+# ---------------------------------------------------------------------------
+
+class TestTokenLimit:
+
+    def test_rejects_user_when_token_limit_exceeded(self):
+        """Users exceeding token quota receive HTTP 429."""
+        import main
+
+        main._user_token_usage["limited_user"] = main.MAX_TOKENS_PER_USER
+
+        response = client.post(
+            "/recommend?user_id=limited_user",
+            json={"goal": "Learn AI"}
+        )
+
+        assert response.status_code == 429
+        assert "Token limit exceeded" in response.json()["detail"]
+
+        del main._user_token_usage["limited_user"]
+
+# ---------------------------------------------------------------------------
+# Goal validation
+# ---------------------------------------------------------------------------
+
+class TestGoalValidation:
+
+    def test_rejects_goal_longer_than_limit(self):
+        """Goals longer than MAX_GOAL_CHARS are rejected."""
+        import main
+
+        long_goal = "a" * (main.MAX_GOAL_CHARS + 1)
+
+        response = client.post(
+            "/recommend",
+            json={"goal": long_goal}
+        )
+
+        assert response.status_code == 422
+        assert "too long" in response.json()["detail"]
+
+# ---------------------------------------------------------------------------
+# Logs endpoint
+# ---------------------------------------------------------------------------
+
+class TestLogsEndpoint:
+
+    def test_logs_returns_list(self):
+        """Logs endpoint returns stored logs."""
+        import main
+
+        main._log(
+            "INFO",
+            "test message"
+        )
+
+        response = client.get("/logs")
+
+        assert response.status_code == 200
+
+        data = response.json()
+
+        assert "logs" in data
+        assert isinstance(data["logs"], list)
+
+
+    def test_logs_contain_required_fields(self):
+        """Each log entry contains timestamp, level and message."""
+        import main
+
+        main._log(
+            "INFO",
+            "testing"
+        )
+
+        response = client.get("/logs")
+
+        log = response.json()["logs"][0]
+
+        assert "timestamp" in log
+        assert "level" in log
+        assert "message" in log
+
+# ---------------------------------------------------------------------------
+# Root endpoint
+# ---------------------------------------------------------------------------
+
+class TestRootEndpoint:
+
+    def test_root_returns_service_information(self):
+        """Root endpoint exposes service metadata."""
+        response = client.get("/")
+
+        assert response.status_code == 200
+
+        data = response.json()
+
+        assert data["service"] == "LLM Roadmap Service"
+        assert "version" in data
+        assert "endpoints" in data
+
+# ---------------------------------------------------------------------------
+# LLM wrapper tests
+# ---------------------------------------------------------------------------
+
+class TestOpenAICompatibleLLM:
+
+    def test_extracts_token_usage(self):
+        """LLM wrapper stores token usage returned by provider."""
+        from main import OpenAICompatibleLLM
+
+        llm = OpenAICompatibleLLM()
+
+        fake_response = MagicMock()
+
+        fake_response.json.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "content": "hello"
+                    }
+                }
+            ],
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 20,
+                "total_tokens": 30
+            }
+        }
+
+        fake_response.raise_for_status = MagicMock()
+
+        with patch(
+            "main.requests.post",
+            return_value=fake_response
+        ):
+
+            result = llm._call("test")
+
+        assert result == "hello"
+        assert llm.last_usage["total_tokens"] == 30
+
+
+    def test_handles_invalid_provider_response(self):
+        """Invalid LLM provider response raises exception."""
+        from main import OpenAICompatibleLLM
+
+        llm = OpenAICompatibleLLM()
+
+        fake_response = MagicMock()
+
+        fake_response.json.return_value = {}
+
+        fake_response.raise_for_status = MagicMock()
+
+        with patch(
+            "main.requests.post",
+            return_value=fake_response
+        ):
+            with pytest.raises(Exception):
+                llm._call("test")
 
 
 

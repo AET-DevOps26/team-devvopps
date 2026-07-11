@@ -47,7 +47,7 @@ public class UserController {
      * @return matching user
      */
     @GetMapping("/{id}")
-    public User getUser(@PathVariable("id") Long id) {
+    public User getUser(@PathVariable(name = "id") Long id) {
         return service.getUser(id);
     }
 
@@ -71,7 +71,7 @@ public class UserController {
      * @param id user ID
      */
     @DeleteMapping("/{id}")
-    public void delete(@PathVariable Long id) {
+    public void delete(@PathVariable(name = "id") Long id) {
         service.deleteUser(id);
     }
 }

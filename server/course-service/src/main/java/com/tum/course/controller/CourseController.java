@@ -51,7 +51,7 @@ public class CourseController {
      * @return matching course
      */
     @GetMapping("/{id}")
-    public Course get(@PathVariable("id") Long id) {
+    public Course get(@PathVariable(name = "id") Long id) {
         return service.getCourse(id);
     }
 
@@ -69,7 +69,7 @@ public class CourseController {
      * @return matching course
      */
     @GetMapping("/search")
-    public Course search(@RequestParam("title") String title) {
+    public Course search(@RequestParam(name = "title") String title) {
         return service.findByTitle(title);
     }
 }

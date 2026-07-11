@@ -215,7 +215,190 @@ public class RoadmapControllerIntegrationTest {
                 .andExpect(status().isBadRequest());
     }
 
-    
+    // ---------------------------------------------------------------------------
+    // PATCH /roadmaps/{roadmapId}/tasks/{taskId}/complete
+    // ---------------------------------------------------------------------------
+
+    /**
+     * Verifies that toggling a task changes its completion state and returns the
+     * updated roadmap with status 200.
+     */
+    @Test
+    void toggleCompletionTask_returns200_andFlipsTaskStatus() throws Exception {
+        stubUserServiceSuccess(1L);
+        stubLlmServiceSuccess();
+ 
+        // Create a roadmap first
+        String generateResponse = mockMvc.perform(post("/roadmaps/generate")
+                        .param("userId", "1")
+                        .param("goal", "Learn ML"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+ 
+        Long roadmapId = objectMapper.readTree(generateResponse).get("roadmap_id").asLong();
+        Long taskId = objectMapper.readTree(generateResponse)
+                .get("milestones").get(0)
+                .get("tasks").get(0)
+                .get("task_id").asLong();
+ 
+        // Toggle the task to completed
+        mockMvc.perform(patch("/roadmaps/" + roadmapId + "/tasks/" + taskId + "/complete"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                    "$.milestones[0].tasks[?(@.task_id == " + taskId + ")].completed"
+                ).value(true));
+    }
+
+    /**
+     * Verifies that toggling the same task twice returns it to its original state.
+     */
+    @Test
+    void toggleCompletionTask_returns200_andTogglesBackToIncomplete() throws Exception {
+        stubUserServiceSuccess(1L);
+        stubLlmServiceSuccess();
+ 
+        String generateResponse = mockMvc.perform(post("/roadmaps/generate")
+                        .param("userId", "1")
+                        .param("goal", "Learn ML"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+ 
+        Long roadmapId = objectMapper.readTree(generateResponse).get("roadmap_id").asLong();
+        Long taskId = objectMapper.readTree(generateResponse)
+                .get("milestones").get(0)
+                .get("tasks").get(0)
+                .get("task_id").asLong();
+ 
+        String patchUrl = "/roadmaps/" + roadmapId + "/tasks/" + taskId + "/complete";
+ 
+        // First toggle → completed
+        mockMvc.perform(patch(patchUrl)).andExpect(status().isOk());
+ 
+        // Second toggle → back to incomplete
+        mockMvc.perform(patch(patchUrl))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                    "$.milestones[0].tasks[?(@.task_id == " + taskId + ")].completed"
+                ).value(false));
+    }
+
+    /**
+     * Verifies that toggling a task that doesn't exist in the roadmap returns 404.
+     */
+    @Test
+    void toggleCompletionTask_returns404_whenTaskNotFound() throws Exception {
+        stubUserServiceSuccess(1L);
+        stubLlmServiceSuccess();
+ 
+        String generateResponse = mockMvc.perform(post("/roadmaps/generate")
+                        .param("userId", "1")
+                        .param("goal", "Learn ML"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+ 
+        Long roadmapId = objectMapper.readTree(generateResponse).get("roadmap_id").asLong();
+ 
+        mockMvc.perform(patch("/roadmaps/" + roadmapId + "/tasks/999999/complete"))
+                .andExpect(status().isNotFound());
+    }
+
+    /**
+     * Verifies that using a non-existent roadmap ID returns 404.
+     */
+    @Test
+    void toggleCompletionTask_returns404_whenRoadmapNotFound() throws Exception {
+        mockMvc.perform(patch("/roadmaps/999999/tasks/1/complete"))
+                .andExpect(status().isNotFound());
+    }
+
+    // ---------------------------------------------------------------------------
+    // GET /roadmaps/{roadmapId}/progress
+    // ---------------------------------------------------------------------------
+ 
+    /**
+     * Verifies that after completing all tasks, the progress endpoint
+     * reports the roadmap as fully completed.
+     */
+    @Test
+    void getProgress_returns200_withFullCompletion_afterAllTasksToggled() throws Exception {
+        stubUserServiceSuccess(1L);
+        stubLlmServiceSuccess();
+ 
+        String generateResponse = mockMvc.perform(post("/roadmaps/generate")
+                        .param("userId", "1")
+                        .param("goal", "Learn ML"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+ 
+        Long roadmapId = objectMapper.readTree(generateResponse).get("roadmap_id").asLong();
+        Long taskId = objectMapper.readTree(generateResponse)
+                .get("milestones").get(0)
+                .get("tasks").get(0)
+                .get("task_id").asLong();
+ 
+        // Complete the only task
+        mockMvc.perform(patch("/roadmaps/" + roadmapId + "/tasks/" + taskId + "/complete"))
+                .andExpect(status().isOk());
+ 
+        mockMvc.perform(get("/roadmaps/" + roadmapId + "/progress"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.completedTasks").value(1))
+                .andExpect(jsonPath("$.totalTasks").value(1))
+                .andExpect(jsonPath("$.completedMilestones").value(1))
+                .andExpect(jsonPath("$.totalMilestones").value(1))
+                .andExpect(jsonPath("$.roadmapCompleted").value(true));
+    }
+ 
+    /**
+     * Verifies that progress reflects partial completion after toggling some tasks.
+     */
+    @Test
+    void getProgress_returns200_withPartialCompletion_afterSomeTasksToggled() throws Exception {
+        stubUserServiceSuccess(1L);
+        stubLlmServiceWithTwoTasks();
+ 
+        String generateResponse = mockMvc.perform(post("/roadmaps/generate")
+                        .param("userId", "1")
+                        .param("goal", "Learn ML"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+ 
+        Long roadmapId = objectMapper.readTree(generateResponse).get("roadmap_id").asLong();
+        Long firstTaskId = objectMapper.readTree(generateResponse)
+                .get("milestones").get(0)
+                .get("tasks").get(0)
+                .get("task_id").asLong();
+ 
+        // Complete only the first task
+        mockMvc.perform(patch("/roadmaps/" + roadmapId + "/tasks/" + firstTaskId + "/complete"))
+                .andExpect(status().isOk());
+ 
+        mockMvc.perform(get("/roadmaps/" + roadmapId + "/progress"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.completedTasks").value(1))
+                .andExpect(jsonPath("$.totalTasks").value(2))
+                .andExpect(jsonPath("$.completedMilestones").value(0))
+                .andExpect(jsonPath("$.roadmapCompleted").value(false));
+    }
+ 
+    /**
+     * Verifies that GET .../progress returns 404 for a non-existent roadmap.
+     */
+    @Test
+    void getProgress_returns404_whenRoadmapNotFound() throws Exception {
+        mockMvc.perform(get("/roadmaps/999999/progress"))
+                .andExpect(status().isNotFound());
+    }
 
     // ---------------------------------------------------------------------------
     // WireMock helpers
@@ -249,6 +432,29 @@ public class RoadmapControllerIntegrationTest {
                                       "description": "Foundation",
                                       "tasks": [
                                         {"title": "Study linear algebra", "completed": false}
+                                      ]
+                                    }
+                                  ]
+                                }
+                                """))
+        );
+    }
+
+    private void stubLlmServiceWithTwoTasks() {
+        wireMock.stubFor(
+            com.github.tomakehurst.wiremock.client.WireMock.post(urlPathEqualTo("/recommend"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                                {
+                                  "milestones": [
+                                    {
+                                      "title": "Learn ML basics",
+                                      "description": "Foundation",
+                                      "tasks": [
+                                        {"title": "Study linear algebra", "completed": false},
+                                        {"title": "Study statistics", "completed": false}
                                       ]
                                     }
                                   ]

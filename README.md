@@ -317,6 +317,7 @@ GitHub Actions workflows are defined in `.github/workflows/`.
 | `deploy-vm.yml` | Automatically after `build.yml` completes successfully on `main` (via `workflow_run`) | Temporarily opens SSH access for the runner's IP, deploys the latest images to the Azure VM with Docker Compose, then closes SSH access again |
 | `deploy-k8s.yml` | Push to `main`, manual dispatch | Deploys the Helm chart to the AET Kubernetes cluster |
 | `provision.yml` | Manual dispatch | Provisions or imports Azure resources with Terraform, temporarily opens SSH for the runner's IP, configures the VM with Ansible, and updates the Azure public IP GitHub variable, then closes SSH access again |
+| `testing.yml` | Pull requests to `main`, pushes to `main` | Runs Spring Boot tests for all backend services and pytest tests for the LLM service |
 
 Required GitHub configuration:
 
@@ -427,41 +428,41 @@ tail -f logs/roadmap-service.log
 
 ## Testing
 
-The project contains automated unit tests for all backend services.
+The project contains test suites for all backend services. 
 
-### Run all Spring Boot tests
+### Run all 
 
 ```bash
-cd server
-./gradlew test
+make test
+```
+
+### Run Spring Boot tests
+
+```bash
+make test-server
 ```
 
 ### Run tests for a specific service
 
 ```bash
 cd server
-./gradlew :user-service:test 
-./gradlew :course-service:test 
-./gradlew :roadmap-service:test 
-./gradlew :api-gateway:test
+make test-user 
+make test-course
+make test-roadmap
+make test-gateway
 ```
 
 ### Run LLM Service Tests
 
 ```bash
-cd server/llm-service
-
-pip install -r requirements.txt
-pip install -r requirements-test.txt
-
-pytest test_llm_service.py -v
+make test-llm
 ```
 
 ## Student Responsibilities
 
 Every student contributor is responsible for keeping the project runnable, documented, and reviewable.
 
-- Work on feature branches and open pull requests into `main`.
+- Work on feature/fix branches and open pull requests into `main`.
 - Keep changes small enough to review and describe the tested behavior in the PR.
 - Run relevant local checks before requesting review.
 - Update OpenAPI specs in `api/` whenever service endpoints or request/response shapes change.

@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.*;
 
 /**
@@ -40,6 +41,7 @@ class UserServiceTest {
         User result = service.createUser(u);
 
         assertEquals(u, result);
+        verify(repo).save(u);
     }
 
     /**
@@ -75,5 +77,35 @@ class UserServiceTest {
         when(repo.findAll()).thenReturn(List.of(new User()));
 
         assertEquals(1, service.getAllUsers().size());
+    }
+
+    /**
+     * Verifies that deleteUser removes an existing user.
+     */
+    @Test
+    void deleteUser_deletesExistingUser() {
+        when(repo.existsById(1L)).thenReturn(true);
+
+        service.deleteUser(1L);
+
+        verify(repo).deleteById(1L);
+    }
+
+    /**
+     * Verifies that deleteUser throws 404 when the user does not exist.
+     */
+    @Test
+    void deleteUser_throwsIfMissing() {
+        when(repo.existsById(99L)).thenReturn(false);
+
+        ResponseStatusException ex = assertThrows(
+                ResponseStatusException.class,
+                () -> service.deleteUser(99L)
+        );
+
+        assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
+        assertEquals("User not found", ex.getReason());
+
+        verify(repo, never()).deleteById(anyLong());
     }
 }

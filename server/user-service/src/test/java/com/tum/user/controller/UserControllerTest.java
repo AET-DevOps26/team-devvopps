@@ -13,6 +13,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -126,5 +127,36 @@ class UserControllerTest {
             mockMvc.perform(get("/users"))
                    .andExpect(status().isInternalServerError())
         );
+    }
+
+    /**
+     * Verifies that DELETE /users/{id} returns 200 when the user exists.
+     */
+    @Test
+    void deleteUser_returns200() throws Exception {
+        mockMvc.perform(delete("/users/1"))
+                .andExpect(status().isOk());
+    }
+
+    /**
+     * Verifies that DELETE /users/{id} returns 404 when the user does not exist.
+     */
+    @Test
+    void deleteUser_returns404_whenUserNotFound() throws Exception {
+        doThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"))
+                .when(service)
+                .deleteUser(99L);
+
+        mockMvc.perform(delete("/users/99"))
+                .andExpect(status().isNotFound());
+    }
+
+    /**
+     * Verifies that DELETE /users/{id} returns 400 when the ID is not numeric.
+     */
+    @Test
+    void deleteUser_returns400_whenIdNotANumber() throws Exception {
+        mockMvc.perform(delete("/users/abc"))
+                .andExpect(status().isBadRequest());
     }
 }
