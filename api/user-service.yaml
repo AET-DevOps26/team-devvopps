@@ -7,11 +7,8 @@ info:
 
 
 servers:
-  - url: /users
+  - url: /api/v1
     description: Via API Gateway
-
-  - url: /
-    description: Direct service access
 
 
 tags:

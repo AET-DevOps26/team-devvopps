@@ -273,7 +273,7 @@ When running with Docker Compose (`make docker-up`) or running the services loca
 
 #### AET Kubernetes Cluster
 
-When deployed to the AET Kubernetes cluster, acess the services using `kubectl port-forward`:
+When deployed to the AET Kubernetes cluster, access the services using `kubectl port-forward`:
 
 ```bash
 # Terminal 1: user-service

@@ -6,7 +6,7 @@ info:
   version: 1.0.0
 
 servers:
-  - url: /roadmaps
+  - url: /api/v1
     description: Via API Gateway
 
 tags:
