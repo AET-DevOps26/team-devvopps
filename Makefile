@@ -31,6 +31,7 @@ help:
 	@echo "  make test-roadmap  - Run roadmap-service tests"
 	@echo "  make test-gateway  - Run api-gateway tests"
 	@echo "  make test-llm      - Run LLM service pytest tests"
+	@echo "  make test-client   - Run React/Vitest client tests"
 
 # ── Helm ───────────────────────────────────────────────────────────────────────
 
@@ -203,6 +204,7 @@ test:
 	@echo "Running all tests..."
 	$(MAKE) test-server
 	$(MAKE) test-llm
+	$(MAKE) test-client
 
 test-server:
 	@echo "Running all Spring Boot tests..."
@@ -230,3 +232,7 @@ test-llm:
 	pip install -r requirements.txt && \
 	pip install -r requirements-test.txt && \
 	pytest test_llm_service.py -v
+
+test-client:
+	@echo "Running client tests..."
+	cd client && npm install && npm test -- --run

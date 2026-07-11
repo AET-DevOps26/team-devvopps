@@ -317,7 +317,7 @@ GitHub Actions workflows are defined in `.github/workflows/`.
 | `deploy-vm.yml` | Automatically after `build.yml` completes successfully on `main` (via `workflow_run`) | Temporarily opens SSH access for the runner's IP, deploys the latest images to the Azure VM with Docker Compose, then closes SSH access again |
 | `deploy-k8s.yml` | Push to `main`, manual dispatch | Deploys the Helm chart to the AET Kubernetes cluster |
 | `provision.yml` | Manual dispatch | Provisions or imports Azure resources with Terraform, temporarily opens SSH for the runner's IP, configures the VM with Ansible, and updates the Azure public IP GitHub variable, then closes SSH access again |
-| `testing.yml` | Pull requests to `main`, pushes to `main` | Runs Spring Boot tests for all backend services and pytest tests for the LLM service |
+| `testing.yml` | Pull requests to `main`, pushes to `main` | Runs Spring Boot tests for all backend services, pytest tests for the LLM service and vitest tests for the client |
 
 Required GitHub configuration:
 
@@ -428,7 +428,7 @@ tail -f logs/roadmap-service.log
 
 ## Testing
 
-The project contains test suites for all backend services. 
+The project contains test suites for all backend services and the React client. 
 
 ### Run all 
 
@@ -456,6 +456,12 @@ make test-gateway
 
 ```bash
 make test-llm
+```
+
+### Run Client Tests
+
+```bash
+make test-client
 ```
 
 ## Student Responsibilities
