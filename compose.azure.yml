@@ -1,6 +1,4 @@
 services:
-  # Traefik acts as a reverse proxy and handles TLS termination.
-  # It automatically obtains Let's Encrypt certificates via HTTP challenge and redirects all HTTP traffic to HTTPS.
   reverse-proxy:
     image: traefik:v3.6.15
     command:
@@ -19,11 +17,9 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock   # Needed for Traefik to discover services
-      - ./letsencrypt:/letsencrypt                  # Persists TLS certificates across restarts
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./letsencrypt:/letsencrypt
 
-  # Shared PostgreSQL instance for all services.
-  # Each service uses its own database (userdb, coursedb, roadmapdb) created by init-databases.sql.
   postgres:
     image: postgres:16
     environment:
@@ -31,12 +27,45 @@ services:
       POSTGRES_PASSWORD: postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init-databases.sql:/docker-entrypoint-initdb.d/init.sql # Runs once on first start
+      - ./init-databases.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres"]
       interval: 5s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
+
+  # One-time job that populates coursedb with initial course data.
+  course-seeder:
+    image: ghcr.io/aet-devops26/team-devvopps/course-seeder:latest
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: coursedb
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+
+  # Blocks until coursedb has at least one course seeded.
+  wait-for-courses:
+    image: postgres:16
+    environment:
+      PGPASSWORD: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+      course-seeder:
+        condition: service_started
+    entrypoint: sh -c "while ! psql -h postgres -U postgres -d coursedb -c 'SELECT COUNT(*) FROM courses WHERE course_id > 0' 2>/dev/null | grep -q '[1-9]'; do sleep 5; done; echo 'Courses ready'; sleep infinity"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "psql -h postgres -U postgres -d coursedb -c 'SELECT COUNT(*) FROM courses WHERE course_id > 0' 2>/dev/null | grep -q '[1-9]'"]
+      interval: 5s
+      timeout: 5s
+      retries: 1
+      start_period: 360s
     restart: unless-stopped
 
   user-service:
@@ -48,7 +77,7 @@ services:
       DB_PASSWORD: postgres
     depends_on:
       postgres:
-        condition: service_healthy    # Wait for postgres to be ready before starting
+        condition: service_healthy
     restart: unless-stopped
 
   course-service:
@@ -71,7 +100,9 @@ services:
       DB_USER: postgres
       DB_PASSWORD: postgres
       USER_SERVICE_HOST: user-service
+      USER_SERVICE_PORT: "8081"
       LLM_SERVICE_HOST: llm-service
+      LLM_SERVICE_PORT: "8084"
     depends_on:
       postgres:
         condition: service_healthy
@@ -79,15 +110,15 @@ services:
         condition: service_started
     restart: unless-stopped
 
-  # The API gateway is the single entry point for all frontend requests.
-  # It proxies /users/**, /courses/**, /roadmaps/** to the respective services.
-  # Traefik routes external HTTPS traffic to this container on port 8080.
   api-gateway:
     image: ghcr.io/aet-devops26/team-devvopps/api-gateway:latest
     environment:
       USER_SERVICE_HOST: user-service
+      USER_SERVICE_PORT: "8081"
       COURSE_SERVICE_HOST: course-service
+      COURSE_SERVICE_PORT: "8082"
       ROADMAP_SERVICE_HOST: roadmap-service
+      ROADMAP_SERVICE_PORT: "8083"
     depends_on:
       - user-service
       - course-service
@@ -100,14 +131,13 @@ services:
       - "traefik.http.routers.api-gateway.entrypoints=websecure"
       - "traefik.http.routers.api-gateway.tls.certresolver=letsencrypt"
 
-  # The React frontend. Traefik routes traffic and applies gzip compression
-  # via the client-compress middleware to reduce transfer size.
   client:
     image: ghcr.io/aet-devops26/team-devvopps/client:latest
     environment:
       - PUBLIC_API_URL=${PUBLIC_API_URL}
     depends_on:
       - api-gateway
+      - llm-service
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
@@ -117,19 +147,26 @@ services:
       - "traefik.http.routers.client.tls.certresolver=letsencrypt"
       - "traefik.http.middlewares.client-compress.compress=true"
       - "traefik.http.routers.client.middlewares=client-compress"
-  
-  # LLM service is internal only: Traefik is explicitly disabled.
-  # It is only reachable by other services within the Docker network.
+
   llm-service:
     image: ghcr.io/aet-devops26/team-devvopps/llm-service:latest
     environment:
-      LLM_API_URL: http://llm-backend:1234/v1/chat/completions
-      COURSE_SERVICE_HOST: course-service
+      - PORT=8084
+      - LLM_API_URL=${LLM_API_URL:-http://host.docker.internal:1234/v1/chat/completions}
+      - LLM_MODEL=${LLM_MODEL:-gemma-4-e2b}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - LOGOS_API_KEY=${LOGOS_API_KEY:-}
+      - COURSE_SERVICE_HOST=course-service
+      - COURSE_SERVICE_PORT=8082
     depends_on:
       - course-service
+      - wait-for-courses
     restart: unless-stopped
     labels:
       - "traefik.enable=false"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 volumes:
   postgres_data:

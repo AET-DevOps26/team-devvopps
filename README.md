@@ -83,7 +83,7 @@ Architecture diagrams and product context are in `docs/system_overview/`, includ
 
 - **Local development with your IDE:** [Running Locally (Development)](#running-locally-development)
 - **Full stack with containers:** [Running with Docker Compose](#running-with-docker-compose) or [Running with Kubernetes](#running-with-kubernetes)
-- **Cloud** (staging/demo): [Azure VM](#azure-vm)
+- **Cloud** (staging/demo): [Azure VM](#azure-vm-cloud)
 
 ---
 
@@ -331,8 +331,8 @@ GitHub Actions workflows are defined in `.github/workflows/`.
 | `deploy-vm.yml` | Automatically after `build.yml` completes successfully on `main` (via `workflow_run`) | Temporarily opens SSH access for the runner's IP, deploys the latest images to the Azure VM with Docker Compose, then closes SSH access again |
 | `deploy-k8s.yml` | Push to `main`, manual dispatch | Deploys the Helm chart to the AET Kubernetes cluster |
 | `provision.yml` | Manual dispatch | Provisions or imports Azure resources with Terraform, temporarily opens SSH for the runner's IP, configures the VM with Ansible, and updates the Azure public IP GitHub variable, then closes SSH access again |
-| `start-vm.yml` | Manual dispatch | Starts the Azure VM |
-| `stop-vm.yml` | Manual dispatch | Deallocates the Azure VM to stop billing 
+| `vm-start.yml` | Manual dispatch | Starts the Azure VM |
+| `vm-stop.yml` | Manual dispatch | Deallocates the Azure VM to stop billing 
 
 **Required GitHub configuration:**
 
