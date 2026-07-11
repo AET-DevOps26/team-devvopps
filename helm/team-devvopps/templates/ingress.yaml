@@ -47,36 +47,4 @@ spec:
                 name: client
                 port:
                   number: {{ .Values.services.client.port }}
-          
-          - path: /swagger/user(/|$)(.*)
-            pathType: ImplementationSpecific
-            backend:
-              service:
-                name: user-service
-                port:
-                  number: {{ .Values.services.userService.port }}
-
-          - path: /swagger/course(/|$)(.*)
-            pathType: ImplementationSpecific
-            backend:
-              service:
-                name: course-service
-                port:
-                  number: {{ .Values.services.courseService.port }}
-
-          - path: /swagger/roadmap(/|$)(.*)
-            pathType: ImplementationSpecific
-            backend:
-              service:
-                name: roadmap-service
-                port:
-                  number: {{ .Values.services.roadmapService.port }}
-
-          - path: /swagger/llm(/|$)(.*)
-            pathType: ImplementationSpecific
-            backend:
-              service:
-                name: llm-service
-                port:
-                  number: {{ .Values.services.llmService.port }}
 {{- end }}

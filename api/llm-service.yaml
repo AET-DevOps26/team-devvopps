@@ -5,8 +5,10 @@ info:
   version: 1.0.0
 
 servers:
+  - url: /llm
+    description: Kubernetes ingress route
   - url: /
-    description: Direct (called internally by roadmap-service, not exposed via API Gateway)
+    description: Direct internal service access
 
 tags:
   - name: recommendations
@@ -23,7 +25,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RecommendRequest'
+              $ref: '#/components/schemas/RoadmapRequest'
       responses:
         '200':
           description: Generated roadmap recommendation
@@ -43,6 +45,39 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: User token limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  
+  /usage/{user_id}:
+    get:
+      summary: Get user token usage
+      operationId: getUsage
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Token usage information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user_id:
+                    type: string
+                  used:
+                    type: integer
+                  limit:
+                    type: integer
+                  remaining:
+                    type: integer
 
   /health:
     get:
@@ -54,24 +89,36 @@ paths:
           content:
             application/json:
               schema:
+                $ref: '#/components/schemas/HealthResponse'
+  
+  /logs:
+    get:
+      summary: Get service logs
+      operationId: getLogs
+      responses:
+        '200':
+          description: Recent service logs
+          content:
+            application/json:
+              schema:
                 type: object
                 properties:
-                  status:
-                    type: string
-                    example: ok
-                  model:
-                    type: string
-                    description: Currently active LLM backend
+                  logs:
+                    type: array
+                    items:
+                      type: object
 
 components:
   schemas:
     RoadmapRequest:
       type: object
-      required: [goal, courses]
+      required: 
+        - goal
       properties:
         goal:
           type: string
           description: The user's learning goal in natural language
+          maxLength: 200
 
     RoadmapResponse:
       type: object
@@ -79,11 +126,27 @@ components:
         milestones:
           type: array
           items:
-            type: string
+            $ref: '#/components/schemas/Milestone'
+
+    Milestone:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
         tasks:
           type: array
           items:
-            type: string
+            $ref: '#/components/schemas/Task'
+
+    Task:
+      type: object
+      properties:
+        title:
+          type: string
+        completed:
+          type: boolean
 
     ErrorResponse:
       type: object
@@ -93,4 +156,15 @@ components:
         message:
           type: string
         details:
+          type: string
+    
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: healthy
+        service:
+          type: string
+        model:
           type: string

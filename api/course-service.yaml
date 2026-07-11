@@ -5,7 +5,7 @@ info:
   version: 1.0.0
 
 servers:
-  - url: /api/v1
+  - url: /courses
     description: Via API Gateway
 
 tags:
@@ -73,31 +73,65 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Course'
-        '404':
-          description: No course found for the given title
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
 
 components:
   schemas:
     Course:
       type: object
       properties:
-        id:
+        course_id:
           type: integer
           format: int64
           readOnly: true
+          description: Unique database identifier
+
         title:
           type: string
-        description:
+          description: Course title
+
+        content:
           type: string
+          description: Detailed course content and description
+
+        previous_knowledge:
+          type: string
+          description: Required prerequisites
+
+        objective:
+          type: string
+          description: Learning objectives and expected outcomes
+
+        teaching_method:
+          type: string
+          description: Teaching methods and approach
+
+        registration:
+          type: string
+          description: Registration and enrollment information
+
+        offered_in:
+          type: string
+          description: Semester(s) when the course is offered
+
+        recommended_literature:
+          type: string
+          description: Recommended literature and further reading
+
+        tum_number:
+          type: string
+          description: TUM course identifier
 
     ErrorResponse:
       type: object
       properties:
-        code:
+        timestamp:
+          type: string
+          format: date-time
+        status:
           type: integer
+        error:
+          type: string
         message:
+          type: string
+        path:
           type: string
