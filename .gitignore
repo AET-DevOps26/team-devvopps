@@ -1,2 +1,13 @@
 #empty
 infra/.env
+
+.vscode/
+
+# Node
+node_modules/
+
+# pre-commit
+.pre-commit-cache/
+
+# npm logs
+npm-debug.log*
