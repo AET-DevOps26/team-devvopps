@@ -127,6 +127,15 @@ export default function AdminPanel() {
           <button style={tab === "logs" ? s.tabActive : s.tab} onClick={() => setTab("logs")}>
             Logs
           </button>
+          <a
+            style={{ ...s.tab, textDecoration: "none" }}
+            href="/grafana"
+            target="_blank"
+            rel="noreferrer"
+            title="Monitoring dashboards (Grafana login required)"
+          >
+            Grafana ↗
+          </a>
         </nav>
       </header>
 
