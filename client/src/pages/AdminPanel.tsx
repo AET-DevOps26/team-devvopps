@@ -2,10 +2,22 @@ import { useEffect, useRef, useState } from "react";
 
 const API = "/api";
 
+// All admin calls are authenticated (JWT cookie) and require the ADMIN role,
+// enforced at the gateway; credentials:"include" sends the cookie.
+const withAuth: RequestInit = { credentials: "include" };
+
 interface User {
   user_id: number;
-  name: string;
+  name?: string;
   email: string;
+  role?: string;
+}
+
+interface AuthEvent {
+  timestamp: string;
+  type: string;
+  email: string;
+  result: string;
 }
 
 interface Course {
@@ -40,16 +52,14 @@ export default function AdminPanel() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [llmLogs, setLlmLogs] = useState<LlmLog[]>([]);
   const [roadmapLogs, setRoadmapLogs] = useState<RoadmapLog[]>([]);
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [authEvents, setAuthEvents] = useState<AuthEvent[]>([]);
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
-      fetch(`${API}/users`).then((r) => r.json()).catch(() => []),
-      fetch(`${API}/courses`).then((r) => r.json()).catch(() => []),
+      fetch(`${API}/users`, withAuth).then((r) => r.json()).catch(() => []),
+      fetch(`${API}/courses`, withAuth).then((r) => r.json()).catch(() => []),
     ]).then(([u, c]) => {
       setUsers(Array.isArray(u) ? u : []);
       setCourses(Array.isArray(c) ? c : []);
@@ -63,13 +73,13 @@ export default function AdminPanel() {
 
   const fetchLogs = () => {
     const seq = ++fetchSeq.current;
-    fetch("/llm/logs")
+    fetch("/llm/logs", withAuth)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((d) => {
         if (seq === fetchSeq.current) setLlmLogs(d.logs || []);
       })
       .catch((e) => console.error("Failed to fetch LLM logs:", e));
-    fetch(`${API}/roadmaps`)
+    fetch(`${API}/roadmaps/all`, withAuth)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((d) => {
         if (seq !== fetchSeq.current) return;
@@ -79,31 +89,20 @@ export default function AdminPanel() {
         setRoadmapLogs(sorted.slice(0, 50));
       })
       .catch((e) => console.error("Failed to fetch roadmap logs:", e));
+    fetch(`${API}/auth/logs`, withAuth)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d) => {
+        if (seq === fetchSeq.current) setAuthEvents(d.logs || []);
+      })
+      .catch((e) => console.error("Failed to fetch auth logs:", e));
   };
 
   useEffect(() => {
     if (tab === "logs") fetchLogs();
   }, [tab]);
 
-  const addUser = async () => {
-    if (!name || !email) return;
-    const res = await fetch(`${API}/users`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email }),
-    });
-    if (res.ok) {
-      const u = await res.json();
-      setUsers((prev) => [...prev, u]);
-      setName("");
-      setEmail("");
-      setStatus(`User "${u.name}" created.`);
-      setTimeout(() => setStatus(""), 3000);
-    }
-  };
-
   const deleteUser = async (id: number) => {
-    await fetch(`${API}/users/${id}`, { method: "DELETE" });
+    await fetch(`${API}/users/${id}`, { method: "DELETE", ...withAuth });
     setUsers((prev) => prev.filter((u) => u.user_id !== id));
   };
 
@@ -135,18 +134,15 @@ export default function AdminPanel() {
         {tab === "users" && (
           <section>
             <h2 style={s.sectionTitle}>Users</h2>
-            <div style={s.form}>
-              <input style={s.input} placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
-              <input style={s.input} placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
-              <button style={s.btn} onClick={addUser}>Add User</button>
-            </div>
-            {status && <p style={s.success}>{status}</p>}
+            <p style={{ color: "#888", fontSize: 13, marginTop: -8, marginBottom: 16 }}>
+              Users register themselves via signup. Admins can review and remove accounts here.
+            </p>
             <table style={s.table}>
               <thead>
                 <tr>
                   <th style={s.th}>ID</th>
-                  <th style={s.th}>Name</th>
                   <th style={s.th}>Email</th>
+                  <th style={s.th}>Role</th>
                   <th style={s.th}>Actions</th>
                 </tr>
               </thead>
@@ -154,8 +150,8 @@ export default function AdminPanel() {
                 {users.map((u) => (
                   <tr key={u.user_id} style={s.tr}>
                     <td style={s.td}>{u.user_id}</td>
-                    <td style={s.td}>{u.name}</td>
                     <td style={s.td}>{u.email}</td>
+                    <td style={s.td}>{u.role || "USER"}</td>
                     <td style={s.td}>
                       <button style={s.deleteBtn} onClick={() => deleteUser(u.user_id)}>Delete</button>
                     </td>
@@ -213,6 +209,31 @@ export default function AdminPanel() {
               <h2 style={s.sectionTitle}>Logs</h2>
               <button style={s.btn} onClick={fetchLogs}>Refresh</button>
             </div>
+
+            <h3 style={{ fontSize: 16, marginBottom: 12, color: "#444" }}>Auth Events</h3>
+            <table style={{ ...s.table, marginBottom: 32 }}>
+              <thead>
+                <tr>
+                  <th style={s.th}>Time</th>
+                  <th style={s.th}>Event</th>
+                  <th style={s.th}>Email</th>
+                  <th style={s.th}>Result</th>
+                </tr>
+              </thead>
+              <tbody>
+                {authEvents.map((e, i) => (
+                  <tr key={i} style={s.tr}>
+                    <td style={{ ...s.td, whiteSpace: "nowrap", color: "#888", fontSize: 12 }}>{new Date(e.timestamp).toLocaleTimeString()}</td>
+                    <td style={{ ...s.td, fontSize: 13 }}>{e.type}</td>
+                    <td style={{ ...s.td, fontSize: 13 }}>{e.email}</td>
+                    <td style={{ ...s.td, fontWeight: 600, fontSize: 12, color: e.result === "success" ? "#2e7d32" : e.result === "failure" ? "#e53935" : "#f57c00" }}>{e.result}</td>
+                  </tr>
+                ))}
+                {authEvents.length === 0 && (
+                  <tr><td colSpan={4} style={{ ...s.td, color: "#888", textAlign: "center" }}>No auth events yet.</td></tr>
+                )}
+              </tbody>
+            </table>
 
             <h3 style={{ fontSize: 16, marginBottom: 12, color: "#444" }}>LLM Service Logs</h3>
             <table style={{ ...s.table, marginBottom: 32 }}>

@@ -124,6 +124,17 @@ llmService:
   groqApiKey: ""
   logosApiKey: ""
 
+# Auth / JWT configuration (override via --set from infra/.env or GitHub Secrets)
+auth:
+  # HS256 signing key shared by user-service (signs) and api-gateway (verifies).
+  # MUST be at least 32 bytes. Empty here → required at deploy time via --set.
+  jwtSigningKey: ""
+  # Secure cookie flag: true for HTTPS environments; values-local.yaml sets false.
+  cookieSecure: true
+  # Optional admin account bootstrapped on user-service startup (blank = skip).
+  adminEmail: ""
+  adminPassword: ""
+
 # Prometheus Configuration
 # Requests match measured usage (Fair Use: reserve only what's measured).
 # Limits raised well above requests so query/scrape bursts aren't CFS-throttled

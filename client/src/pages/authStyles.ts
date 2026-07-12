@@ -1,0 +1,83 @@
+import type { CSSProperties } from "react";
+
+/** Shared inline styles for the Login and Signup pages (TUM blue theme). */
+export const authStyles: Record<string, CSSProperties> = {
+  container: {
+    minHeight: "100vh",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "#f5f6fa",
+    fontFamily: "'Segoe UI', sans-serif",
+    padding: 24,
+  },
+  card: {
+    width: "100%",
+    maxWidth: 380,
+    background: "#fff",
+    borderRadius: 14,
+    padding: "36px 32px",
+    boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
+    display: "flex",
+    flexDirection: "column",
+  },
+  title: {
+    fontSize: 30,
+    fontWeight: 700,
+    color: "#0065BD",
+    margin: 0,
+    textAlign: "center",
+  },
+  subtitle: {
+    color: "#666",
+    fontSize: 15,
+    textAlign: "center",
+    margin: "6px 0 24px",
+  },
+  label: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: "#555",
+    marginBottom: 6,
+  },
+  input: {
+    padding: "12px 14px",
+    fontSize: 15,
+    border: "2px solid #e0e0e0",
+    borderRadius: 10,
+    outline: "none",
+    marginBottom: 16,
+  },
+  button: {
+    padding: "13px 24px",
+    fontSize: 15,
+    fontWeight: 600,
+    background: "#0065BD",
+    color: "#fff",
+    border: "none",
+    borderRadius: 10,
+    cursor: "pointer",
+    marginTop: 4,
+  },
+  error: {
+    background: "#fff3f3",
+    border: "1px solid #ffcdd2",
+    color: "#c62828",
+    padding: "10px 14px",
+    borderRadius: 8,
+    marginBottom: 18,
+    fontSize: 14,
+  },
+  switch: {
+    textAlign: "center",
+    fontSize: 14,
+    color: "#666",
+    marginTop: 20,
+    marginBottom: 0,
+  },
+  link: {
+    color: "#0065BD",
+    fontWeight: 600,
+    textDecoration: "none",
+  },
+};

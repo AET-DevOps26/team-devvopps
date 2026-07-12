@@ -1,2 +1,4 @@
 #empty
 infra/.env
+# Local Helm secret overrides — contains DB/API/JWT credentials, never commit.
+helm/team-devvopps/values-secrets.yaml
