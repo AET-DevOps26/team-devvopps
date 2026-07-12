@@ -8,8 +8,7 @@ on:
   push:
     branches:
     - main
-    - fix/llm
-    - feature/monitoring
+    - feature/signup-login
   workflow_dispatch:
 
 # Read access to repo contents; write access to push images to GHCR.      

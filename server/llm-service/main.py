@@ -74,7 +74,10 @@ TOP_K = int(os.getenv("TOP_K", "30"))
 # Hard cap on LLM output length. Generation time scales with output tokens,
 # so this bounds both latency and cost. The prompt asks for a compact
 # roadmap (max 5 milestones) so valid JSON fits comfortably under the cap.
-MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "1500"))
+# For gpt-oss, hidden reasoning tokens also count toward max_tokens: with a
+# 1500 budget, long reasoning left no room for the JSON and truncated it
+# (parse error -> 0 milestones -> 502). 4000 leaves headroom for both.
+MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "4000"))
 
 # Max characters accepted for the goal (mirrored by maxLength in the UI).
 MAX_GOAL_CHARS = int(os.getenv("MAX_GOAL_CHARS", "200"))
@@ -247,6 +250,11 @@ class OpenAICompatibleLLM(LLM):
             "messages": messages,
             "max_tokens": MAX_TOKENS,
         }
+        if "gpt-oss" in self.model_name:
+            # Reasoning model: cap the hidden thinking phase. Roadmap JSON
+            # generation doesn't need deep reasoning, and shorter reasoning
+            # both speeds up responses and keeps the JSON under max_tokens.
+            payload["reasoning_effort"] = os.getenv("LLM_REASONING_EFFORT", "low")
 
         try:
             response = requests.post(

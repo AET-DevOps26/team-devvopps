@@ -35,7 +35,7 @@ export const authStyles: Record<string, CSSProperties> = {
     fontWeight: 800,
     margin: 0,
     textAlign: "center",
-    letterSpacing: -0.5,
+    letterSpacing: 1,
     background: `linear-gradient(90deg, #ffffff, ${BRAND_GLOW})`,
     WebkitBackgroundClip: "text",
     WebkitTextFillColor: "transparent",

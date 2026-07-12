@@ -4,7 +4,10 @@ const API_URL = "/api";
 // nginx proxies /llm/ to the api-gateway, which authenticates and forwards to
 // llm-service (see client/nginx.conf). The user identity comes from the JWT
 // cookie, so no user id is sent from the client.
-const LLM_URL = "/llm";
+// Through the gateway (/api/llm/** → llm-service): the gateway verifies the
+// JWT and injects X-User-Id, which /usage requires. Calling /llm directly
+// bypasses the gateway, so /usage returns 422 and the token badge never shows.
+const LLM_URL = "/api/llm";
 
 // Mirrors MAX_GOAL_CHARS in llm-service — requests longer than this are
 // rejected server-side with 422, so block them in the input directly.
@@ -508,7 +511,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 38,
     fontWeight: 800,
     margin: 0,
-    letterSpacing: -0.5,
+    letterSpacing: 1,
     background: `linear-gradient(90deg, #ffffff, ${BRAND_GLOW})`,
     WebkitBackgroundClip: "text",
     WebkitTextFillColor: "transparent",
