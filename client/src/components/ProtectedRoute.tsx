@@ -19,7 +19,7 @@ export default function ProtectedRoute({
 
   if (loading) {
     return (
-      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh", color: "#888", fontFamily: "'Segoe UI', sans-serif" }}>
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh", color: "#9aa4bd", fontFamily: "'Segoe UI', sans-serif", background: "linear-gradient(160deg, #0a0f2c 0%, #0c1436 55%, #090e28 100%)" }}>
         Loading…
       </div>
     );
