@@ -77,21 +77,24 @@ public class RoadmapService {
     ) {}
 
     /**
-     * Retrieves all roadmaps stored in the database.
-     *
-     * @return all persisted roadmaps
+     * Returns all roadmaps (admin only — enforced at the gateway).
      */
     public List<Roadmap> getAllRoadmaps() {
         return roadmapRepository.findAll();
     }
 
     /**
-     * Generates a roadmap.
-     *
-     * @param userId the user requesting the roadmap
-     * @param user_goal the goal description used for generation
-     * @return the generated and persisted roadmap
-     * @throws ResponseStatusException if the user, LLM service, or generated data is invalid
+     * Returns the given user's roadmaps, newest first, with progress refreshed
+     * so the list reflects current task completion.
+     */
+    public List<Roadmap> getRoadmapsForUser(Long userId) {
+        List<Roadmap> roadmaps = roadmapRepository.findByUserIdNewestFirst(userId);
+        roadmaps.forEach(Roadmap::calculateProgress);
+        return roadmaps;
+    }
+
+    /**
+     * Generates a roadmap from a user request.
      */
     public Roadmap generateRoadmap(Long userId, String user_goal) {
         log.info("[Roadmap] generate — userId={} goal='{}'", userId, user_goal);
@@ -184,16 +187,20 @@ public class RoadmapService {
     }
 
     /**
-     * Toggles the completion status of a task and updates the milestone status.
-     *
-     * @param roadmapId the roadmap containing the task
-     * @param taskId the task to toggle
-     * @return the updated roadmap
-     * @throws ResponseStatusException if the roadmap or task does not exist
+     * Returns a roadmap only if it belongs to the given user; otherwise 404
+     * (not 403, to avoid revealing that another user's roadmap exists).
      */
+    public Roadmap getRoadmapForUser(Long id, Long userId) {
+        Roadmap roadmap = getRoadmap(id);
+        if (!roadmap.getUser_id().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Roadmap not found");
+        }
+        return roadmap;
+    }
+
     @Transactional
-    public Roadmap toggleCompletionTask(Long roadmapId, Long taskId) {
-        Roadmap roadmap = getRoadmap(roadmapId);
+    public Roadmap toggleCompletionTask(Long roadmapId, Long taskId, Long userId) {
+        Roadmap roadmap = getRoadmapForUser(roadmapId, userId);
 
         Task task = roadmap.getMilestones().stream()
                 .flatMap(m -> m.getTasks().stream())
@@ -206,6 +213,9 @@ public class RoadmapService {
 
         Milestone milestone = task.getMilestone();
         milestone.updateStatus();
+
+        // Keep the stored progress percentage in sync with task completion.
+        roadmap.calculateProgress();
 
         return roadmapRepository.save(roadmap);
     }

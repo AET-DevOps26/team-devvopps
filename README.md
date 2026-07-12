@@ -236,15 +236,6 @@ make helm-install-aet                   # Manual deploy fallback (requires crede
 > ⚠️ Remember to switch back with `kubectl config use-context docker-desktop`
 > before working locally again.
 
-#### Old Plain-YAML Manifests (Fallback Only)
-
-The original hand-written manifests in `infra/k8s/` are kept as a fallback.
-Do **not** mix with the Helm-based deploy — run `make k8s-down` before switching methods.
-
-```bash
-make k8s-deploy-old   # Build images and deploy using infra/k8s/ manifests
-```
-
 ---
 
 ## API Documentation

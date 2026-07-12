@@ -227,14 +227,14 @@ async def parse_courses_with_details(
 def insert_courses(courses: List[tuple]) -> int:
     """Insert courses into coursedb.courses table. Returns count of inserted courses."""
 
+    conn = psycopg2.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD
+    )
     try:
-        conn = psycopg2.connect(
-            host=DB_HOST,
-            port=DB_PORT,
-            database=DB_NAME,
-            user=DB_USER,
-            password=DB_PASSWORD
-        )
         cursor = conn.cursor()
 
         # Insert courses, skipping duplicates based on title
@@ -253,13 +253,14 @@ def insert_courses(courses: List[tuple]) -> int:
 
         conn.commit()
         cursor.close()
-        conn.close()
 
         return count
 
     except psycopg2.Error as e:
-        print(f"Database error: {e}")
-        return 0
+        conn.rollback()
+        raise RuntimeError(f"Failed to insert courses into {DB_NAME}: {e}") from e
+    finally:
+        conn.close()
 
 
 async def main():

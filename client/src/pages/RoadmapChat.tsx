@@ -1,11 +1,10 @@
 import { useState, useEffect } from "react";
 
 const API_URL = "/api";
-// nginx proxies /llm/ straight to llm-service (see client/nginx.conf).
+// nginx proxies /llm/ to the api-gateway, which authenticates and forwards to
+// llm-service (see client/nginx.conf). The user identity comes from the JWT
+// cookie, so no user id is sent from the client.
 const LLM_URL = "/llm";
-// roadmaps/generate defaults to userId=1 server-side, so token usage is keyed
-// by the same id. Kept as a constant so it's easy to wire to real auth later.
-const USER_ID = 1;
 
 // Mirrors MAX_GOAL_CHARS in llm-service — requests longer than this are
 // rejected server-side with 422, so block them in the input directly.
@@ -28,6 +27,8 @@ interface Milestone {
 
 interface RoadmapResponse {
   roadmap_id: number;
+  title?: string;
+  created_date?: string;
   milestones: Milestone[];
 }
 
@@ -42,12 +43,32 @@ interface TokenUsage {
 // Returns null on any failure — the usage badge is non-critical.
 async function fetchUsageData(): Promise<TokenUsage | null> {
   try {
-    const res = await fetch(`${LLM_URL}/usage/${USER_ID}`);
+    const res = await fetch(`${LLM_URL}/usage`, { credentials: "include" });
     if (!res.ok) return null;
     return await res.json();
   } catch {
     return null;
   }
+}
+
+// Loads the signed-in user's saved roadmaps (newest first). Returns [] on failure.
+async function fetchMyRoadmapsData(): Promise<RoadmapResponse[]> {
+  try {
+    const res = await fetch(`${API_URL}/roadmaps`, { credentials: "include" });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+// Task-level progress summary used by the saved-roadmap cards.
+function roadmapProgress(r: RoadmapResponse) {
+  const tasks = r.milestones?.flatMap((m) => m.tasks ?? []) ?? [];
+  const done = tasks.filter((t) => t.completed).length;
+  const pct = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
+  return { done, total: tasks.length, pct };
 }
 
 export default function RoadmapChat() {
@@ -57,6 +78,7 @@ export default function RoadmapChat() {
   const [error, setError] = useState<string | null>(null);
   const [togglingTaskId, setTogglingTaskId] = useState<number | null>(null);
   const [usage, setUsage] = useState<TokenUsage | null>(null);
+  const [myRoadmaps, setMyRoadmaps] = useState<RoadmapResponse[]>([]);
 
   // Token usage is best-effort: fetch on mount and refresh after each
   // generation so the remaining balance stays in sync. Failures are ignored
@@ -66,11 +88,19 @@ export default function RoadmapChat() {
     if (data) setUsage(data);
   }
 
+  // Refreshes the saved-roadmap list (after generating or returning to it).
+  async function refreshMyRoadmaps() {
+    setMyRoadmaps(await fetchMyRoadmapsData());
+  }
+
+  // On mount, load token usage and the user's saved roadmaps in parallel.
   useEffect(() => {
     let active = true;
     (async () => {
-      const data = await fetchUsageData();
-      if (active && data) setUsage(data);
+      const [u, rms] = await Promise.all([fetchUsageData(), fetchMyRoadmapsData()]);
+      if (!active) return;
+      if (u) setUsage(u);
+      setMyRoadmaps(rms);
     })();
     return () => { active = false; };
   }, []);
@@ -86,6 +116,7 @@ export default function RoadmapChat() {
     try {
       const res = await fetch(`${API_URL}/roadmaps/generate?goal=${encodeURIComponent(goal)}`, {
         method: "POST",
+        credentials: "include",
       });
 
       if (res.status === 429) {
@@ -111,6 +142,7 @@ export default function RoadmapChat() {
       const data: RoadmapResponse = await res.json();
       setRoadmap(data);
       fetchUsage();
+      refreshMyRoadmaps();
 
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
@@ -131,7 +163,7 @@ export default function RoadmapChat() {
     try {
       const res = await fetch(
         `${API_URL}/roadmaps/${roadmap.roadmap_id}/tasks/${taskId}/complete`,
-        { method: "PATCH" }
+        { method: "PATCH", credentials: "include" }
       );
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const updated: RoadmapResponse = await res.json();
@@ -243,8 +275,40 @@ export default function RoadmapChat() {
         </div>
       )}
 
+      {/* Saved roadmaps — shown when no roadmap is open */}
+      {!loading && !roadmap && myRoadmaps.length > 0 && (
+        <div style={styles.savedWrap}>
+          <h2 style={styles.savedTitle}>Your roadmaps</h2>
+          {myRoadmaps.map((r) => {
+            const p = roadmapProgress(r);
+            const barColor = p.pct === 100 ? "#2e7d32" : "#0065BD";
+            return (
+              <button key={r.roadmap_id} style={styles.savedCard} onClick={() => setRoadmap(r)}>
+                <div style={styles.savedCardRow}>
+                  <span style={styles.savedCardTitle}>{r.title || "Untitled roadmap"}</span>
+                  <span style={{ fontWeight: 700, color: barColor }}>{p.pct}%</span>
+                </div>
+                <div style={styles.savedMeta}>
+                  {r.created_date ? new Date(r.created_date).toLocaleDateString() : ""} · {p.done}/{p.total} tasks
+                </div>
+                <div style={styles.tokenTrack}>
+                  <div style={{ ...styles.tokenFill, width: `${p.pct}%`, background: barColor }} />
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {roadmap && roadmap.milestones.length > 0 && (
         <>
+          <button
+            style={styles.backLink}
+            onClick={() => { setRoadmap(null); setGoal(""); refreshMyRoadmaps(); }}
+          >
+            ← My roadmaps
+          </button>
+
           {/* Progress bar */}
           <div style={styles.progressWrap}>
             <div style={styles.progressLabels}>
@@ -328,7 +392,7 @@ export default function RoadmapChat() {
 
           <button
             style={{ ...styles.button, marginTop: 32, width: "100%" }}
-            onClick={() => { setRoadmap(null); setGoal(""); }}
+            onClick={() => { setRoadmap(null); setGoal(""); refreshMyRoadmaps(); }}
           >
             Start Over
           </button>
@@ -439,6 +503,57 @@ const styles: Record<string, React.CSSProperties> = {
     height: "100%",
     borderRadius: 6,
     transition: "width 0.4s ease, background 0.4s ease",
+  },
+  savedWrap: {
+    marginTop: 8,
+  },
+  savedTitle: {
+    fontSize: 18,
+    fontWeight: 700,
+    color: "#333",
+    margin: "0 0 14px",
+  },
+  savedCard: {
+    display: "block",
+    width: "100%",
+    textAlign: "left",
+    background: "#fff",
+    border: "1px solid #e0e6ef",
+    borderRadius: 10,
+    padding: "14px 16px",
+    marginBottom: 12,
+    cursor: "pointer",
+    fontFamily: "inherit",
+  },
+  savedCardRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  savedCardTitle: {
+    fontSize: 15,
+    fontWeight: 600,
+    color: "#1a1a1a",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    paddingRight: 12,
+  },
+  savedMeta: {
+    fontSize: 12,
+    color: "#888",
+    marginBottom: 8,
+  },
+  backLink: {
+    background: "transparent",
+    border: "none",
+    color: "#0065BD",
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: "pointer",
+    padding: 0,
+    marginBottom: 16,
   },
   error: {
     background: "#fff3f3",

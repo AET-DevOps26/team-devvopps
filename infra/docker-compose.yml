@@ -19,7 +19,9 @@ services:
 
   # ── Course Data Seeder ────────────────────────────────────────────────────
   # One-time job that populates the coursedb with initial course data.
-  # Runs immediately after postgres is healthy. Exits after seeding completes.
+  # Waits for course-service to create the `courses` table (via Hibernate
+  # ddl-auto) before inserting, since course-service owns the schema and
+  # nothing here guarantees it starts before the seeder otherwise.
   course-seeder:
     build:
       context: ../server/course-service
@@ -32,6 +34,8 @@ services:
       DB_PASSWORD: postgres
     depends_on:
       postgres:
+        condition: service_healthy
+      course-service:
         condition: service_healthy
     restart: on-failure
 
@@ -84,6 +88,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # No curl/wget in the eclipse-temurin base image; use bash's /dev/tcp to
+    # hit actuator health directly. Healthy only once Hibernate has finished
+    # ddl-auto (i.e. the `courses` table exists) and the app is serving.
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8082 && printf 'GET /actuator/health HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '\"status\":\"UP\"' <&3"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
 
   # Roadmap service: generates learning roadmaps using the LLM.
   roadmap-service:

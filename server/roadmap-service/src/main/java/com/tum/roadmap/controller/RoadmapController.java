@@ -16,12 +16,14 @@ public class RoadmapController {
 
     private final RoadmapService roadmapService;
 
-    /**
-     * Retrieves all available roadmaps.
-     *
-     * @return a list of all roadmaps
-     */
+    /** Returns the authenticated user's own roadmaps, newest first. */
     @GetMapping
+    public ResponseEntity<List<Roadmap>> getMyRoadmaps(@RequestHeader("X-User-Id") Long userId) {
+        return ResponseEntity.ok(roadmapService.getRoadmapsForUser(userId));
+    }
+
+    /** Returns every roadmap (admin only — enforced at the gateway). */
+    @GetMapping("/all")
     public ResponseEntity<List<Roadmap>> getAllRoadmaps() {
         return ResponseEntity.ok(roadmapService.getAllRoadmaps());
     }
@@ -37,8 +39,9 @@ public class RoadmapController {
      */
     @PostMapping("/generate")
     public ResponseEntity<Roadmap> generateRoadmap(
-            @RequestParam(name = "userId", defaultValue = "1") Long userId,
+            @RequestHeader("X-User-Id") Long userId,
             @RequestParam(name = "goal") String goal) {
+        // userId comes from the gateway-injected, JWT-verified X-User-Id header.
         return ResponseEntity.ok(roadmapService.generateRoadmap(userId, goal));
     }
 
@@ -49,8 +52,10 @@ public class RoadmapController {
      * @return the requested roadmap
      */
     @GetMapping("/{id}")
-    public ResponseEntity<Roadmap> getRoadmap(@PathVariable(name = "id") Long id) {
-        return ResponseEntity.ok(roadmapService.getRoadmap(id));
+    public ResponseEntity<Roadmap> getRoadmap(
+            @RequestHeader("X-User-Id") Long userId,
+            @PathVariable(name = "id") Long id) {
+        return ResponseEntity.ok(roadmapService.getRoadmapForUser(id, userId));
     }
 
     /**
@@ -62,9 +67,10 @@ public class RoadmapController {
      */
     @PatchMapping("/{roadmapId}/tasks/{taskId}/complete")
     public ResponseEntity<Roadmap> toggleCompletionTask(
+            @RequestHeader("X-User-Id") Long userId,
             @PathVariable(name = "roadmapId") Long roadmapId,
             @PathVariable(name = "taskId") Long taskId) {
-        return ResponseEntity.ok(roadmapService.toggleCompletionTask(roadmapId, taskId));
+        return ResponseEntity.ok(roadmapService.toggleCompletionTask(roadmapId, taskId, userId));
     }
 
     /**
