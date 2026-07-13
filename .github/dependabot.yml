@@ -1,0 +1,29 @@
+version: 2
+updates:
+  # Keeps the commit-SHA-pinned actions (see workflow files) up to date —
+  # Dependabot understands the "# vX" comment and proposes SHA bumps as PRs.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "npm"
+    directory: "/client"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "gradle"
+    directory: "/server"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "docker"
+    directories:
+      - "/client"
+      - "/server/api-gateway"
+      - "/server/user-service"
+      - "/server/course-service"
+      - "/server/roadmap-service"
+      - "/server/llm-service"
+    schedule:
+      interval: "weekly"
