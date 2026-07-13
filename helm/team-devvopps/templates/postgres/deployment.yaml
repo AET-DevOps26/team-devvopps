@@ -153,6 +153,16 @@ spec:
       containers:
         - name: postgres
           image: {{ .Values.postgres.image }}
+          # Run as postgres user (UID 999), same as init-postgres above.
+          # Avoids needing chmod/chown capabilities at startup — fsGroup
+          # already gives this user ownership of the data volume.
+          securityContext:
+            runAsUser: 999
+            runAsGroup: 999
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           ports:
             - containerPort: {{ .Values.services.postgres.port }}
           resources:
