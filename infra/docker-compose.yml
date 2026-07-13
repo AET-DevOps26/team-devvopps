@@ -68,6 +68,11 @@ services:
       DB_NAME: userdb
       DB_USER: postgres
       DB_PASSWORD: postgres
+      # Auth: signing key must match api-gateway's. Admin account is
+      # bootstrapped from infra/.env on startup (blank = skip bootstrap).
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:-dev-only-insecure-key-change-me-0123456789}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -119,6 +124,12 @@ services:
       COURSE_SERVICE_PORT: "8082"      
       ROADMAP_SERVICE_HOST: roadmap-service
       ROADMAP_SERVICE_PORT: "8083"
+      # Without this the gateway falls back to localhost:8084 and /llm/*
+      # proxying (token badge, admin logs) fails with connection refused.
+      LLM_SERVICE_HOST: llm-service
+      LLM_SERVICE_PORT: "8084"
+      # Must match user-service's JWT_SIGNING_KEY (verifies what it signs).
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:-dev-only-insecure-key-change-me-0123456789}
     depends_on:
       - user-service
       - course-service
