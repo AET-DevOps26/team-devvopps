@@ -127,6 +127,15 @@ export default function AdminPanel() {
           <button style={tab === "logs" ? s.tabActive : s.tab} onClick={() => setTab("logs")}>
             Logs
           </button>
+          <a
+            style={{ ...s.tab, textDecoration: "none" }}
+            href="/grafana"
+            target="_blank"
+            rel="noreferrer"
+            title="Monitoring dashboards (Grafana login required)"
+          >
+            Grafana ↗
+          </a>
         </nav>
       </header>
 
@@ -210,7 +219,7 @@ export default function AdminPanel() {
               <button style={s.btn} onClick={fetchLogs}>Refresh</button>
             </div>
 
-            <h3 style={{ fontSize: 16, marginBottom: 12, color: "#444" }}>Auth Events</h3>
+            <h3 style={{ fontSize: 16, marginBottom: 12, color: "#b8c1d9" }}>Auth Events</h3>
             <table style={{ ...s.table, marginBottom: 32 }}>
               <thead>
                 <tr>
@@ -235,7 +244,7 @@ export default function AdminPanel() {
               </tbody>
             </table>
 
-            <h3 style={{ fontSize: 16, marginBottom: 12, color: "#444" }}>LLM Service Logs</h3>
+            <h3 style={{ fontSize: 16, marginBottom: 12, color: "#b8c1d9" }}>LLM Service Logs</h3>
             <table style={{ ...s.table, marginBottom: 32 }}>
               <thead>
                 <tr>
@@ -253,7 +262,7 @@ export default function AdminPanel() {
                     <td style={{ ...s.td, whiteSpace: "nowrap", color: "#888", fontSize: 12 }}>{new Date(l.timestamp).toLocaleTimeString()}</td>
                     <td style={{ ...s.td, color: l.level === "ERROR" ? "#e53935" : l.level === "WARN" ? "#f57c00" : "#2e7d32", fontWeight: 600, fontSize: 12 }}>{l.level}</td>
                     <td style={{ ...s.td, fontSize: 13 }}>{l.message}</td>
-                    <td style={{ ...s.td, fontSize: 12, color: "#555", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.goal || "—"}</td>
+                    <td style={{ ...s.td, fontSize: 12, color: "#9aa4bd", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.goal || "—"}</td>
                     <td style={{ ...s.td, textAlign: "right" }}>{l.llm_ms != null ? l.llm_ms : "—"}</td>
                     <td style={{ ...s.td, textAlign: "right" }}>{l.total_ms != null ? l.total_ms : "—"}</td>
                   </tr>
@@ -264,7 +273,7 @@ export default function AdminPanel() {
               </tbody>
             </table>
 
-            <h3 style={{ fontSize: 16, marginBottom: 12, color: "#444" }}>Roadmap History</h3>
+            <h3 style={{ fontSize: 16, marginBottom: 12, color: "#b8c1d9" }}>Roadmap History</h3>
             <table style={s.table}>
               <thead>
                 <tr>
@@ -298,22 +307,22 @@ export default function AdminPanel() {
 }
 
 const s: Record<string, React.CSSProperties> = {
-  page: { minHeight: "100vh", background: "#f5f6fa", fontFamily: "sans-serif" },
-  header: { background: "#0055A4", color: "#fff", padding: "0 32px", display: "flex", alignItems: "center", gap: 32, height: 56 },
+  page: { minHeight: "100vh", background: "linear-gradient(160deg, #0a0f2c 0%, #0c1436 55%, #090e28 100%)", fontFamily: "'Segoe UI', sans-serif", color: "#e8ecf5" },
+  header: { background: "#0065BD", color: "#fff", padding: "0 32px", display: "flex", alignItems: "center", gap: 32, height: 56 },
   logo: { fontSize: 18, fontWeight: 700, margin: 0 },
   nav: { display: "flex", gap: 4 },
-  tab: { padding: "6px 16px", background: "transparent", color: "rgba(255,255,255,0.7)", border: "none", borderRadius: 4, cursor: "pointer", fontSize: 14 },
-  tabActive: { padding: "6px 16px", background: "rgba(255,255,255,0.2)", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontSize: 14, fontWeight: 600 },
+  tab: { padding: "6px 16px", background: "transparent", color: "rgba(255,255,255,0.75)", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 14 },
+  tabActive: { padding: "6px 16px", background: "rgba(255,255,255,0.22)", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 14, fontWeight: 600 },
   main: { maxWidth: 1000, margin: "0 auto", padding: "32px 16px" },
-  sectionTitle: { fontSize: 22, marginBottom: 20 },
+  sectionTitle: { fontSize: 22, marginBottom: 20, color: "#f2f5fc" },
   form: { display: "flex", gap: 8, marginBottom: 12 },
-  input: { padding: "8px 12px", border: "1px solid #ddd", borderRadius: 6, fontSize: 14, background: "#fff" },
-  btn: { padding: "8px 18px", background: "#0055A4", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 14 },
-  deleteBtn: { padding: "4px 10px", background: "#e53935", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontSize: 12 },
-  success: { color: "#2e7d32", marginBottom: 12, fontSize: 14 },
-  table: { width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: 8, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.08)" },
-  th: { textAlign: "left", padding: "12px 16px", background: "#f0f4ff", fontSize: 13, fontWeight: 600, color: "#444" },
-  tr: { borderBottom: "1px solid #f0f0f0" },
-  td: { padding: "10px 16px", fontSize: 14 },
-  center: { display: "flex", justifyContent: "center", alignItems: "center", height: "100vh", fontFamily: "sans-serif", background: "#f5f6fa", color: "#333" },
+  input: { padding: "10px 14px", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, fontSize: 14, background: "rgba(255,255,255,0.05)", color: "#e8ecf5", outline: "none" },
+  btn: { padding: "9px 18px", background: "linear-gradient(90deg, #0065BD, #4d9bff)", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 14, fontWeight: 600, boxShadow: "0 4px 14px rgba(0,101,189,0.4)" },
+  deleteBtn: { padding: "5px 12px", background: "rgba(239,83,80,0.15)", color: "#ff9b98", border: "1px solid rgba(239,83,80,0.4)", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 600 },
+  success: { color: "#22c55e", marginBottom: 12, fontSize: 14 },
+  table: { width: "100%", borderCollapse: "collapse", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, overflow: "hidden" },
+  th: { textAlign: "left", padding: "12px 16px", background: "rgba(255,255,255,0.06)", fontSize: 13, fontWeight: 600, color: "#b8c1d9" },
+  tr: { borderBottom: "1px solid rgba(255,255,255,0.07)" },
+  td: { padding: "11px 16px", fontSize: 14, color: "#d6dcec" },
+  center: { display: "flex", justifyContent: "center", alignItems: "center", height: "100vh", fontFamily: "'Segoe UI', sans-serif", background: "linear-gradient(160deg, #0a0f2c 0%, #0c1436 55%, #090e28 100%)", color: "#9aa4bd" },
 };

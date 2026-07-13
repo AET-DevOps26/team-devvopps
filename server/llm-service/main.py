@@ -74,7 +74,10 @@ TOP_K = int(os.getenv("TOP_K", "30"))
 # Hard cap on LLM output length. Generation time scales with output tokens,
 # so this bounds both latency and cost. The prompt asks for a compact
 # roadmap (max 5 milestones) so valid JSON fits comfortably under the cap.
-MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "1500"))
+# For gpt-oss, hidden reasoning tokens also count toward max_tokens: with a
+# 1500 budget, long reasoning left no room for the JSON and truncated it
+# (parse error -> 0 milestones -> 502). 4000 leaves headroom for both.
+MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "4000"))
 
 # Max characters accepted for the goal (mirrored by maxLength in the UI).
 MAX_GOAL_CHARS = int(os.getenv("MAX_GOAL_CHARS", "200"))
@@ -141,22 +144,39 @@ def filter_courses(goal: str, k: int = TOP_K) -> str:
 # Per-user token usage tracking
 # ---------------------------------------------------------------------------
 
-# The limit is based on actual LLM-reported token usage (prompt + completion).
-# With a 50000 token limit and an average usage of ~1000 tokens per request 
-# (smaller input), users can generate approximately 50 roadmaps. The exact number 
-# depends on the length of the input and the generated roadmap response.
-MAX_TOKENS_PER_USER = 50000  # max cumulative tokens per user
+# The limit is based on actual LLM-reported token usage (prompt + completion)
+# and renews at the start of each calendar month (UTC).
+# NOTE: must stay comfortably ABOVE MAX_TOKENS — the pre-request reservation
+# checks `current + MAX_TOKENS >= limit`, so a limit equal to MAX_TOKENS
+# would reject every request before the first roadmap is generated.
+MAX_TOKENS_PER_USER = int(os.getenv("MONTHLY_TOKEN_LIMIT", "50000"))  # per user per month
 
-_user_token_usage: dict = defaultdict(int)  # userId -> total tokens used
+_user_token_usage: dict = defaultdict(int)  # userId -> tokens used this month
 _user_locks: dict = defaultdict(threading.Lock)
+_usage_month: str = datetime.now(timezone.utc).strftime("%Y-%m")
+_month_lock = threading.Lock()
+
+
+def _reset_if_new_month() -> None:
+    """Clears all usage counters when the calendar month (UTC) rolls over."""
+    global _usage_month
+    now_month = datetime.now(timezone.utc).strftime("%Y-%m")
+    if now_month != _usage_month:
+        with _month_lock:
+            if now_month != _usage_month:
+                _user_token_usage.clear()
+                _usage_month = now_month
+                _log("INFO", f"Monthly token quotas reset for {now_month}")
+
 
 def check_user_limit(user_id: str) -> None:
-    """Raises HTTPException if user has exceeded their token limit."""
+    """Raises HTTPException if user has exceeded their monthly token limit."""
+    _reset_if_new_month()
     current = _user_token_usage[user_id]
     if current + MAX_TOKENS >= MAX_TOKENS_PER_USER:
         raise HTTPException(
             status_code=429,
-            detail=f"Token limit exceeded. You have used {current}/{MAX_TOKENS_PER_USER} tokens."
+            detail=f"Monthly token limit exceeded. You have used {current}/{MAX_TOKENS_PER_USER} tokens this month — the quota resets at the start of next month."
         )
 
 # ---------------------------------------------------------------------------
@@ -247,6 +267,11 @@ class OpenAICompatibleLLM(LLM):
             "messages": messages,
             "max_tokens": MAX_TOKENS,
         }
+        if "gpt-oss" in self.model_name:
+            # Reasoning model: cap the hidden thinking phase. Roadmap JSON
+            # generation doesn't need deep reasoning, and shorter reasoning
+            # both speeds up responses and keeps the JSON under max_tokens.
+            payload["reasoning_effort"] = os.getenv("LLM_REASONING_EFFORT", "low")
 
         try:
             response = requests.post(
@@ -368,12 +393,14 @@ async def get_usage(x_user_id: str = Header(...)):
     The user id comes from the gateway-injected, JWT-verified X-User-Id header,
     so the client cannot query another user's usage.
     """
+    _reset_if_new_month()
     used = _user_token_usage[x_user_id]
     return {
         "user_id": x_user_id,
         "used": used,
         "limit": MAX_TOKENS_PER_USER,
         "remaining": max(0, MAX_TOKENS_PER_USER - used),
+        "period": _usage_month,
     }
 
 
