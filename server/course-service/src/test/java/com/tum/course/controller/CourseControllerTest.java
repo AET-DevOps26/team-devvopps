@@ -21,6 +21,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *
  * Uses @WebMvcTest to load only the MVC layer.
  * CourseService is mocked to isolate controller behavior.
+ * 
+ * These tests verify:
+ * - HTTP endpoint mappings and request handling
+ * - Successful course retrieval and search responses
+ * - Validation of required request parameters
+ * - Handling of invalid path variables
+ * - Correct propagation of service-layer exceptions
+ * - Correct HTTP status codes returned by the controller
  */
 @WebMvcTest(CourseController.class)
 class CourseControllerTest {

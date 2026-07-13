@@ -19,7 +19,16 @@ import static org.mockito.Mockito.*;
 /**
  * Unit tests for UserService.
  *
- * UserRepository is mocked to avoid database access.
+ * Uses Mockito to mock UserRepository and isolate service-layer business logic.
+ * No database connection is used in these tests.
+ *
+ * These tests verify:
+ * - User creation and persistence delegation
+ * - Retrieving users by ID
+ * - Handling missing users with correct HTTP errors
+ * - Retrieving all users
+ * - User deletion behavior
+ * - Correct exception handling when deleting non-existing users
  */
 @ExtendWith(MockitoExtension.class)
 class UserServiceTest {

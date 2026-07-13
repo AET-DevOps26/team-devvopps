@@ -246,10 +246,10 @@ export default function RoadmapChat() {
     }
   }
 
-  const allTasks = roadmap?.milestones.flatMap(m => m.tasks) ?? [];
+  const allTasks = roadmap?.milestones?.flatMap(m => m.tasks) ?? [];
   const doneTasks = allTasks.filter(t => t.completed).length;
   const pct = allTasks.length > 0 ? Math.round((doneTasks / allTasks.length) * 100) : 0;
-  const completedMilestones = roadmap?.milestones.filter(m => m.status === "COMPLETED").length ?? 0;
+  const completedMilestones = roadmap?.milestones?.filter(m => m.status === "COMPLETED").length ?? 0;
   // Keep a stable order so completing a task doesn't reorder the list.
   const sortedMilestones = [...(roadmap?.milestones ?? [])].sort(
     (a, b) => a.milestone_id - b.milestone_id
@@ -303,7 +303,9 @@ export default function RoadmapChat() {
               </button>
             </form>
             <div style={styles.charHintRow}>
-              <span style={{ color: charColor, fontWeight: charRatio >= 0.8 ? 600 : 400 }}>
+              <span 
+                data-testid="character-counter"
+                style={{ color: charColor, fontWeight: charRatio >= 0.8 ? 600 : 400 }}>
                 {goal.length} / {MAX_GOAL_LENGTH} characters
               </span>
               {charRatio >= 1 && <span style={{ color: "#ef5350" }}>Maximum length reached</span>}

@@ -17,6 +17,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
@@ -28,16 +29,27 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * Uses WireMock to simulate real HTTP calls to user-service and LLM service.
  * Uses H2 in-memory database via @SpringBootTest for real database interactions.
+ * 
+ * The @Transactional annotation keeps the Hibernate session open during each test.
+ * This is required because Roadmap, Milestone, and Task relationships are lazily loaded.
+ * Without an active transaction, accessing collections such as roadmap.getMilestones()
+ * after retrieving entities from the database causes LazyInitializationException. 
  *
  * These tests verify:
- * - The real RestTemplate correctly builds and sends HTTP requests
- * - Real HTTP error responses (404, 503) are correctly handled
- * - Real network failures are caught and wrapped as ResponseStatusException
- * - Generated roadmaps are actually persisted to the database
+ * - Roadmap generation with successful user-service and LLM-service communication
+ * - User-service HTTP errors (404) and connection failures (503) are correctly handled
+ * - LLM-service errors (429, 503) and invalid responses are correctly handled
+ * - Generated roadmaps, milestones, and tasks are persisted correctly in the database
+ * - Roadmaps can be retrieved by ID and validated against user ownership
+ * - Users cannot access or modify roadmaps belonging to other users
+ * - Task completion toggling updates task state and persists changes
+ * - Milestone status updates correctly when tasks are completed or reverted
+ * - Roadmap progress calculation reflects completed and incomplete tasks
  */
 
 @SpringBootTest
 @ActiveProfiles("test")
+@Transactional
 public class RoadmapServiceIntegrationTest {
     
     static WireMockServer wireMock = new WireMockServer(wireMockConfig().dynamicPort());
@@ -278,6 +290,29 @@ public class RoadmapServiceIntegrationTest {
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, ex.getStatusCode());
     }
 
+    /**
+     * Verifies that a null response from the LLM service causes a BAD_GATEWAY
+     * response and prevents saving an invalid roadmap.
+     */
+    @Test
+    void generateRoadmap_throws502_whenLlmReturnsNullResponse() {
+        stubUserServiceSuccess(1L);
+
+        wireMock.stubFor(post(urlPathEqualTo("/recommend"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("null")));
+
+        ResponseStatusException ex = assertThrows(
+                ResponseStatusException.class,
+                () -> roadmapService.generateRoadmap(1L, "Learn ML")
+        );
+
+        assertEquals(HttpStatus.BAD_GATEWAY, ex.getStatusCode());
+        assertEquals(0, roadmapRepository.count());
+    }
+
     // ---------------------------------------------------------------------------
     // getRoadmap
     // ---------------------------------------------------------------------------
@@ -292,6 +327,49 @@ public class RoadmapServiceIntegrationTest {
 
         assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
         assertEquals("Roadmap not found", ex.getReason());
+    }
+
+    // ---------------------------------------------------------------------------
+    // getRoadmapForUser
+    // ---------------------------------------------------------------------------
+
+    /**
+     * Verifies that the owner of a roadmap can retrieve it successfully.
+     */
+    @Test
+    void getRoadmapForUser_returnsRoadmap_whenOwnerMatches() {
+        stubUserServiceSuccess(1L);
+        stubLlmServiceSuccess();
+
+        Roadmap roadmap = roadmapService.generateRoadmap(1L, "Learn ML");
+
+        Roadmap result =
+                roadmapService.getRoadmapForUser(roadmap.getRoadmap_id(), 1L);
+
+        assertNotNull(result);
+        assertEquals(roadmap.getRoadmap_id(), result.getRoadmap_id());
+    }
+
+    /**
+     * Verifies that a user cannot access another user's roadmap
+     * and receives a 404 response.
+     */
+    @Test
+    void getRoadmapForUser_throws404_whenUserDoesNotOwnRoadmap() {
+        stubUserServiceSuccess(1L);
+        stubLlmServiceSuccess();
+
+        Roadmap roadmap = roadmapService.generateRoadmap(1L, "Learn ML");
+
+        ResponseStatusException ex = assertThrows(
+                ResponseStatusException.class,
+                () -> roadmapService.getRoadmapForUser(
+                        roadmap.getRoadmap_id(),
+                        2L
+                )
+        );
+
+        assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
     }
 
     // ---------------------------------------------------------------------------
@@ -311,7 +389,7 @@ public class RoadmapServiceIntegrationTest {
         Long roadmapId = roadmap.getRoadmap_id();
         Long taskId = roadmap.getMilestones().get(0).getTasks().get(0).getTask_id();
  
-        Roadmap updated = roadmapService.toggleCompletionTask(roadmapId, taskId);
+        Roadmap updated = roadmapService.toggleCompletionTask(roadmapId, taskId, 1L);
  
         assertTrue(updated.getMilestones().get(0).getTasks().get(0).isCompleted());
  
@@ -333,8 +411,8 @@ public class RoadmapServiceIntegrationTest {
         Long roadmapId = roadmap.getRoadmap_id();
         Long taskId = roadmap.getMilestones().get(0).getTasks().get(0).getTask_id();
  
-        roadmapService.toggleCompletionTask(roadmapId, taskId); // complete
-        roadmapService.toggleCompletionTask(roadmapId, taskId); // incomplete
+        roadmapService.toggleCompletionTask(roadmapId, taskId, 1L); // complete
+        roadmapService.toggleCompletionTask(roadmapId, taskId, 1L); // incomplete
  
         Roadmap reloaded = roadmapService.getRoadmap(roadmapId);
         assertFalse(reloaded.getMilestones().get(0).getTasks().get(0).isCompleted());
@@ -354,7 +432,7 @@ public class RoadmapServiceIntegrationTest {
         Long taskId = roadmap.getMilestones().get(0).getTasks().get(0).getTask_id();
  
         // The milestone has only one task — completing it should complete the milestone
-        Roadmap updated = roadmapService.toggleCompletionTask(roadmapId, taskId);
+        Roadmap updated = roadmapService.toggleCompletionTask(roadmapId, taskId, 1L);
  
         assertEquals(Status.COMPLETED, updated.getMilestones().get(0).getStatus());
  
@@ -375,8 +453,8 @@ public class RoadmapServiceIntegrationTest {
         Long roadmapId = roadmap.getRoadmap_id();
         Long taskId = roadmap.getMilestones().get(0).getTasks().get(0).getTask_id();
  
-        roadmapService.toggleCompletionTask(roadmapId, taskId); // COMPLETED
-        Roadmap updated = roadmapService.toggleCompletionTask(roadmapId, taskId); // back
+        roadmapService.toggleCompletionTask(roadmapId, taskId, 1L); // COMPLETED
+        Roadmap updated = roadmapService.toggleCompletionTask(roadmapId, taskId, 1L); // back
  
         assertNotEquals(Status.COMPLETED, updated.getMilestones().get(0).getStatus());
     }
@@ -395,7 +473,7 @@ public class RoadmapServiceIntegrationTest {
         Long firstTaskId = roadmap.getMilestones().get(0).getTasks().get(0).getTask_id();
  
         // Complete only the first of two tasks
-        Roadmap updated = roadmapService.toggleCompletionTask(roadmapId, firstTaskId);
+        Roadmap updated = roadmapService.toggleCompletionTask(roadmapId, firstTaskId, 1L);
  
         assertEquals(Status.IN_PROGRESS, updated.getMilestones().get(0).getStatus());
     }
@@ -411,7 +489,7 @@ public class RoadmapServiceIntegrationTest {
         Roadmap roadmap = roadmapService.generateRoadmap(1L, "Learn ML");
  
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-                () -> roadmapService.toggleCompletionTask(roadmap.getRoadmap_id(), 999999L));
+                () -> roadmapService.toggleCompletionTask(roadmap.getRoadmap_id(), 999999L, 1L));
  
         assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
     }
@@ -422,8 +500,31 @@ public class RoadmapServiceIntegrationTest {
     @Test
     void toggleCompletionTask_throws404_whenRoadmapNotFound() {
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-                () -> roadmapService.toggleCompletionTask(999999L, 1L));
+                () -> roadmapService.toggleCompletionTask(999999L, 1L, 1L));
  
+        assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
+    }
+
+    @Test
+    void toggleCompletionTask_throws404_whenRoadmapBelongsToAnotherUser() {
+        stubUserServiceSuccess(1L);
+        stubLlmServiceSuccess();
+
+        Roadmap roadmap = roadmapService.generateRoadmap(1L, "Learn ML");
+
+        ResponseStatusException ex = assertThrows(
+                ResponseStatusException.class,
+                () -> roadmapService.toggleCompletionTask(
+                        roadmap.getRoadmap_id(),
+                        roadmap.getMilestones()
+                                .get(0)
+                                .getTasks()
+                                .get(0)
+                                .getTask_id(),
+                        2L
+                )
+        );
+
         assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
     }
 
@@ -444,7 +545,7 @@ public class RoadmapServiceIntegrationTest {
         Long roadmapId = roadmap.getRoadmap_id();
         Long taskId = roadmap.getMilestones().get(0).getTasks().get(0).getTask_id();
  
-        roadmapService.toggleCompletionTask(roadmapId, taskId);
+        roadmapService.toggleCompletionTask(roadmapId, taskId, 1L);
  
         RoadmapService.RoadmapProgress progress = roadmapService.getProgress(roadmapId);
  
@@ -467,7 +568,7 @@ public class RoadmapServiceIntegrationTest {
         Long roadmapId = roadmap.getRoadmap_id();
         Long firstTaskId = roadmap.getMilestones().get(0).getTasks().get(0).getTask_id();
  
-        roadmapService.toggleCompletionTask(roadmapId, firstTaskId);
+        roadmapService.toggleCompletionTask(roadmapId, firstTaskId, 1L);
  
         RoadmapService.RoadmapProgress progress = roadmapService.getProgress(roadmapId);
  
@@ -489,8 +590,8 @@ public class RoadmapServiceIntegrationTest {
         Long roadmapId = roadmap.getRoadmap_id();
         Long taskId = roadmap.getMilestones().get(0).getTasks().get(0).getTask_id();
  
-        roadmapService.toggleCompletionTask(roadmapId, taskId); // complete
-        roadmapService.toggleCompletionTask(roadmapId, taskId); // revert
+        roadmapService.toggleCompletionTask(roadmapId, taskId, 1L); // complete
+        roadmapService.toggleCompletionTask(roadmapId, taskId, 1L); // revert
  
         RoadmapService.RoadmapProgress progress = roadmapService.getProgress(roadmapId);
  

@@ -173,23 +173,23 @@ test:
 
 test-server:
 	@echo "Running all Spring Boot tests..."
-	cd server && ./gradlew test
+	cd server && $(GRADLE) test
 
 test-user:
 	@echo "Running user-service tests..."
-	cd server && ./gradlew :user-service:test
+	cd server && $(GRADLE) :user-service:test
 
 test-course:
 	@echo "Running course-service tests..."
-	cd server && ./gradlew :course-service:test
+	cd server && $(GRADLE) :course-service:test
 
 test-roadmap:
 	@echo "Running roadmap-service tests..."
-	cd server && ./gradlew :roadmap-service:test
+	cd server && $(GRADLE) :roadmap-service:test 
 
 test-gateway:
 	@echo "Running api-gateway tests..."
-	cd server && ./gradlew :api-gateway:test
+	cd server && $(GRADLE) :api-gateway:test 
 
 test-llm:
 	@echo "Running LLM service tests..."
@@ -201,3 +201,10 @@ test-llm:
 test-client:
 	@echo "Running client tests..."
 	cd client && npm install && npm test -- --run
+
+
+ifeq ($(OS),Windows_NT)
+GRADLE=gradlew.bat
+else
+GRADLE=./gradlew
+endif

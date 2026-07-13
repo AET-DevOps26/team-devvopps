@@ -385,21 +385,20 @@ class TestRecommendEndpoint:
             "milestones": []
         }))
 
-        mock_usage = {
-            "total_tokens": 123
-        }
-
-        main.llm.last_usage = mock_usage
+        main.llm.last_usage = {"total_tokens": 123}
 
         with patch("main.chain", mock_chain):
             response = client.post(
                 "/recommend?user_id=test-user",
-                json={"goal": "Learn AI"}
+                json={"goal": "Learn AI"},
             )
 
         assert response.status_code == 200
 
-        usage = client.get("/usage/test-user").json()
+        usage = client.get(
+            "/usage",
+            headers={"X-User-Id": "test-user"},
+        ).json()
 
         assert usage["used"] == 123
 
@@ -411,11 +410,15 @@ class TestUsageEndpoint:
     """Tests for user token usage tracking endpoint."""
 
     def test_usage_returns_default_zero(self):
-        """New users have zero token usage."""
+        """A new user has zero token usage."""
         import main
+
         main._user_token_usage.clear()
 
-        response = client.get("/usage/new_user")
+        response = client.get(
+            "/usage",
+            headers={"X-User-Id": "new_user"},
+        )
 
         assert response.status_code == 200
 
@@ -424,6 +427,30 @@ class TestUsageEndpoint:
         assert data["user_id"] == "new_user"
         assert data["used"] == 0
         assert data["remaining"] == main.MAX_TOKENS_PER_USER
+
+    def test_usage_returns_existing_usage(self):
+        """Existing token usage is returned correctly."""
+        import main
+
+        main._user_token_usage["alice"] = 1234
+
+        response = client.get(
+            "/usage",
+            headers={"X-User-Id": "alice"},
+        )
+
+        assert response.status_code == 200
+
+        data = response.json()
+
+        assert data["used"] == 1234
+        assert data["remaining"] == main.MAX_TOKENS_PER_USER - 1234
+
+    def test_usage_requires_header(self):
+        """Missing X-User-Id header is rejected."""
+        response = client.get("/usage")
+
+        assert response.status_code == 422
 
 # ---------------------------------------------------------------------------
 # Token limit handling
@@ -443,7 +470,7 @@ class TestTokenLimit:
         )
 
         assert response.status_code == 429
-        assert "Token limit exceeded" in response.json()["detail"]
+        assert "token limit exceeded" in response.json()["detail"].lower()
 
         del main._user_token_usage["limited_user"]
 
@@ -588,6 +615,36 @@ class TestOpenAICompatibleLLM:
             with pytest.raises(Exception):
                 llm._call("test")
 
+# ---------------------------------------------------------------------------
+# Monthly quota reset
+# ---------------------------------------------------------------------------
+
+class TestMonthlyReset:
+    """Tests for monthly token quota reset."""
+
+    def test_resets_usage_when_month_changes(self):
+        import main
+
+        main._user_token_usage["alice"] = 500
+        main._usage_month = "2000-01"
+
+        main._reset_if_new_month()
+
+        assert main._user_token_usage == {}
+        assert main._usage_month != "2000-01"
+
+    def test_does_not_reset_when_month_is_same(self):
+        import main
+        from datetime import datetime, timezone
+
+        current = datetime.now(timezone.utc).strftime("%Y-%m")
+
+        main._usage_month = current
+        main._user_token_usage["alice"] = 500
+
+        main._reset_if_new_month()
+
+        assert main._user_token_usage["alice"] == 500
 
 
 

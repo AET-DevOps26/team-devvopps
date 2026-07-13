@@ -22,7 +22,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Unit tests for UserController.
  *
  * Uses @WebMvcTest to load only the MVC layer.
- * UserService is mocked to isolate controller behavior.
+ * UserService is mocked so these tests focus only on:
+ * - HTTP request mapping and routing
+ * - Request validation (missing body, invalid path variables, missing headers)
+ * - Correct HTTP status codes returned by the controller
+ * - Propagation of service-layer exceptions
  */
 @WebMvcTest(UserController.class)
 class UserControllerTest {

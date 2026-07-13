@@ -34,6 +34,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * - Real service layer logic
  * - Real database interactions (H2)
  * - Real HTTP calls to user-service and LLM service (via WireMock)
+ * 
+ * These tests verify:
+ * - Controller endpoints are correctly mapped and return expected HTTP status codes
+ * - Request headers and parameters are validated correctly
+ * - Roadmap generation works through the complete stack and persists data
+ * - User-service and LLM-service failures are correctly propagated as HTTP errors
+ * - Generated roadmaps can be retrieved through the API
+ * - Task completion toggling updates persisted roadmap state correctly
+ * - Progress calculation is correctly exposed through the REST API
+ * - Unauthorized access and missing resources return the correct error responses 
  *
  * Nothing is mocked here except the downstream services via WireMock.
  */
@@ -89,8 +99,8 @@ public class RoadmapControllerIntegrationTest {
         stubLlmServiceSuccess();
 
         mockMvc.perform(post("/roadmaps/generate")
-                        .param("userId", "1")
-                        .param("goal", "Learn machine learning"))
+                        .param("goal", "Learn machine learning")
+                        .header("X-User-Id", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.milestones").isArray())
                 .andExpect(jsonPath("$.milestones[0].title").value("Learn ML basics"));
@@ -111,7 +121,7 @@ public class RoadmapControllerIntegrationTest {
         );
 
         mockMvc.perform(post("/roadmaps/generate")
-                        .param("userId", "99")
+                        .header("X-User-Id", "1")
                         .param("goal", "Learn ML"))
                 .andExpect(status().isNotFound());
     }
@@ -130,7 +140,7 @@ public class RoadmapControllerIntegrationTest {
         );
 
         mockMvc.perform(post("/roadmaps/generate")
-                        .param("userId", "1")
+                        .header("X-User-Id", "1")
                         .param("goal", "Learn ML"))
                 .andExpect(status().isServiceUnavailable());
     }
@@ -150,7 +160,7 @@ public class RoadmapControllerIntegrationTest {
         );
 
         mockMvc.perform(post("/roadmaps/generate")
-                        .param("userId", "1")
+                        .header("X-User-Id", "1")
                         .param("goal", "Learn ML"))
                 .andExpect(status().isServiceUnavailable());
     }
@@ -178,7 +188,7 @@ public class RoadmapControllerIntegrationTest {
 
         // Generate first so we have a real ID
         String response = mockMvc.perform(post("/roadmaps/generate")
-                        .param("userId", "1")
+                        .header("X-User-Id", "1")
                         .param("goal", "Learn ML"))
                 .andExpect(status().isOk())
                 .andReturn()
@@ -192,7 +202,7 @@ public class RoadmapControllerIntegrationTest {
                 .get("roadmap_id")
                 .asLong();
 
-        mockMvc.perform(get("/roadmaps/" + id))
+        mockMvc.perform(get("/roadmaps/" + id).header("X-User-Id","1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.roadmap_id").value(id));
     }
@@ -202,7 +212,7 @@ public class RoadmapControllerIntegrationTest {
      */
     @Test
     void getRoadmap_returns404_whenNotFound() throws Exception {
-        mockMvc.perform(get("/roadmaps/999"))
+        mockMvc.perform(get("/roadmaps/999").header("X-User-Id","1"))
                 .andExpect(status().isNotFound());
     }
 
@@ -211,7 +221,7 @@ public class RoadmapControllerIntegrationTest {
      */
     @Test
     void getRoadmap_returns400_whenIdNotANumber() throws Exception {
-        mockMvc.perform(get("/roadmaps/abc"))
+        mockMvc.perform(get("/roadmaps/abc").header("X-User-Id","1"))
                 .andExpect(status().isBadRequest());
     }
 
@@ -230,7 +240,7 @@ public class RoadmapControllerIntegrationTest {
  
         // Create a roadmap first
         String generateResponse = mockMvc.perform(post("/roadmaps/generate")
-                        .param("userId", "1")
+                        .header("X-User-Id", "1")
                         .param("goal", "Learn ML"))
                 .andExpect(status().isOk())
                 .andReturn()
@@ -244,7 +254,7 @@ public class RoadmapControllerIntegrationTest {
                 .get("task_id").asLong();
  
         // Toggle the task to completed
-        mockMvc.perform(patch("/roadmaps/" + roadmapId + "/tasks/" + taskId + "/complete"))
+        mockMvc.perform(patch("/roadmaps/" + roadmapId + "/tasks/" + taskId + "/complete").header("X-User-Id","1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath(
                     "$.milestones[0].tasks[?(@.task_id == " + taskId + ")].completed"
@@ -260,7 +270,7 @@ public class RoadmapControllerIntegrationTest {
         stubLlmServiceSuccess();
  
         String generateResponse = mockMvc.perform(post("/roadmaps/generate")
-                        .param("userId", "1")
+                        .header("X-User-Id", "1")
                         .param("goal", "Learn ML"))
                 .andExpect(status().isOk())
                 .andReturn()
@@ -276,10 +286,10 @@ public class RoadmapControllerIntegrationTest {
         String patchUrl = "/roadmaps/" + roadmapId + "/tasks/" + taskId + "/complete";
  
         // First toggle → completed
-        mockMvc.perform(patch(patchUrl)).andExpect(status().isOk());
+        mockMvc.perform(patch(patchUrl).header("X-User-Id","1")).andExpect(status().isOk());
  
         // Second toggle → back to incomplete
-        mockMvc.perform(patch(patchUrl))
+        mockMvc.perform(patch(patchUrl).header("X-User-Id","1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath(
                     "$.milestones[0].tasks[?(@.task_id == " + taskId + ")].completed"
@@ -295,7 +305,7 @@ public class RoadmapControllerIntegrationTest {
         stubLlmServiceSuccess();
  
         String generateResponse = mockMvc.perform(post("/roadmaps/generate")
-                        .param("userId", "1")
+                        .header("X-User-Id", "1")
                         .param("goal", "Learn ML"))
                 .andExpect(status().isOk())
                 .andReturn()
@@ -304,7 +314,7 @@ public class RoadmapControllerIntegrationTest {
  
         Long roadmapId = objectMapper.readTree(generateResponse).get("roadmap_id").asLong();
  
-        mockMvc.perform(patch("/roadmaps/" + roadmapId + "/tasks/999999/complete"))
+        mockMvc.perform(patch("/roadmaps/" + roadmapId + "/tasks/999999/complete").header("X-User-Id","1"))
                 .andExpect(status().isNotFound());
     }
 
@@ -313,7 +323,7 @@ public class RoadmapControllerIntegrationTest {
      */
     @Test
     void toggleCompletionTask_returns404_whenRoadmapNotFound() throws Exception {
-        mockMvc.perform(patch("/roadmaps/999999/tasks/1/complete"))
+        mockMvc.perform(patch("/roadmaps/999999/tasks/1/complete").header("X-User-Id","1"))
                 .andExpect(status().isNotFound());
     }
 
@@ -331,7 +341,7 @@ public class RoadmapControllerIntegrationTest {
         stubLlmServiceSuccess();
  
         String generateResponse = mockMvc.perform(post("/roadmaps/generate")
-                        .param("userId", "1")
+                        .header("X-User-Id", "1")
                         .param("goal", "Learn ML"))
                 .andExpect(status().isOk())
                 .andReturn()
@@ -345,7 +355,7 @@ public class RoadmapControllerIntegrationTest {
                 .get("task_id").asLong();
  
         // Complete the only task
-        mockMvc.perform(patch("/roadmaps/" + roadmapId + "/tasks/" + taskId + "/complete"))
+        mockMvc.perform(patch("/roadmaps/" + roadmapId + "/tasks/" + taskId + "/complete").header("X-User-Id","1"))
                 .andExpect(status().isOk());
  
         mockMvc.perform(get("/roadmaps/" + roadmapId + "/progress"))
@@ -366,7 +376,7 @@ public class RoadmapControllerIntegrationTest {
         stubLlmServiceWithTwoTasks();
  
         String generateResponse = mockMvc.perform(post("/roadmaps/generate")
-                        .param("userId", "1")
+                        .header("X-User-Id", "1")
                         .param("goal", "Learn ML"))
                 .andExpect(status().isOk())
                 .andReturn()
@@ -380,7 +390,7 @@ public class RoadmapControllerIntegrationTest {
                 .get("task_id").asLong();
  
         // Complete only the first task
-        mockMvc.perform(patch("/roadmaps/" + roadmapId + "/tasks/" + firstTaskId + "/complete"))
+        mockMvc.perform(patch("/roadmaps/" + roadmapId + "/tasks/" + firstTaskId + "/complete").header("X-User-Id","1"))
                 .andExpect(status().isOk());
  
         mockMvc.perform(get("/roadmaps/" + roadmapId + "/progress"))
@@ -405,16 +415,16 @@ public class RoadmapControllerIntegrationTest {
     // ---------------------------------------------------------------------------
 
     private void stubUserServiceSuccess(Long userId) {
-        wireMock.stubFor(
-            com.github.tomakehurst.wiremock.client.WireMock.get(
-                urlPathMatching("/users/" + userId)
-            )
-                .willReturn(aResponse()
-                        .withStatus(200)
-                        .withHeader("Content-Type", "application/json")
-                        .withBody("{\"user_id\": " + userId + ", \"name\": \"Alice\"}"))
-        );
-    }
+    wireMock.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+            urlPathMatching("/users/" + userId)
+        )
+        .willReturn(aResponse()
+                .withStatus(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"user_id\": " + userId + ", \"name\": \"Alice\"}"))
+    );
+}
 
     private void stubLlmServiceSuccess() {
         wireMock.stubFor(

@@ -30,6 +30,16 @@ import static org.mockito.Mockito.*;
  *
  * RestTemplate is mocked to simulate calls to the user-service and LLM service
  * without making real HTTP requests. Repositories are mocked to avoid database access.
+ * 
+ * These tests verify:
+ * - Roadmap generation logic with valid and invalid LLM responses
+ * - User-service and LLM-service error handling through mocked HTTP failures
+ * - Correct propagation of service exceptions such as 404, 429, 502, and 503
+ * - Roadmap retrieval behavior for existing and missing roadmaps
+ * - User ownership validation when accessing roadmaps
+ * - Task completion toggling and milestone status updates
+ * - Roadmap progress calculation for complete, partial, and empty roadmaps
+ * - Correct interaction with repositories during save and retrieval operations
  */
 @ExtendWith(MockitoExtension.class)
 class RoadmapServiceTest {
@@ -204,6 +214,68 @@ class RoadmapServiceTest {
     }
 
     // ---------------------------------------------------------------------------
+    // getRoadmapForUser
+    // ---------------------------------------------------------------------------
+
+    /**
+     * Verifies that a roadmap is returned when the requested user
+     * is the owner of the roadmap.
+     */
+    @Test
+    void getRoadmapForUser_returnsRoadmap_whenOwnerMatches() {
+        Roadmap roadmap = new Roadmap();
+        roadmap.setUser_id(1L);
+
+        when(roadmapRepository.findById(1L))
+                .thenReturn(Optional.of(roadmap));
+
+        Roadmap result = service.getRoadmapForUser(1L, 1L);
+
+        assertEquals(roadmap, result);
+    }
+
+
+    /**
+     * Verifies that a 404 is returned when the requested user
+     * does not own the roadmap, preventing access to another user's roadmap.
+     */
+    @Test
+    void getRoadmapForUser_throws404_whenUserDoesNotOwnRoadmap() {
+        Roadmap roadmap = new Roadmap();
+        roadmap.setUser_id(2L);
+
+        when(roadmapRepository.findById(1L))
+                .thenReturn(Optional.of(roadmap));
+
+        ResponseStatusException ex = assertThrows(
+                ResponseStatusException.class,
+                () -> service.getRoadmapForUser(1L, 1L)
+        );
+
+        assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
+    }
+
+    /**
+     * Verifies that the service returns the roadmaps belonging to a user
+     * and refreshes their progress before returning.
+     */
+    @Test
+    void getRoadmapsForUser_returnsUserRoadmaps() {
+        Roadmap roadmap = buildRoadmapWithOneTask(false);
+
+        when(roadmapRepository.findByUserIdNewestFirst(1L))
+                .thenReturn(List.of(roadmap));
+
+        List<Roadmap> result = service.getRoadmapsForUser(1L);
+
+        assertEquals(1, result.size());
+        assertEquals(roadmap, result.get(0));
+
+        verify(roadmapRepository)
+                .findByUserIdNewestFirst(1L);
+    }
+
+    // ---------------------------------------------------------------------------
     // toggleCompletionTask
     // ---------------------------------------------------------------------------
 
@@ -220,7 +292,7 @@ class RoadmapServiceTest {
         when(roadmapRepository.findById(roadmapId)).thenReturn(Optional.of(roadmap));
         when(roadmapRepository.save(any())).thenAnswer(i -> i.getArgument(0));
  
-        Roadmap result = service.toggleCompletionTask(roadmapId, taskId);
+        Roadmap result = service.toggleCompletionTask(roadmapId, taskId, 1L);
  
         Task task = result.getMilestones().get(0).getTasks().get(0);
         assertTrue(task.isCompleted());
@@ -239,7 +311,7 @@ class RoadmapServiceTest {
         when(roadmapRepository.findById(roadmapId)).thenReturn(Optional.of(roadmap));
         when(roadmapRepository.save(any())).thenAnswer(i -> i.getArgument(0));
  
-        Roadmap result = service.toggleCompletionTask(roadmapId, taskId);
+        Roadmap result = service.toggleCompletionTask(roadmapId, taskId, 1L);
  
         Task task = result.getMilestones().get(0).getTasks().get(0);
         assertFalse(task.isCompleted());
@@ -255,7 +327,7 @@ class RoadmapServiceTest {
         when(roadmapRepository.findById(1L)).thenReturn(Optional.of(roadmap));
  
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-                () -> service.toggleCompletionTask(1L, 999L));
+                () -> service.toggleCompletionTask(1L, 999L, 1L));
  
         assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
     }
@@ -268,7 +340,7 @@ class RoadmapServiceTest {
         when(roadmapRepository.findById(99L)).thenReturn(Optional.empty());
  
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-                () -> service.toggleCompletionTask(99L, 10L));
+                () -> service.toggleCompletionTask(99L, 10L, 1L));
  
         assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
     }
@@ -362,6 +434,28 @@ class RoadmapServiceTest {
     }
 
     // ---------------------------------------------------------------------------
+    // getAllRoadmaps
+    // ---------------------------------------------------------------------------
+
+    /**
+     * Verifies that all roadmaps returned by the repository are returned by the service.
+     */
+    @Test
+    void getAllRoadmaps_returnsAllRoadmaps() {
+        Roadmap roadmap1 = new Roadmap();
+        Roadmap roadmap2 = new Roadmap();
+
+        when(roadmapRepository.findAll())
+                .thenReturn(List.of(roadmap1, roadmap2));
+
+        List<Roadmap> result = service.getAllRoadmaps();
+
+        assertEquals(2, result.size());
+        assertTrue(result.contains(roadmap1));
+        assertTrue(result.contains(roadmap2));
+    }
+
+    // ---------------------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------------------
  
@@ -369,17 +463,21 @@ class RoadmapServiceTest {
         Task task = new Task();
         task.setTask_id(10L);
         task.setCompleted(taskCompleted);
- 
+
         Milestone milestone = new Milestone();
         milestone.setStatus(taskCompleted ? Status.COMPLETED : Status.NOT_STARTED);
+
         List<Task> tasks = new ArrayList<>();
         tasks.add(task);
         milestone.setTasks(tasks);
         task.setMilestone(milestone);
- 
+
         Roadmap roadmap = new Roadmap();
+        roadmap.setUser_id(1L);   // added
         roadmap.setMilestones(new ArrayList<>(List.of(milestone)));
+
         milestone.setRoadmap(roadmap);
+
         return roadmap;
     }
  

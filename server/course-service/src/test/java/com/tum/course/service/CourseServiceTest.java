@@ -20,7 +20,14 @@ import static org.mockito.Mockito.*;
 /**
  * Unit tests for CourseService.
  *
- * CourseRepository is mocked to avoid database access.
+ * Uses Mockito to mock CourseRepository and isolate service-layer business logic.
+ *
+ * These tests verify:
+ * - Retrieving all courses through the repository
+ * - Retrieving a course by ID
+ * - Handling missing courses with the correct HTTP error response
+ * - Searching courses by title
+ * - Correct interaction with the repository layer
  */
 @ExtendWith(MockitoExtension.class)
 class CourseServiceTest {
