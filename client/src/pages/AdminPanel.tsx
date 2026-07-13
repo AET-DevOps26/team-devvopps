@@ -2,10 +2,22 @@ import { useEffect, useRef, useState } from "react";
 
 const API = "/api";
 
+// All admin calls are authenticated (JWT cookie) and require the ADMIN role,
+// enforced at the gateway; credentials:"include" sends the cookie.
+const withAuth: RequestInit = { credentials: "include" };
+
 interface User {
   user_id: number;
-  name: string;
+  name?: string;
   email: string;
+  role?: string;
+}
+
+interface AuthEvent {
+  timestamp: string;
+  type: string;
+  email: string;
+  result: string;
 }
 
 interface Course {
@@ -40,16 +52,14 @@ export default function AdminPanel() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [llmLogs, setLlmLogs] = useState<LlmLog[]>([]);
   const [roadmapLogs, setRoadmapLogs] = useState<RoadmapLog[]>([]);
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [authEvents, setAuthEvents] = useState<AuthEvent[]>([]);
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
-      fetch(`${API}/users`).then((r) => r.json()).catch(() => []),
-      fetch(`${API}/courses`).then((r) => r.json()).catch(() => []),
+      fetch(`${API}/users`, withAuth).then((r) => r.json()).catch(() => []),
+      fetch(`${API}/courses`, withAuth).then((r) => r.json()).catch(() => []),
     ]).then(([u, c]) => {
       setUsers(Array.isArray(u) ? u : []);
       setCourses(Array.isArray(c) ? c : []);
@@ -63,13 +73,13 @@ export default function AdminPanel() {
 
   const fetchLogs = () => {
     const seq = ++fetchSeq.current;
-    fetch("/llm/logs")
+    fetch("/llm/logs", withAuth)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((d) => {
         if (seq === fetchSeq.current) setLlmLogs(d.logs || []);
       })
       .catch((e) => console.error("Failed to fetch LLM logs:", e));
-    fetch(`${API}/roadmaps`)
+    fetch(`${API}/roadmaps/all`, withAuth)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((d) => {
         if (seq !== fetchSeq.current) return;
@@ -79,31 +89,20 @@ export default function AdminPanel() {
         setRoadmapLogs(sorted.slice(0, 50));
       })
       .catch((e) => console.error("Failed to fetch roadmap logs:", e));
+    fetch(`${API}/auth/logs`, withAuth)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d) => {
+        if (seq === fetchSeq.current) setAuthEvents(d.logs || []);
+      })
+      .catch((e) => console.error("Failed to fetch auth logs:", e));
   };
 
   useEffect(() => {
     if (tab === "logs") fetchLogs();
   }, [tab]);
 
-  const addUser = async () => {
-    if (!name || !email) return;
-    const res = await fetch(`${API}/users`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email }),
-    });
-    if (res.ok) {
-      const u = await res.json();
-      setUsers((prev) => [...prev, u]);
-      setName("");
-      setEmail("");
-      setStatus(`User "${u.name}" created.`);
-      setTimeout(() => setStatus(""), 3000);
-    }
-  };
-
   const deleteUser = async (id: number) => {
-    await fetch(`${API}/users/${id}`, { method: "DELETE" });
+    await fetch(`${API}/users/${id}`, { method: "DELETE", ...withAuth });
     setUsers((prev) => prev.filter((u) => u.user_id !== id));
   };
 
@@ -128,6 +127,15 @@ export default function AdminPanel() {
           <button style={tab === "logs" ? s.tabActive : s.tab} onClick={() => setTab("logs")}>
             Logs
           </button>
+          <a
+            style={{ ...s.tab, textDecoration: "none" }}
+            href="/grafana"
+            target="_blank"
+            rel="noreferrer"
+            title="Monitoring dashboards (Grafana login required)"
+          >
+            Grafana ↗
+          </a>
         </nav>
       </header>
 
@@ -135,18 +143,15 @@ export default function AdminPanel() {
         {tab === "users" && (
           <section>
             <h2 style={s.sectionTitle}>Users</h2>
-            <div style={s.form}>
-              <input style={s.input} placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
-              <input style={s.input} placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
-              <button style={s.btn} onClick={addUser}>Add User</button>
-            </div>
-            {status && <p style={s.success}>{status}</p>}
+            <p style={{ color: "#888", fontSize: 13, marginTop: -8, marginBottom: 16 }}>
+              Users register themselves via signup. Admins can review and remove accounts here.
+            </p>
             <table style={s.table}>
               <thead>
                 <tr>
                   <th style={s.th}>ID</th>
-                  <th style={s.th}>Name</th>
                   <th style={s.th}>Email</th>
+                  <th style={s.th}>Role</th>
                   <th style={s.th}>Actions</th>
                 </tr>
               </thead>
@@ -154,8 +159,8 @@ export default function AdminPanel() {
                 {users.map((u) => (
                   <tr key={u.user_id} style={s.tr}>
                     <td style={s.td}>{u.user_id}</td>
-                    <td style={s.td}>{u.name}</td>
                     <td style={s.td}>{u.email}</td>
+                    <td style={s.td}>{u.role || "USER"}</td>
                     <td style={s.td}>
                       <button style={s.deleteBtn} onClick={() => deleteUser(u.user_id)}>Delete</button>
                     </td>
@@ -214,7 +219,32 @@ export default function AdminPanel() {
               <button style={s.btn} onClick={fetchLogs}>Refresh</button>
             </div>
 
-            <h3 style={{ fontSize: 16, marginBottom: 12, color: "#444" }}>LLM Service Logs</h3>
+            <h3 style={{ fontSize: 16, marginBottom: 12, color: "#b8c1d9" }}>Auth Events</h3>
+            <table style={{ ...s.table, marginBottom: 32 }}>
+              <thead>
+                <tr>
+                  <th style={s.th}>Time</th>
+                  <th style={s.th}>Event</th>
+                  <th style={s.th}>Email</th>
+                  <th style={s.th}>Result</th>
+                </tr>
+              </thead>
+              <tbody>
+                {authEvents.map((e, i) => (
+                  <tr key={i} style={s.tr}>
+                    <td style={{ ...s.td, whiteSpace: "nowrap", color: "#888", fontSize: 12 }}>{new Date(e.timestamp).toLocaleTimeString()}</td>
+                    <td style={{ ...s.td, fontSize: 13 }}>{e.type}</td>
+                    <td style={{ ...s.td, fontSize: 13 }}>{e.email}</td>
+                    <td style={{ ...s.td, fontWeight: 600, fontSize: 12, color: e.result === "success" ? "#2e7d32" : e.result === "failure" ? "#e53935" : "#f57c00" }}>{e.result}</td>
+                  </tr>
+                ))}
+                {authEvents.length === 0 && (
+                  <tr><td colSpan={4} style={{ ...s.td, color: "#888", textAlign: "center" }}>No auth events yet.</td></tr>
+                )}
+              </tbody>
+            </table>
+
+            <h3 style={{ fontSize: 16, marginBottom: 12, color: "#b8c1d9" }}>LLM Service Logs</h3>
             <table style={{ ...s.table, marginBottom: 32 }}>
               <thead>
                 <tr>
@@ -232,7 +262,7 @@ export default function AdminPanel() {
                     <td style={{ ...s.td, whiteSpace: "nowrap", color: "#888", fontSize: 12 }}>{new Date(l.timestamp).toLocaleTimeString()}</td>
                     <td style={{ ...s.td, color: l.level === "ERROR" ? "#e53935" : l.level === "WARN" ? "#f57c00" : "#2e7d32", fontWeight: 600, fontSize: 12 }}>{l.level}</td>
                     <td style={{ ...s.td, fontSize: 13 }}>{l.message}</td>
-                    <td style={{ ...s.td, fontSize: 12, color: "#555", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.goal || "—"}</td>
+                    <td style={{ ...s.td, fontSize: 12, color: "#9aa4bd", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.goal || "—"}</td>
                     <td style={{ ...s.td, textAlign: "right" }}>{l.llm_ms != null ? l.llm_ms : "—"}</td>
                     <td style={{ ...s.td, textAlign: "right" }}>{l.total_ms != null ? l.total_ms : "—"}</td>
                   </tr>
@@ -243,7 +273,7 @@ export default function AdminPanel() {
               </tbody>
             </table>
 
-            <h3 style={{ fontSize: 16, marginBottom: 12, color: "#444" }}>Roadmap History</h3>
+            <h3 style={{ fontSize: 16, marginBottom: 12, color: "#b8c1d9" }}>Roadmap History</h3>
             <table style={s.table}>
               <thead>
                 <tr>
@@ -277,22 +307,22 @@ export default function AdminPanel() {
 }
 
 const s: Record<string, React.CSSProperties> = {
-  page: { minHeight: "100vh", background: "#f5f6fa", fontFamily: "sans-serif" },
-  header: { background: "#0055A4", color: "#fff", padding: "0 32px", display: "flex", alignItems: "center", gap: 32, height: 56 },
+  page: { minHeight: "100vh", background: "linear-gradient(160deg, #0a0f2c 0%, #0c1436 55%, #090e28 100%)", fontFamily: "'Segoe UI', sans-serif", color: "#e8ecf5" },
+  header: { background: "#0065BD", color: "#fff", padding: "0 32px", display: "flex", alignItems: "center", gap: 32, height: 56 },
   logo: { fontSize: 18, fontWeight: 700, margin: 0 },
   nav: { display: "flex", gap: 4 },
-  tab: { padding: "6px 16px", background: "transparent", color: "rgba(255,255,255,0.7)", border: "none", borderRadius: 4, cursor: "pointer", fontSize: 14 },
-  tabActive: { padding: "6px 16px", background: "rgba(255,255,255,0.2)", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontSize: 14, fontWeight: 600 },
+  tab: { padding: "6px 16px", background: "transparent", color: "rgba(255,255,255,0.75)", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 14 },
+  tabActive: { padding: "6px 16px", background: "rgba(255,255,255,0.22)", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 14, fontWeight: 600 },
   main: { maxWidth: 1000, margin: "0 auto", padding: "32px 16px" },
-  sectionTitle: { fontSize: 22, marginBottom: 20 },
+  sectionTitle: { fontSize: 22, marginBottom: 20, color: "#f2f5fc" },
   form: { display: "flex", gap: 8, marginBottom: 12 },
-  input: { padding: "8px 12px", border: "1px solid #ddd", borderRadius: 6, fontSize: 14, background: "#fff" },
-  btn: { padding: "8px 18px", background: "#0055A4", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 14 },
-  deleteBtn: { padding: "4px 10px", background: "#e53935", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontSize: 12 },
-  success: { color: "#2e7d32", marginBottom: 12, fontSize: 14 },
-  table: { width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: 8, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.08)" },
-  th: { textAlign: "left", padding: "12px 16px", background: "#f0f4ff", fontSize: 13, fontWeight: 600, color: "#444" },
-  tr: { borderBottom: "1px solid #f0f0f0" },
-  td: { padding: "10px 16px", fontSize: 14 },
-  center: { display: "flex", justifyContent: "center", alignItems: "center", height: "100vh", fontFamily: "sans-serif", background: "#f5f6fa", color: "#333" },
+  input: { padding: "10px 14px", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, fontSize: 14, background: "rgba(255,255,255,0.05)", color: "#e8ecf5", outline: "none" },
+  btn: { padding: "9px 18px", background: "linear-gradient(90deg, #0065BD, #4d9bff)", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 14, fontWeight: 600, boxShadow: "0 4px 14px rgba(0,101,189,0.4)" },
+  deleteBtn: { padding: "5px 12px", background: "rgba(239,83,80,0.15)", color: "#ff9b98", border: "1px solid rgba(239,83,80,0.4)", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 600 },
+  success: { color: "#22c55e", marginBottom: 12, fontSize: 14 },
+  table: { width: "100%", borderCollapse: "collapse", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, overflow: "hidden" },
+  th: { textAlign: "left", padding: "12px 16px", background: "rgba(255,255,255,0.06)", fontSize: 13, fontWeight: 600, color: "#b8c1d9" },
+  tr: { borderBottom: "1px solid rgba(255,255,255,0.07)" },
+  td: { padding: "11px 16px", fontSize: 14, color: "#d6dcec" },
+  center: { display: "flex", justifyContent: "center", alignItems: "center", height: "100vh", fontFamily: "'Segoe UI', sans-serif", background: "linear-gradient(160deg, #0a0f2c 0%, #0c1436 55%, #090e28 100%)", color: "#9aa4bd" },
 };

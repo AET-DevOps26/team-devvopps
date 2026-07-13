@@ -113,10 +113,22 @@ jobs:
           # admin/admin on the shared cluster would be a security risk.
           GRAFANA_ADMIN_USER: ${{ secrets.GRAFANA_ADMIN_USER }}
           GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+          # JWT signing key shared by user-service (signs) and api-gateway (verifies).
+          # Required — the auth-secret template fails the deploy if it is empty.
+          JWT_SIGNING_KEY: ${{ secrets.JWT_SIGNING_KEY }}
+          # Optional admin account bootstrapped on user-service startup.
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
         run: |
           if [ -z "$GRAFANA_ADMIN_USER" ] || [ -z "$GRAFANA_ADMIN_PASSWORD" ]; then
             echo "ERROR: GRAFANA_ADMIN_USER or GRAFANA_ADMIN_PASSWORD secret not configured"
             echo "Refusing to deploy Grafana with default admin/admin credentials"
+            exit 1
+          fi
+
+          if [ -z "$JWT_SIGNING_KEY" ]; then
+            echo "ERROR: JWT_SIGNING_KEY secret not configured"
+            echo "Add a random >=32-char key as the GitHub Secret 'JWT_SIGNING_KEY'"
             exit 1
           fi
 
@@ -142,6 +154,9 @@ jobs:
             --set llmService.logosApiKey="$LOGOS_API_KEY" \
             --set grafana.adminUser="$GRAFANA_ADMIN_USER" \
             --set grafana.adminPassword="$GRAFANA_ADMIN_PASSWORD" \
+            --set auth.jwtSigningKey="$JWT_SIGNING_KEY" \
+            --set auth.adminEmail="$ADMIN_EMAIL" \
+            --set auth.adminPassword="$ADMIN_PASSWORD" \
             -n "$K8S_NAMESPACE" \
             --wait \
             --timeout 10m

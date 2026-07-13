@@ -24,6 +24,11 @@ postgres:
 llmService:
   groqApiKey: ""
 
+# jwtSigningKey / admin credentials are injected by `make k8s-deploy` via --set
+# from the git-ignored infra/.env. Cookies are not Secure locally (plain HTTP).
+auth:
+  cookieSecure: false
+
 # docker-desktop uses the docker log format (JSON), not containerd's cri format
 promtail:
   pipelineStage: docker

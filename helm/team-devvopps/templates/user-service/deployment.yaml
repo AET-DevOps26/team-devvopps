@@ -46,6 +46,25 @@ spec:
                 secretKeyRef:
                   name: postgres-secret
                   key: password
+            # Auth: JWT signing key (shared with api-gateway), cookie flag, and
+            # optional admin bootstrap credentials.
+            - name: JWT_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: auth-secret
+                  key: jwt-signing-key
+            - name: COOKIE_SECURE
+              value: {{ .Values.auth.cookieSecure | quote }}
+            - name: ADMIN_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: auth-secret
+                  key: admin-email
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: auth-secret
+                  key: admin-password
           readinessProbe:
             httpGet:
               path: /actuator/health

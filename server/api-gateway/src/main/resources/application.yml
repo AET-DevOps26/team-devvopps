@@ -12,6 +12,14 @@ services:
     url: http://${COURSE_SERVICE_HOST:localhost}:${COURSE_SERVICE_PORT:8082}
   roadmap:
     url: http://${ROADMAP_SERVICE_HOST:localhost}:${ROADMAP_SERVICE_PORT:8083}
+  llm:
+    url: http://${LLM_SERVICE_HOST:localhost}:${LLM_SERVICE_PORT:8084}
+
+# JWT verification key — MUST match user-service's app.jwt.signing-key.
+# Override in every real environment via JWT_SIGNING_KEY.
+app:
+  jwt:
+    signing-key: ${JWT_SIGNING_KEY:dev-only-insecure-key-change-me-0123456789}
 
 management:
   endpoints:
