@@ -131,8 +131,9 @@ export default function AdminPanel() {
             style={{ ...s.tab, textDecoration: "none" }}
             // On the server Grafana lives behind the ingress at /grafana;
             // locally (docker compose) it is published on localhost:3001.
+            // Same-tab navigation: Safari silently drops target="_blank"
+            // links that cross ports on localhost.
             href={window.location.hostname === "localhost" ? "http://localhost:3001" : "/grafana"}
-            target="_blank"
             rel="noreferrer"
             title="Monitoring dashboards (Grafana login required)"
           >
