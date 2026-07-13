@@ -2,7 +2,7 @@
 # * Install python3-venv for the built-in Python3 venv module (not installed by default)
 # * Install gcc libpython3-dev to compile C Python modules
 # * In the virtualenv: Update pip setuputils and wheel to support building new packages
-FROM debian:12-slim AS build
+FROM debian:13-slim AS build
 RUN apt-get update && \
     apt-get install --no-install-suggests --no-install-recommends --yes \
       python3-venv=3.11.2-1+b1 gcc=4:12.2.0-3 libpython3-dev=3.11.2-1+b1 && \
