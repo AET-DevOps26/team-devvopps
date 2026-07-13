@@ -18,7 +18,29 @@ paths:
   /roadmaps:
     get:
       tags: [roadmaps]
-      summary: Get all roadmaps
+      summary: Get roadmaps for the authenticated user
+      operationId: getRoadmaps
+      parameters:
+        - name: X-User-Id
+          in: header
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: List of roadmaps belonging to the user
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Roadmap'
+
+  /roadmaps/all:
+    get:
+      tags: [roadmaps]
+      summary: Get all roadmaps (admin)
       operationId: getAllRoadmaps
       responses:
         '200':
@@ -30,58 +52,49 @@ paths:
                 items:
                   $ref: '#/components/schemas/Roadmap'
 
-
   /roadmaps/generate:
     post:
       tags: [roadmaps]
       summary: Generate a roadmap
       operationId: generateRoadmap
-
       parameters:
-        - name: userId
-          in: query
+        - name: X-User-Id
+          in: header
           required: true
           schema:
             type: integer
             format: int64
-
         - name: goal
           in: query
           required: true
           schema:
             type: string
           description: Learning goal used for AI roadmap generation
-
       responses:
-
         '200':
           description: Generated roadmap
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Roadmap'
-
         '404':
           description: User does not exist
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-
         '429':
           description: LLM token quota exceeded
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-
         '502':
           description: LLM returned invalid roadmap data
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-
         '503':
           description: Dependent service unavailable
           content:
@@ -89,30 +102,31 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-
   /roadmaps/{id}:
     get:
       tags: [roadmaps]
       summary: Get roadmap by ID
       operationId: getRoadmap
-
       parameters:
+        - name: X-User-Id
+          in: header
+          required: true
+          schema:
+            type: integer
+            format: int64
         - name: id
           in: path
           required: true
           schema:
             type: integer
             format: int64
-
       responses:
-
         '200':
           description: Roadmap details
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Roadmap'
-
         '404':
           description: Roadmap not found
           content:
@@ -120,29 +134,30 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-
   /roadmaps/{roadmapId}/tasks/{taskId}/complete:
-
     patch:
       tags: [roadmaps]
       summary: Toggle task completion
       operationId: toggleTaskCompletion
-
       parameters:
+        - name: X-User-Id
+          in: header
+          required: true
+          schema:
+            type: integer
+            format: int64
         - name: roadmapId
           in: path
           required: true
           schema:
             type: integer
             format: int64
-
         - name: taskId
           in: path
           required: true
           schema:
             type: integer
             format: int64
-
       responses:
         '200':
           description: Updated roadmap
@@ -157,13 +172,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-
   /roadmaps/{roadmapId}/progress:
     get:
       tags: [roadmaps]
       summary: Get roadmap progress
       operationId: getRoadmapProgress
-
       parameters:
         - name: roadmapId
           in: path
@@ -171,7 +184,6 @@ paths:
           schema:
             type: integer
             format: int64
-
       responses:
         '200':
           description: Progress information
@@ -185,7 +197,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-
 
 components:
   schemas:
