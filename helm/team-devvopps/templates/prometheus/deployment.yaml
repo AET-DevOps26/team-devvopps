@@ -19,6 +19,11 @@ spec:
         - name: prometheus
           # Use specific version for reproducibility (not 'latest')
           image: prom/prometheus:v2.52.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           ports:
             # Prometheus HTTP API and web UI on port 9090
             - containerPort: 9090
