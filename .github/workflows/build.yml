@@ -14,14 +14,16 @@ on:
     - feature/signup-login
   workflow_dispatch:
 
-# Read access to repo contents; write access to push images to GHCR.      
 permissions:
   contents: read
-  packages: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Only this job pushes images to GHCR; deploy-k8s below doesn't need it.
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Checkout Code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -122,4 +124,16 @@ jobs:
     needs: build
     if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/deploy-k8s.yml
-    secrets: inherit
+    secrets:
+      KUBECONFIG: ${{ secrets.KUBECONFIG }}
+      POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+      POSTGRES_REPLICATION_USER: ${{ secrets.POSTGRES_REPLICATION_USER }}
+      POSTGRES_REPLICATION_PASSWORD: ${{ secrets.POSTGRES_REPLICATION_PASSWORD }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      LOGOS_API_KEY: ${{ secrets.LOGOS_API_KEY }}
+      GRAFANA_ADMIN_USER: ${{ secrets.GRAFANA_ADMIN_USER }}
+      GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+      JWT_SIGNING_KEY: ${{ secrets.JWT_SIGNING_KEY }}
+      ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+      ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}

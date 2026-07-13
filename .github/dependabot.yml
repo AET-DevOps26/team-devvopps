@@ -6,16 +6,22 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
 
   - package-ecosystem: "npm"
     directory: "/client"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
 
   - package-ecosystem: "gradle"
     directory: "/server"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
 
   - package-ecosystem: "docker"
     directories:
@@ -27,3 +33,5 @@ updates:
       - "/server/llm-service"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
