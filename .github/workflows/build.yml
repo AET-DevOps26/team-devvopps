@@ -2,7 +2,10 @@ name: Build Docker Images
 
 # Triggered on every push to main.
 # Builds all service images and pushes them to GitHub Container Registry (GHCR).
-# The deploy workflow listens for this workflow's completion before deploying.
+# On success on main, calls deploy-k8s.yml as a reusable workflow (workflow_call)
+# instead of deploy-k8s.yml listening via workflow_run — workflow_run runs with
+# full access to this repo's secrets regardless of what triggered the upstream
+# workflow, so making the dependency an explicit job-level call avoids that risk.
 
 on:
   push:
@@ -112,3 +115,9 @@ jobs:
           tags: ghcr.io/aet-devops26/team-devvopps/course-seeder:latest
           cache-from: type=gha,scope=course-seeder
           cache-to: type=gha,scope=course-seeder,mode=max
+
+  deploy-k8s:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/deploy-k8s.yml
+    secrets: inherit

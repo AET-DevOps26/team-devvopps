@@ -1,16 +1,13 @@
 name: Deploy to AET Kubernetes Cluster
 
-# Can be triggered manually via workflow_dispatch, or automatically on every push to main.
+# Called by build.yml as a reusable workflow once images are pushed to main,
+# or triggered manually via workflow_dispatch.
 # concurrency ensures only one deploy runs at a time per branch.
 # cancel-in-progress MUST stay false: killing helm mid-upgrade leaves the
 # release locked in pending-upgrade, and every later deploy fails with
 # "another operation (install/upgrade/rollback) is in progress".
 on:
-  workflow_run:
-    workflows:
-      - Build Docker Images
-    types:
-      - completed
+  workflow_call:
   workflow_dispatch:
 
 concurrency:
@@ -23,11 +20,6 @@ env:
 
 jobs:
   deploy:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'workflow_run' &&
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
