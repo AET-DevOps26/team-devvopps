@@ -480,6 +480,7 @@ Every student contributor is responsible for keeping the project runnable, docum
 Developer can install pre-commit hooks to run Lint OpenAPI specifications checks locally  before committing:
 
 ```bash
+npm install
 pip install pre-commit 
 pre-commit install
 ```
