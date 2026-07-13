@@ -2,7 +2,6 @@ services:
 
   # ── Database ──────────────────────────────────────────────────────────────
   # PostgreSQL database server initializes three schemas via init-databases.sql. Data persists in postgres_data volume.
-  # PostgreSQL database server initializes three schemas via init-databases.sql. Data persists in postgres_data volume.
   postgres:
     image: postgres:16
     environment:
