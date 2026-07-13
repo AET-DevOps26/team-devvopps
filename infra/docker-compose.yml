@@ -72,6 +72,8 @@ services:
       DB_NAME: userdb
       DB_USER: postgres
       DB_PASSWORD: postgres
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -213,6 +215,7 @@ services:
       - ../helm/team-devvopps/grafana-dashboards/dashboard-request-metrics.json:/etc/grafana/provisioning/dashboards/request-metrics.json
       - ../helm/team-devvopps/grafana-dashboards/dashboard-system-health.json:/etc/grafana/provisioning/dashboards/system-health.json
       - ../helm/team-devvopps/grafana-dashboards/dashboard-logs.json:/etc/grafana/provisioning/dashboards/logs.json
+      - ../helm/team-devvopps/grafana-dashboards/dashboard-auth.json:/etc/grafana/provisioning/dashboards/auth.json
     depends_on:
       - prometheus
       - loki

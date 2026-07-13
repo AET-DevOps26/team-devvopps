@@ -44,6 +44,13 @@ spec:
             # Disable self-registration (only admin can create accounts)
             - name: GF_USERS_ALLOW_SIGN_UP
               value: "false"
+            {{- if .Values.ingressHost }}
+            # Serve Grafana under https://<host>/grafana/ behind the ingress.
+            # The ingress strips the /grafana prefix (rewrite-target /$2), so
+            # Grafana serves from root but generates URLs with the prefix.
+            - name: GF_SERVER_ROOT_URL
+              value: "https://{{ .Values.ingressHost }}/grafana/"
+            {{- end }}
           # Mount configuration and data volumes
           volumeMounts:
             # Grafana user data (dashboards, alerts, preferences)

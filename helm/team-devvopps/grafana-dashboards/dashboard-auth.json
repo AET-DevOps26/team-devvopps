@@ -1,0 +1,507 @@
+{
+ "annotations": {
+  "list": [
+   {
+    "builtIn": 1,
+    "datasource": "-- Grafana --",
+    "enable": true,
+    "hide": true,
+    "iconColor": "rgba(0, 211, 255, 1)",
+    "name": "Annotations & Alerts",
+    "type": "dashboard"
+   }
+  ]
+ },
+ "editable": true,
+ "gnetId": null,
+ "graphTooltip": 0,
+ "id": null,
+ "links": [],
+ "panels": [
+  {
+   "datasource": "Prometheus",
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "blue"
+     },
+     "mappings": [],
+     "unit": "short",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "gridPos": {
+    "h": 6,
+    "w": 6,
+    "x": 0,
+    "y": 0
+   },
+   "id": 1,
+   "options": {
+    "colorMode": "value",
+    "graphMode": "area",
+    "justifyMode": "auto",
+    "orientation": "auto",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "textMode": "auto"
+   },
+   "pluginVersion": "8.0.0",
+   "targets": [
+    {
+     "expr": "database_users",
+     "refId": "A"
+    }
+   ],
+   "title": "Registered Users",
+   "type": "stat"
+  },
+  {
+   "datasource": "Prometheus",
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "red"
+     },
+     "mappings": [],
+     "unit": "short",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "gridPos": {
+    "h": 6,
+    "w": 6,
+    "x": 6,
+    "y": 0
+   },
+   "id": 2,
+   "options": {
+    "colorMode": "value",
+    "graphMode": "area",
+    "justifyMode": "auto",
+    "orientation": "auto",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "textMode": "auto"
+   },
+   "pluginVersion": "8.0.0",
+   "targets": [
+    {
+     "expr": "sum(increase(auth_logins_total{result=\"failure\"}[5m]))",
+     "refId": "A"
+    }
+   ],
+   "title": "Login Failures (5m)",
+   "type": "stat"
+  },
+  {
+   "datasource": "Prometheus",
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "green"
+     },
+     "mappings": [],
+     "unit": "short",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "gridPos": {
+    "h": 6,
+    "w": 6,
+    "x": 12,
+    "y": 0
+   },
+   "id": 3,
+   "options": {
+    "colorMode": "value",
+    "graphMode": "area",
+    "justifyMode": "auto",
+    "orientation": "auto",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "textMode": "auto"
+   },
+   "pluginVersion": "8.0.0",
+   "targets": [
+    {
+     "expr": "sum(increase(auth_signups_total[1h]))",
+     "refId": "A"
+    }
+   ],
+   "title": "Signups (1h)",
+   "type": "stat"
+  },
+  {
+   "datasource": "Prometheus",
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "orange"
+     },
+     "mappings": [],
+     "unit": "short",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "orange",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "gridPos": {
+    "h": 6,
+    "w": 6,
+    "x": 18,
+    "y": 0
+   },
+   "id": 4,
+   "options": {
+    "colorMode": "value",
+    "graphMode": "area",
+    "justifyMode": "auto",
+    "orientation": "auto",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "textMode": "auto"
+   },
+   "pluginVersion": "8.0.0",
+   "targets": [
+    {
+     "expr": "sum(increase(auth_rejections_total[5m]))",
+     "refId": "A"
+    }
+   ],
+   "title": "Gateway Rejections (5m)",
+   "type": "stat"
+  },
+  {
+   "datasource": "Prometheus",
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "palette-classic"
+     },
+     "custom": {
+      "axisLabel": "",
+      "axisPlacement": "auto",
+      "barAlignment": 0,
+      "drawStyle": "line",
+      "fillOpacity": 10,
+      "gradientMode": "none",
+      "hideFrom": {
+       "tooltip": false,
+       "viz": false,
+       "legend": false
+      },
+      "lineInterpolation": "linear",
+      "lineWidth": 1,
+      "pointSize": 5,
+      "scaleDistribution": {
+       "type": "linear"
+      },
+      "showPoints": "auto",
+      "spanNulls": false,
+      "stacking": {
+       "group": "A",
+       "mode": "none"
+      },
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "mappings": [],
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 6
+   },
+   "id": 5,
+   "options": {
+    "legend": {
+     "calcs": [],
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "single"
+    }
+   },
+   "pluginVersion": "8.0.0",
+   "targets": [
+    {
+     "expr": "sum(rate(auth_logins_total[5m])) by (result)",
+     "refId": "A",
+     "legendFormat": "{{ result }}"
+    }
+   ],
+   "title": "Login Rate by Result (/s)",
+   "type": "timeseries"
+  },
+  {
+   "datasource": "Prometheus",
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "palette-classic"
+     },
+     "custom": {
+      "axisLabel": "",
+      "axisPlacement": "auto",
+      "barAlignment": 0,
+      "drawStyle": "line",
+      "fillOpacity": 10,
+      "gradientMode": "none",
+      "hideFrom": {
+       "tooltip": false,
+       "viz": false,
+       "legend": false
+      },
+      "lineInterpolation": "linear",
+      "lineWidth": 1,
+      "pointSize": 5,
+      "scaleDistribution": {
+       "type": "linear"
+      },
+      "showPoints": "auto",
+      "spanNulls": false,
+      "stacking": {
+       "group": "A",
+       "mode": "none"
+      },
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "mappings": [],
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 12,
+    "y": 6
+   },
+   "id": 6,
+   "options": {
+    "legend": {
+     "calcs": [],
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "single"
+    }
+   },
+   "pluginVersion": "8.0.0",
+   "targets": [
+    {
+     "expr": "sum(rate(auth_rejections_total[5m])) by (reason)",
+     "refId": "A",
+     "legendFormat": "{{ reason }}"
+    }
+   ],
+   "title": "Gateway Rejections by Reason (/s)",
+   "type": "timeseries"
+  },
+  {
+   "datasource": "Prometheus",
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "palette-classic"
+     },
+     "custom": {
+      "axisLabel": "",
+      "axisPlacement": "auto",
+      "barAlignment": 0,
+      "drawStyle": "line",
+      "fillOpacity": 10,
+      "gradientMode": "none",
+      "hideFrom": {
+       "tooltip": false,
+       "viz": false,
+       "legend": false
+      },
+      "lineInterpolation": "linear",
+      "lineWidth": 1,
+      "pointSize": 5,
+      "scaleDistribution": {
+       "type": "linear"
+      },
+      "showPoints": "auto",
+      "spanNulls": false,
+      "stacking": {
+       "group": "A",
+       "mode": "none"
+      },
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "mappings": [],
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 14
+   },
+   "id": 7,
+   "options": {
+    "legend": {
+     "calcs": [],
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "single"
+    }
+   },
+   "pluginVersion": "8.0.0",
+   "targets": [
+    {
+     "expr": "sum(rate(auth_signups_total[5m]))",
+     "refId": "A",
+     "legendFormat": "signups"
+    }
+   ],
+   "title": "Signups (/s)",
+   "type": "timeseries"
+  },
+  {
+   "datasource": "Loki",
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 12,
+    "y": 14
+   },
+   "id": 8,
+   "options": {
+    "showLabels": false,
+    "showTime": true,
+    "sortOrder": "Descending",
+    "wrapLogMessage": true
+   },
+   "targets": [
+    {
+     "expr": "{service=~\".+\"} |~ \"\\\\[Auth\\\\]\"",
+     "refId": "A",
+     "maxLines": 100
+    }
+   ],
+   "title": "Auth Events (live)",
+   "type": "logs"
+  }
+ ],
+ "refresh": "10s",
+ "schemaVersion": 27,
+ "style": "dark",
+ "tags": [
+  "monitoring",
+  "auth",
+  "security"
+ ],
+ "templating": {
+  "list": []
+ },
+ "time": {
+  "from": "now-6h",
+  "to": "now"
+ },
+ "timepicker": {},
+ "timezone": "",
+ "title": "Auth & Security",
+ "uid": "auth-security",
+ "version": 1
+}

@@ -11,3 +11,6 @@ node_modules/
 
 # npm logs
 npm-debug.log*
+
+# Local Helm secret overrides — contains DB/API/JWT credentials, never commit.
+helm/team-devvopps/values-secrets.yaml
