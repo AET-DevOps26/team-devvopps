@@ -2,19 +2,18 @@ openapi: 3.0.3
 
 info:
   title: User Service API
-  description: Manages user accounts
+  description: Manages user accounts and authentication
   version: 1.0.0
-
 
 servers:
   - url: /api/v1
     description: Via API Gateway
 
-
 tags:
   - name: users
     description: User account management
-
+  - name: auth
+    description: Authentication and session management
 
 paths:
 
@@ -23,7 +22,6 @@ paths:
       tags: [users]
       summary: Get all users
       operationId: getAllUsers
-
       responses:
         '200':
           description: List of all users
@@ -33,17 +31,17 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/User'
+
     post:
       tags: [users]
       summary: Create a new user
       operationId: createUser
-
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UserRequest'
+              $ref: '#/components/schemas/User'
       responses:
         '200':
           description: Created user
@@ -52,13 +50,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/User'
 
-
   /users/{id}:
     get:
       tags: [users]
       summary: Get a user by ID
       operationId: getUser
-
       parameters:
         - name: id
           in: path
@@ -79,11 +75,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+
     delete:
       tags: [users]
       summary: Delete a user by ID
       operationId: deleteUser
-
       parameters:
         - name: id
           in: path
@@ -94,7 +90,6 @@ paths:
       responses:
         '200':
           description: User deleted successfully
-
         '404':
           description: User not found
           content:
@@ -102,16 +97,92 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /auth/signup:
+    post:
+      tags: [auth]
+      summary: Register a new account
+      operationId: signup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignupRequest'
+      responses:
+        '200':
+          description: Account created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Log in with email and password
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Log out the current session
+      operationId: logout
+      responses:
+        '200':
+          description: Logged out successfully
+
+  /auth/me:
+    get:
+      tags: [auth]
+      summary: Get the currently authenticated user
+      operationId: getMe
+      parameters:
+        - name: X-User-Id
+          in: header
+          required: false
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Current user info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+
+  /auth/logs:
+    get:
+      tags: [auth]
+      summary: Get authentication event logs
+      operationId: getLogs
+      responses:
+        '200':
+          description: Map of email to list of auth events
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/AuthEvent'
+
 components:
   schemas:
-    UserRequest:
-      type: object
-      required:
-        - name
-      properties:
-        name:
-          type: string
-          description: User's name
 
     User:
       type: object
@@ -119,7 +190,64 @@ components:
         user_id:
           type: integer
           format: int64
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [USER]
         name:
+          type: string
+
+    SignupRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    AuthResponse:
+      type: object
+      properties:
+        userId:
+          type: integer
+          format: int64
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [USER]
+
+    AuthEvent:
+      type: object
+      properties:
+        timestamp:
+          type: string
+        type:
+          type: string
+        email:
+          type: string
+          format: email
+        result:
           type: string
 
     ErrorResponse:

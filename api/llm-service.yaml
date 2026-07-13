@@ -1,8 +1,8 @@
-openapi: 3.0.3
+openapi: 3.1.0
 info:
-  title: LLM Service API
-  description: LangChain-powered service that generates personalised roadmap recommendations based on user goals and available courses
-  version: 1.0.0
+  title: LLM Recommendation Service
+  description: Service that generates personalized learning roadmaps using an LLM
+  version: 2.0.0
 
 servers:
   - url: /
@@ -13,11 +13,73 @@ tags:
     description: LLM-powered roadmap generation
 
 paths:
+
+  /:
+    get:
+      summary: Root
+      description: Root endpoint with service information.
+      operationId: root
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: string
+
+  /health:
+    get:
+      summary: Health Check
+      description: Health check endpoint.
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: string
+
+  /usage:
+    get:
+      summary: Get Usage
+      description: >
+        Returns the caller's cumulative token usage and remaining quota.
+        The user id comes from the gateway-injected, JWT-verified X-User-Id header,
+        so the client cannot query another user's usage.
+      operationId: getUsage
+      parameters:
+        - name: x-user-id
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: string
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+
   /recommend:
     post:
       tags: [recommendations]
-      summary: Generate a roadmap recommendation
+      summary: Recommend
       operationId: generateRecommendation
+      parameters:
+        - name: user_id
+          in: query
+          required: false
+          schema:
+            type: string
+            default: anonymous
       requestBody:
         required: true
         content:
@@ -26,128 +88,85 @@ paths:
               $ref: '#/components/schemas/RoadmapRequest'
       responses:
         '200':
-          description: Generated roadmap recommendation
+          description: Successful Response
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/RoadmapResponse'
         '422':
-          description: Invalid input
+          description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '503':
-          description: LLM backend unavailable
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/HTTPValidationError'
         '429':
           description: User token limit exceeded
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-  
-  /usage/{user_id}:
-    get:
-      summary: Get user token usage
-      operationId: getUsage
-      parameters:
-        - name: user_id
-          in: path
-          required: true
-          schema:
-            type: integer
-            format: int64
-      responses:
-        '200':
-          description: Token usage information
+                $ref: '#/components/schemas/HTTPValidationError'
+        '503':
+          description: LLM backend unavailable
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  user_id:
-                    type: integer
-                    format: int64
-                  used:
-                    type: integer
-                  limit:
-                    type: integer
-                  remaining:
-                    type: integer
+                $ref: '#/components/schemas/HTTPValidationError'
 
-  /health:
+  /logs:
     get:
-      summary: Health check
-      operationId: healthCheck
+      summary: Get Logs
+      operationId: getLogs
       responses:
         '200':
-          description: Service is healthy
+          description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HealthResponse'
+                type: string
 
 components:
   schemas:
+
     RoadmapRequest:
       type: object
-      required: 
+      description: Request schema for generate endpoint.
+      required:
         - goal
       properties:
         goal:
           type: string
           description: The user's learning goal in natural language
-          maxLength: 200
 
     RoadmapResponse:
       type: object
+      description: Response schema for generate endpoint.
       properties:
         milestones:
           type: array
-          items:
-            $ref: '#/components/schemas/Milestone'
+          items: {}
 
-    Milestone:
+    HTTPValidationError:
       type: object
       properties:
-        title:
-          type: string
-        description:
-          type: string
-        tasks:
+        detail:
           type: array
           items:
-            $ref: '#/components/schemas/Task'
+            $ref: '#/components/schemas/ValidationError'
 
-    Task:
+    ValidationError:
       type: object
+      required:
+        - loc
+        - msg
+        - type
       properties:
-        title:
+        loc:
+          type: array
+          items:
+            oneOf:
+              - type: string
+              - type: integer
+        msg:
           type: string
-        completed:
-          type: boolean
-
-    ErrorResponse:
-      type: object
-      properties:
-        code:
-          type: integer
-        message:
-          type: string
-        details:
-          type: string
-    
-    HealthResponse:
-      type: object
-      properties:
-        status:
-          type: string
-          example: healthy
-        service:
-          type: string
-        model:
+        type:
           type: string
