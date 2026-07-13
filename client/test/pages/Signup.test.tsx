@@ -18,8 +18,12 @@ describe("Signup page", () => {
     vi.clearAllMocks();
 
     mockedUseAuth.mockReturnValue({
+      user: null,
+      loading: false,
+      login: vi.fn(),
       signup: signupMock,
-    } as any);
+      logout: vi.fn(),
+    });
   });
 
   function renderSignup() {

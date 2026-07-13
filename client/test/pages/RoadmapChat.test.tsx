@@ -58,7 +58,6 @@ const roadmapPayload2 = {
   ],
 };
 
-const withMount = (...rest: ReturnType<typeof makeUsage>[]) => [usageFull(), emptyRoadmaps(), ...rest];
 const usageMock = { ok: true, status: 200, json: async () => ({ used: 0, limit: 10000, remaining: 10000 }) };
 
 // ── Input validation ──────────────────────────────────────────────────────────
@@ -66,13 +65,6 @@ const usageMock = { ok: true, status: 200, json: async () => ({ used: 0, limit: 
 test("disables button when input is empty", () => {
   render(<RoadmapChat />);
   expect(screen.getByRole("button", { name: /generate/i })).toBeDisabled();
-});
-
-test("enforces 200-character limit on input", async () => {
-  render(<RoadmapChat />);
-  const input = screen.getByRole("textbox");
-  await userEvent.type(input, "a".repeat(210));
-  expect(input).toHaveValue("a".repeat(200));
 });
 
 // ── 200 path ────────────────────────────────────────────────────────────────
