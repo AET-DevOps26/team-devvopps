@@ -25,6 +25,8 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       # Authenticate with GHCR so we can push images.
       # GITHUB_TOKEN is automatically provided by GitHub Actions.

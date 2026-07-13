@@ -3,7 +3,10 @@ name: Provision Azure VM
 # Manual trigger only.
 # Run this once to set up the VM, or again to apply Terraform changes.
 on:
-  workflow_dispatch:  
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   provision:
@@ -12,6 +15,8 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       # --- Terraform ------------------------------------------------------
 

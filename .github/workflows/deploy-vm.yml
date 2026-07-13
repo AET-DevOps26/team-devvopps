@@ -24,6 +24,8 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       
       # --- SSH access setup -------------------------------------------------
       # The VM's NSG only allows SSH (port 22) from the MWN/eduVPN range
