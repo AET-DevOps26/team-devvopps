@@ -1,4 +1,16 @@
 #empty
 infra/.env
+
+.vscode/
+
+# Node
+node_modules/
+
+# pre-commit
+.pre-commit-cache/
+
+# npm logs
+npm-debug.log*
+
 # Local Helm secret overrides — contains DB/API/JWT credentials, never commit.
 helm/team-devvopps/values-secrets.yaml

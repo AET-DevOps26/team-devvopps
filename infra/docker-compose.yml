@@ -19,7 +19,9 @@ services:
 
   # ── Course Data Seeder ────────────────────────────────────────────────────
   # One-time job that populates the coursedb with initial course data.
-  # Runs immediately after postgres is healthy. Exits after seeding completes.
+  # Waits for course-service to create the `courses` table (via Hibernate
+  # ddl-auto) before inserting, since course-service owns the schema and
+  # nothing here guarantees it starts before the seeder otherwise.
   course-seeder:
     build:
       context: ../server/course-service
@@ -32,6 +34,8 @@ services:
       DB_PASSWORD: postgres
     depends_on:
       postgres:
+        condition: service_healthy
+      course-service:
         condition: service_healthy
     restart: on-failure
 
@@ -63,6 +67,8 @@ services:
     build:
       context: ../server
       dockerfile: user-service/Dockerfile
+    ports:
+      - "8081:8081"
     environment:
       DB_HOST: postgres
       DB_NAME: userdb
@@ -81,6 +87,8 @@ services:
     build:
       context: ../server
       dockerfile: course-service/Dockerfile
+    ports:
+      - "8082:8082"
     environment:
       DB_HOST: postgres
       DB_NAME: coursedb
@@ -89,12 +97,23 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # No curl/wget in the eclipse-temurin base image; use bash's /dev/tcp to
+    # hit actuator health directly. Healthy only once Hibernate has finished
+    # ddl-auto (i.e. the `courses` table exists) and the app is serving.
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8082 && printf 'GET /actuator/health HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '\"status\":\"UP\"' <&3"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
 
   # Roadmap service: generates learning roadmaps using the LLM.
   roadmap-service:
     build:
       context: ../server
       dockerfile: roadmap-service/Dockerfile
+    ports:
+      - "8083:8083"
     environment:
       DB_HOST: postgres
       DB_NAME: roadmapdb
@@ -211,6 +230,7 @@ services:
       - ../helm/team-devvopps/grafana-dashboards/dashboard-request-metrics.json:/etc/grafana/provisioning/dashboards/request-metrics.json
       - ../helm/team-devvopps/grafana-dashboards/dashboard-system-health.json:/etc/grafana/provisioning/dashboards/system-health.json
       - ../helm/team-devvopps/grafana-dashboards/dashboard-logs.json:/etc/grafana/provisioning/dashboards/logs.json
+      - ../helm/team-devvopps/grafana-dashboards/dashboard-auth.json:/etc/grafana/provisioning/dashboards/auth.json
     depends_on:
       - prometheus
       - loki
