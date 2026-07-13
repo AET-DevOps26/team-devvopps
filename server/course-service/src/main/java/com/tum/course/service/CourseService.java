@@ -33,7 +33,7 @@ public class CourseService {
     /**
      * Returns a single course by its ID.
      *
-     * Throws an exception if no course exists with the given ID.
+     * Throws a 404 response if no course exists with the given ID.
      *
      * @param id course ID
      * @return matching Course
