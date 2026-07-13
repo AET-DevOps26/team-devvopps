@@ -1,0 +1,8 @@
+repos:
+  - repo: local
+    hooks:
+      - id: openapi-lint
+        name: Lint OpenAPI specifications
+        entry: npm run lint:openapi
+        language: system
+        files: ^api/.*\.yaml$
