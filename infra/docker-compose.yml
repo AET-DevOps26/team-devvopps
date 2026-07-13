@@ -67,6 +67,8 @@ services:
     build:
       context: ../server
       dockerfile: user-service/Dockerfile
+    ports:
+      - "8081:8081"
     environment:
       DB_HOST: postgres
       DB_NAME: userdb
@@ -82,6 +84,8 @@ services:
     build:
       context: ../server
       dockerfile: course-service/Dockerfile
+    ports:
+      - "8082:8082"
     environment:
       DB_HOST: postgres
       DB_NAME: coursedb
@@ -105,6 +109,8 @@ services:
     build:
       context: ../server
       dockerfile: roadmap-service/Dockerfile
+    ports:
+      - "8083:8083"
     environment:
       DB_HOST: postgres
       DB_NAME: roadmapdb
