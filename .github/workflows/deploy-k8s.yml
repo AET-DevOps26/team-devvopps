@@ -180,6 +180,11 @@ jobs:
             exit 1
           fi
 
+          # timeout: measured 6m29s for a routine deploy (one DaemonSet
+          # change) vs 10m45s+ (timed out at 27/28 promtail pods) for a
+          # deploy that changed securityContext on all 11 workloads at
+          # once — a one-time cost the first time this many resources
+          # change together, not a sign of a slower baseline going forward.
           helm upgrade --install "$HELM_RELEASE_NAME" helm/team-devvopps/ \
             -f helm/team-devvopps/values-aet.yaml \
             --set postgres.credentials.username="$POSTGRES_USER" \
@@ -195,7 +200,7 @@ jobs:
             --set auth.adminPassword="$ADMIN_PASSWORD" \
             -n "$K8S_NAMESPACE" \
             --wait \
-            --timeout 10m
+            --timeout 15m
 
       # All images use the :latest tag, so helm upgrade alone does not restart
       # pods when only the image content changed. Force a rollout so every
