@@ -104,15 +104,13 @@ jobs:
             --set grafana.adminPassword="$GRAFANA_ADMIN_PASSWORD"
 
       # Remove pods stuck in Failed/Unknown state that would block the Helm rollout.
-      # Also delete the course-seeder job: completed Jobs are immutable, so helm
-      # cannot patch it and the whole upgrade fails ("cannot patch course-seeder").
-      # Deleting it lets helm recreate it fresh (it checks for existing data anyway).
+      # (course-seeder needs no manual cleanup anymore: it is a helm hook with
+      # delete-policy before-hook-creation, so helm replaces it itself.)
       - name: Clean up failed deployments
         run: |
           echo "Cleaning up failed and unknown pods..."
           kubectl delete pods -n "$K8S_NAMESPACE" --field-selector=status.phase=Failed 2>/dev/null || true
           kubectl delete pods -n "$K8S_NAMESPACE" --field-selector=status.phase=Unknown 2>/dev/null || true
-          kubectl delete job course-seeder -n "$K8S_NAMESPACE" --ignore-not-found
           echo "Cleanup complete"
 
       # helm upgrade --install: creates the release if it doesn't exist, upgrades if it does.

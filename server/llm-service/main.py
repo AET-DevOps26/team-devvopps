@@ -24,7 +24,6 @@ def _log(level: str, message: str, **extra):
     entry = {"timestamp": datetime.now(timezone.utc).isoformat(), "level": level, "message": message, **extra}
     _logs.appendleft(entry)
     print(f"[{level}] {message}", flush=True)
-from langchain_core.prompts import PromptTemplate
 from langchain_core.language_models.llms import LLM
 from langchain_core.callbacks.manager import CallbackManagerForLLMRun
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -44,29 +43,98 @@ import numpy as np
 LOGOS_API_KEY = os.getenv("LOGOS_API_KEY")
 GROQ_API_KEY  = os.getenv("GROQ_API_KEY")
 
-if LOGOS_API_KEY:
-    # Logos profile: TUM-hosted gpt-oss-120b. Off-campus needs eduVPN.
-    # Checked FIRST so Logos wins whenever its key is present, even if a
-    # Groq key is also configured.
-    API_URL = "https://logos.aet.cit.tum.de/v1/chat/completions"
-    MODEL_NAME = "openai/gpt-oss-120b"
-    LLM_API_KEY = LOGOS_API_KEY
-elif GROQ_API_KEY:
-    # Groq profile: free tier, llama-3.3-70b-versatile. Fallback only —
-    # used when no LOGOS_API_KEY is set (e.g. local development).
-    API_URL = "https://api.groq.com/openai/v1/chat/completions"
-    MODEL_NAME = "llama-3.3-70b-versatile"
-    LLM_API_KEY = GROQ_API_KEY
-else:
-    # LM Studio profile: local model on host. Defaults match compose.yml
-    # so both `docker compose up` and `python main.py` work.
-    API_URL = os.getenv("LLM_API_URL", "http://localhost:1234/v1/chat/completions")
-    MODEL_NAME = os.getenv("LLM_MODEL", "gemma-4-e2b")
+# Provider profiles. Which one is used is decided PER REQUEST by
+# current_provider() below, so admins can switch Logos <-> Groq at runtime
+# via the "llmUseLogos" feature flag — no redeploy needed.
+PROVIDER_LOGOS = {
+    # TUM-hosted gpt-oss-120b. Off-campus needs eduVPN.
+    "name": "logos",
+    "url": "https://logos.aet.cit.tum.de/v1/chat/completions",
+    "model": "openai/gpt-oss-120b",
+    "key": LOGOS_API_KEY,
+}
+PROVIDER_GROQ = {
+    # Free tier, llama-3.3-70b-versatile — much faster than Logos.
+    "name": "groq",
+    "url": "https://api.groq.com/openai/v1/chat/completions",
+    "model": "llama-3.3-70b-versatile",
+    "key": GROQ_API_KEY,
+}
+PROVIDER_LMSTUDIO = {
+    # Local model on host. Defaults match compose.yml so both
+    # `docker compose up` and `python main.py` work.
+    "name": "lm-studio",
+    "url": os.getenv("LLM_API_URL", "http://localhost:1234/v1/chat/completions"),
+    "model": os.getenv("LLM_MODEL", "gemma-4-e2b"),
     # LM Studio doesn't require a key; CHAIR_API_KEY is left for back-compat.
-    LLM_API_KEY = os.getenv("LLM_API_KEY") or os.getenv("CHAIR_API_KEY")
+    "key": os.getenv("LLM_API_KEY") or os.getenv("CHAIR_API_KEY"),
+}
 
 # URL of the course-service REST API used to fetch the course catalogue.
 COURSE_SERVICE_URL = os.getenv("COURSE_SERVICE_URL", "http://course-service:8082/courses")
+
+# user-service hosts the runtime feature flags (admin-panel toggles).
+USER_SERVICE_URL = os.getenv("USER_SERVICE_URL", "http://user-service:8081")
+
+# ---------------------------------------------------------------------------
+# Feature flags: fetched from user-service, cached for 30s so toggling in the
+# admin panel takes effect quickly without a request to user-service per call.
+# On fetch failure the last known state (or the default) is used.
+# ---------------------------------------------------------------------------
+_flags_cache: dict = {}
+_flags_fetched: float = 0.0
+
+
+def feature_enabled(name: str, default: bool = True) -> bool:
+    global _flags_cache, _flags_fetched
+    if time.time() - _flags_fetched > 30:
+        _flags_fetched = time.time()  # set first so failures don't retry-storm
+        try:
+            resp = requests.get(f"{USER_SERVICE_URL}/features", timeout=3)
+            resp.raise_for_status()
+            _flags_cache = {f["name"]: f["enabled"] for f in resp.json()}
+        except Exception as e:
+            _log("WARN", f"Could not fetch feature flags ({e}) — using cached/default values")
+    return _flags_cache.get(name, default)
+
+
+# ---------------------------------------------------------------------------
+# Runtime settings (prompt sections, monthly token limit): fetched from
+# user-service like the flags, cached for 30s. On failure the last known
+# values (or the built-in defaults) are used.
+# ---------------------------------------------------------------------------
+_settings_cache: dict = {}
+_settings_fetched: float = 0.0
+
+
+def get_setting(name: str, default: str) -> str:
+    global _settings_cache, _settings_fetched
+    if time.time() - _settings_fetched > 30:
+        _settings_fetched = time.time()  # set first so failures don't retry-storm
+        try:
+            resp = requests.get(f"{USER_SERVICE_URL}/settings", timeout=3)
+            resp.raise_for_status()
+            _settings_cache = {s["name"]: s["value"] for s in resp.json()}
+        except Exception as e:
+            _log("WARN", f"Could not fetch settings ({e}) — using cached/default values")
+    value = _settings_cache.get(name, "")
+    return value if value.strip() else default
+
+
+def current_provider() -> dict:
+    """
+    Picks the LLM provider for THIS request. The "llmUseLogos" flag lets an
+    admin switch between Logos and Groq at runtime; each provider is only
+    eligible when its API key is actually configured, so toggling can never
+    select a broken profile.
+    """
+    if LOGOS_API_KEY and feature_enabled("llmUseLogos", default=True):
+        return PROVIDER_LOGOS
+    if GROQ_API_KEY:
+        return PROVIDER_GROQ
+    if LOGOS_API_KEY:
+        return PROVIDER_LOGOS  # flag is off but Logos is the only key present
+    return PROVIDER_LMSTUDIO
 
 # Number of courses passed to the LLM after TF-IDF filtering.
 TOP_K = int(os.getenv("TOP_K", "30"))
@@ -149,7 +217,25 @@ def filter_courses(goal: str, k: int = TOP_K) -> str:
 # NOTE: must stay comfortably ABOVE MAX_TOKENS — the pre-request reservation
 # checks `current + MAX_TOKENS >= limit`, so a limit equal to MAX_TOKENS
 # would reject every request before the first roadmap is generated.
-MAX_TOKENS_PER_USER = int(os.getenv("MONTHLY_TOKEN_LIMIT", "50000"))  # per user per month
+DEFAULT_MONTHLY_LIMIT = int(os.getenv("MONTHLY_TOKEN_LIMIT", "50000"))  # per user per month
+
+
+def monthly_token_limit() -> int:
+    """
+    The admin-editable monthly quota (setting "monthlyTokenLimit").
+    Guarded: must parse as an int and exceed the per-request reservation
+    (MAX_TOKENS), otherwise the pre-request check `current + MAX_TOKENS >=
+    limit` would reject every request — fall back to the default instead.
+    """
+    raw = get_setting("monthlyTokenLimit", str(DEFAULT_MONTHLY_LIMIT))
+    try:
+        value = int(raw)
+        if value > MAX_TOKENS:
+            return value
+        _log("WARN", f"monthlyTokenLimit {value} <= per-request cap {MAX_TOKENS} — using default {DEFAULT_MONTHLY_LIMIT}")
+    except ValueError:
+        _log("WARN", f"monthlyTokenLimit '{raw}' is not an integer — using default {DEFAULT_MONTHLY_LIMIT}")
+    return DEFAULT_MONTHLY_LIMIT
 
 _user_token_usage: dict = defaultdict(int)  # userId -> tokens used this month
 _user_locks: dict = defaultdict(threading.Lock)
@@ -173,10 +259,11 @@ def check_user_limit(user_id: str) -> None:
     """Raises HTTPException if user has exceeded their monthly token limit."""
     _reset_if_new_month()
     current = _user_token_usage[user_id]
-    if current + MAX_TOKENS >= MAX_TOKENS_PER_USER:
+    limit = monthly_token_limit()
+    if current + MAX_TOKENS >= limit:
         raise HTTPException(
             status_code=429,
-            detail=f"Monthly token limit exceeded. You have used {current}/{MAX_TOKENS_PER_USER} tokens this month — the quota resets at the start of next month."
+            detail=f"Monthly token limit exceeded. You have used {current}/{limit} tokens this month — the quota resets at the start of next month."
         )
 
 # ---------------------------------------------------------------------------
@@ -184,7 +271,7 @@ def check_user_limit(user_id: str) -> None:
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    _log("INFO", f"Starting up (model: {MODEL_NAME})")
+    _log("INFO", f"Starting up (provider: {current_provider()['name']}, model: {current_provider()['model']})")
     for attempt in range(1, 6):
         count = build_index()
         if count > 0:
@@ -234,9 +321,6 @@ class OpenAICompatibleLLM(LLM):
     endpoint (LM Studio, Ollama in OpenAI mode, OpenAI itself, etc.).
     """
 
-    api_url: str = API_URL
-    api_key: Optional[str] = LLM_API_KEY
-    model_name: str = MODEL_NAME
     last_usage: dict = {}
 
     @property
@@ -250,12 +334,16 @@ class OpenAICompatibleLLM(LLM):
         run_manager: Optional[CallbackManagerForLLMRun] = None,
         **kwargs: Any,
     ) -> str:
+        # Resolved per request (not at startup) so the admin-panel
+        # "llmUseLogos" toggle takes effect without a restart.
+        provider = current_provider()
+
         headers = {
             "Content-Type": "application/json",
         }
 
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
+        if provider["key"]:
+            headers["Authorization"] = f"Bearer {provider['key']}"
 
         # Build messages for chat completion
         messages = [
@@ -263,11 +351,11 @@ class OpenAICompatibleLLM(LLM):
         ]
 
         payload = {
-            "model": self.model_name,
+            "model": provider["model"],
             "messages": messages,
             "max_tokens": MAX_TOKENS,
         }
-        if "gpt-oss" in self.model_name:
+        if "gpt-oss" in provider["model"]:
             # Reasoning model: cap the hidden thinking phase. Roadmap JSON
             # generation doesn't need deep reasoning, and shorter reasoning
             # both speeds up responses and keeps the JSON under max_tokens.
@@ -275,7 +363,7 @@ class OpenAICompatibleLLM(LLM):
 
         try:
             response = requests.post(
-                self.api_url,
+                provider["url"],
                 headers=headers,
                 json=payload,
                 # gpt-oss-120b on Logos routinely takes 130-160s per roadmap;
@@ -309,7 +397,41 @@ class OpenAICompatibleLLM(LLM):
             raise Exception(f"Failed to parse API response: {str(e)}")
 
 
-_PROMPT = """You are an expert academic advisor creating a personalised learning roadmap.
+# ---------------------------------------------------------------------------
+# Prompt assembly. The prompt has a FIXED skeleton (the data block with the
+# goal and the course list, plus section headers) and three admin-editable
+# sections stored in user-service: role, instructions and response format.
+# The defaults below are the fallback when a section is missing/blank, and
+# they mirror the values SettingBootstrap seeds in user-service.
+# ---------------------------------------------------------------------------
+DEFAULT_ROLE = "You are an expert academic advisor creating a personalised learning roadmap."
+
+DEFAULT_INSTRUCTIONS = """1. Select the most relevant courses from the list above to reach the student's goal.
+2. Break the journey into clear milestones (e.g. "Complete foundational mathematics"). Also include external milestones that are not courses.
+3. For each milestone, define concrete tasks the student should do. For course tasks, include the course code in brackets (e.g. "Enroll in [IN2064] Machine Learning").
+4. Each milestone MUST contain at least 2–4 tasks. Tasks MUST belong to their milestone (nested structure)
+5. Create at most 5 milestones. Keep titles and descriptions short (one sentence) — the response must stay compact.
+6. Respond with ONLY valid JSON."""
+
+DEFAULT_RESPONSE_FORMAT = """{
+  "milestones": [
+    {
+      "title": "Milestone name",
+      "description": "What this milestone achieves",
+      "tasks": [
+        {
+          "title": "Task description",
+          "completed": false
+        }
+      ]
+    }
+  ]
+}"""
+
+
+def build_prompt(goal: str, courses: str) -> str:
+    """Assembles the prompt from the fixed skeleton + admin-editable sections."""
+    return f"""{get_setting("promptRole", DEFAULT_ROLE)}
 
 Student's learning goal: {goal}
 
@@ -317,38 +439,17 @@ Available courses in the catalogue:
 {courses}
 
 Instructions:
-1. Select the most relevant courses from the list above to reach the student's goal.
-2. Break the journey into clear milestones (e.g. "Complete foundational mathematics"). Also include external milestones that are not courses.
-3. For each milestone, define concrete tasks the student should do. For course tasks, include the course code in brackets (e.g. "Enroll in [IN2064] Machine Learning").
-4. Each milestone MUST contain at least 2–4 tasks. Tasks MUST belong to their milestone (nested structure)
-5. Create at most 5 milestones. Keep titles and descriptions short (one sentence) — the response must stay compact.
-6. Respond with ONLY valid JSON.
+{get_setting("promptInstructions", DEFAULT_INSTRUCTIONS)}
 
 Required JSON format:
 
-{{
-  "milestones": [
-    {{
-      "title": "Milestone name",
-      "description": "What this milestone achieves",
-      "tasks": [
-        {{
-          "title": "Task description",
-          "completed": false
-        }}
-      ]
-    }}
-  ]
-}}
+{get_setting("promptResponseFormat", DEFAULT_RESPONSE_FORMAT)}
 
 JSON response:
 """
-llm = OpenAICompatibleLLM()
 
-chain = PromptTemplate(
-    input_variables=["goal", "courses"],
-    template=_PROMPT,
-) | llm
+
+llm = OpenAICompatibleLLM()
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -382,7 +483,15 @@ def parse_llm_response(raw: str) -> RoadmapResponse:
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    return {"status": "healthy", "service": "LLM Roadmap Generation Service", "model": MODEL_NAME}
+    p = current_provider()
+    return {
+        "status": "healthy",
+        "service": "LLM Roadmap Generation Service",
+        "provider": p["name"],
+        "model": p["model"],
+        "api_key_configured": bool(p["key"]),
+        "courses_indexed": len(_courses),
+    }
 
 
 @app.get("/usage")
@@ -398,8 +507,8 @@ async def get_usage(x_user_id: str = Header(...)):
     return {
         "user_id": x_user_id,
         "used": used,
-        "limit": MAX_TOKENS_PER_USER,
-        "remaining": max(0, MAX_TOKENS_PER_USER - used),
+        "limit": monthly_token_limit(),
+        "remaining": max(0, monthly_token_limit() - used),
         "period": _usage_month,
     }
 
@@ -420,15 +529,17 @@ async def recommend(req: RoadmapRequest, user_id: str = "anonymous") -> RoadmapR
     t_llm = time.time()
 
     try:
-        # Check user limit before calling llm
+        # Check user limit before calling llm (skipped entirely when the
+        # "tokenQuota" feature flag is disabled from the admin panel).
         # Add MAX_TOKENS (max output) so as an assumption of tokens used during request so that user cannot generate i+1 roadmaps
-        with _user_locks[user_id]:
-            check_user_limit(user_id)
-            _user_token_usage[user_id] += MAX_TOKENS
-            reserved = True
+        if feature_enabled("tokenQuota"):
+            with _user_locks[user_id]:
+                check_user_limit(user_id)
+                _user_token_usage[user_id] += MAX_TOKENS
+                reserved = True
 
         t0 = time.time()
-        _log("INFO", "Roadmap request received", goal=req.goal, model=MODEL_NAME)
+        _log("INFO", "Roadmap request received", goal=req.goal, model=current_provider()["model"])
 
         if not _courses:
             global _last_index_attempt
@@ -444,11 +555,11 @@ async def recommend(req: RoadmapRequest, user_id: str = "anonymous") -> RoadmapR
         courses_str = filter_courses(req.goal)
         course_count = len([l for l in courses_str.splitlines() if l.strip().startswith("-")])
         _log("INFO", f"TF-IDF filtered {course_count} relevant courses", goal=req.goal)
-        _log("INFO", f"Calling LLM ({MODEL_NAME})...", goal=req.goal)
+        _log("INFO", f"Calling LLM ({current_provider()['model']})...", goal=req.goal)
 
         t_llm = time.time()
     
-        raw = await chain.ainvoke({"goal": req.goal, "courses": courses_str})
+        raw = await llm.ainvoke(build_prompt(req.goal, courses_str))
 
         
         usage = dict(llm.last_usage)
@@ -473,7 +584,7 @@ async def recommend(req: RoadmapRequest, user_id: str = "anonymous") -> RoadmapR
             with _user_locks[user_id]:
                 _user_token_usage[user_id] -= MAX_TOKENS
                 _user_token_usage[user_id] += total_tokens
-            _log("INFO", f"User {user_id} used {total_tokens} tokens " f"({_user_token_usage[user_id]}/{MAX_TOKENS_PER_USER})")
+            _log("INFO", f"User {user_id} used {total_tokens} tokens " f"({_user_token_usage[user_id]}/{monthly_token_limit()})")
 
     total_ms = round((time.time() - t0) * 1000)
     _log("INFO", f"Request done in {total_ms}ms — {len(result.milestones)} milestones", goal=req.goal, total_ms=total_ms)

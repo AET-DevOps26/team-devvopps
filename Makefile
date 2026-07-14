@@ -90,7 +90,6 @@ k8s-deploy: k8s-build
 	if [ -z "$$JWT_KEY" ]; then JWT_KEY=$$(openssl rand -hex 32); echo "NOTE: no JWT_SIGNING_KEY in infra/.env — generated an ephemeral key (sessions reset each deploy)"; fi; \
 	ADMIN_EMAIL=$$(grep -E '^ADMIN_EMAIL=' infra/.env 2>/dev/null | cut -d= -f2-); \
 	ADMIN_PASSWORD=$$(grep -E '^ADMIN_PASSWORD=' infra/.env 2>/dev/null | cut -d= -f2-); \
-	kubectl delete job course-seeder -n $(NAMESPACE) --ignore-not-found 2>/dev/null; \
 	helm upgrade --install team-devvopps helm/team-devvopps/ \
 		-f helm/team-devvopps/values-local.yaml \
 		--set llmService.groqApiKey="$$GROQ_KEY" \

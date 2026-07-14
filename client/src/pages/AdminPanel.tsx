@@ -44,15 +44,39 @@ interface RoadmapLog {
   milestones?: { title: string }[];
 }
 
-type Tab = "users" | "courses" | "logs";
+interface Feature {
+  name: string;
+  enabled: boolean;
+  description: string;
+}
+
+type Tab = "users" | "courses" | "logs" | "features";
+
+const TABS: Tab[] = ["users", "courses", "logs", "features"];
+
+// The active tab lives in the URL hash (/admin#logs) so it survives page
+// reloads and tab links are shareable. Plain useState would reset to
+// "users" on every refresh.
+function tabFromHash(): Tab {
+  const h = window.location.hash.replace("#", "") as Tab;
+  return TABS.includes(h) ? h : "users";
+}
 
 export default function AdminPanel() {
-  const [tab, setTab] = useState<Tab>("users");
+  const [tab, setTabState] = useState<Tab>(tabFromHash());
+
+  const setTab = (t: Tab) => {
+    window.location.hash = t;
+    setTabState(t);
+  };
   const [users, setUsers] = useState<User[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [llmLogs, setLlmLogs] = useState<LlmLog[]>([]);
   const [roadmapLogs, setRoadmapLogs] = useState<RoadmapLog[]>([]);
   const [authEvents, setAuthEvents] = useState<AuthEvent[]>([]);
+  const [features, setFeatures] = useState<Feature[]>([]);
+  const [settings, setSettings] = useState<Record<string, string>>({});
+  const [settingsStatus, setSettingsStatus] = useState("");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -60,12 +84,68 @@ export default function AdminPanel() {
     Promise.all([
       fetch(`${API}/users`, withAuth).then((r) => r.json()).catch(() => []),
       fetch(`${API}/courses`, withAuth).then((r) => r.json()).catch(() => []),
-    ]).then(([u, c]) => {
+      fetch(`${API}/features`, withAuth).then((r) => r.json()).catch(() => []),
+    ]).then(([u, c, f]) => {
       setUsers(Array.isArray(u) ? u : []);
       setCourses(Array.isArray(c) ? c : []);
+      setFeatures(Array.isArray(f) ? f : []);
       setLoading(false);
     });
   }, []);
+
+  // Optimistic toggle: flip in the UI immediately, revert if the PUT fails.
+  const toggleFeature = async (name: string, enabled: boolean) => {
+    setFeatures((prev) => prev.map((f) => (f.name === name ? { ...f, enabled } : f)));
+    const res = await fetch(`${API}/features/${name}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+      ...withAuth,
+    }).catch(() => null);
+    if (!res || !res.ok) {
+      setFeatures((prev) => prev.map((f) => (f.name === name ? { ...f, enabled: !enabled } : f)));
+    }
+  };
+
+  const flagOn = (name: string) => features.find((f) => f.name === name)?.enabled !== false;
+
+  // Lazy-load the runtime settings when the Features tab opens.
+  useEffect(() => {
+    if (tab !== "features" || Object.keys(settings).length > 0) return;
+    fetch(`${API}/settings`, withAuth)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d: { name: string; value: string }[]) =>
+        setSettings(Object.fromEntries(d.map((s) => [s.name, s.value]))))
+      .catch((e) => console.error("Failed to fetch settings:", e));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
+  // Saves every setting; llm-service picks the new values up within ~30s.
+  const saveSettings = async () => {
+    if (!/^\d+$/.test((settings.monthlyTokenLimit || "").trim())) {
+      setSettingsStatus("⚠️ Monthly token limit must be a positive number.");
+      return;
+    }
+    setSettingsStatus("Saving...");
+    const results = await Promise.all(
+      Object.entries(settings).map(([name, value]) =>
+        fetch(`${API}/settings/${name}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ value }),
+          ...withAuth,
+        }).catch(() => null)
+      )
+    );
+    setSettingsStatus(results.every((r) => r && r.ok)
+      ? "✓ Saved — takes effect on new requests within ~30s."
+      : "⚠️ Some settings failed to save.");
+  };
+
+  const setSetting = (name: string, value: string) => {
+    setSettings((prev) => ({ ...prev, [name]: value }));
+    setSettingsStatus("");
+  };
 
   // Guards against overlapping fetches (tab switch + Refresh): only the
   // latest invocation is allowed to write state, stale responses are dropped.
@@ -124,21 +204,28 @@ export default function AdminPanel() {
           <button style={tab === "courses" ? s.tabActive : s.tab} onClick={() => setTab("courses")}>
             Courses ({courses.length})
           </button>
-          <button style={tab === "logs" ? s.tabActive : s.tab} onClick={() => setTab("logs")}>
-            Logs
+          {flagOn("llmLogs") && (
+            <button style={tab === "logs" ? s.tabActive : s.tab} onClick={() => setTab("logs")}>
+              Logs
+            </button>
+          )}
+          <button style={tab === "features" ? s.tabActive : s.tab} onClick={() => setTab("features")}>
+            Features
           </button>
-          <a
-            style={{ ...s.tab, textDecoration: "none" }}
-            // On the server Grafana lives behind the ingress at /grafana;
-            // locally (docker compose) it is published on localhost:3001.
-            // Same-tab navigation: Safari silently drops target="_blank"
-            // links that cross ports on localhost.
-            href={window.location.hostname === "localhost" ? "http://localhost:3001" : "/grafana"}
-            rel="noreferrer"
-            title="Monitoring dashboards (Grafana login required)"
-          >
-            Grafana ↗
-          </a>
+          {flagOn("grafanaLink") && (
+            <a
+              style={{ ...s.tab, textDecoration: "none" }}
+              // On the server Grafana lives behind the ingress at /grafana;
+              // locally (docker compose) it is published on localhost:3001.
+              // Same-tab navigation: Safari silently drops target="_blank"
+              // links that cross ports on localhost.
+              href={window.location.hostname === "localhost" ? "http://localhost:3001" : "/grafana"}
+              rel="noreferrer"
+              title="Monitoring dashboards (Grafana login required)"
+            >
+              Grafana ↗
+            </a>
+          )}
         </nav>
       </header>
 
@@ -212,6 +299,95 @@ export default function AdminPanel() {
                 )}
               </tbody>
             </table>
+          </section>
+        )}
+
+        {tab === "features" && (
+          <section>
+            <h2 style={s.sectionTitle}>Feature toggles</h2>
+            <p style={{ color: "#888", fontSize: 13, marginTop: -8, marginBottom: 16 }}>
+              Turn features on or off at runtime — no redeploy needed. Changes take
+              effect immediately in the UI and within ~30s in backend services.
+            </p>
+            <table style={s.table}>
+              <thead>
+                <tr>
+                  <th style={s.th}>Feature</th>
+                  <th style={s.th}>Description</th>
+                  <th style={s.th}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {features.map((f) => (
+                  <tr key={f.name} style={s.tr}>
+                    <td style={{ ...s.td, fontWeight: 600, whiteSpace: "nowrap" }}>{f.name}</td>
+                    <td style={s.td}>{f.description}</td>
+                    <td style={s.td}>
+                      <button
+                        style={f.enabled ? s.toggleOn : s.toggleOff}
+                        onClick={() => toggleFeature(f.name, !f.enabled)}
+                      >
+                        {f.enabled ? "ON" : "OFF"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {features.length === 0 && (
+                  <tr><td colSpan={3} style={{ ...s.td, color: "#888", textAlign: "center" }}>No feature flags found.</td></tr>
+                )}
+              </tbody>
+            </table>
+
+            <h2 style={{ ...s.sectionTitle, marginTop: 32 }}>Monthly token limit</h2>
+            <p style={s.settingHint}>
+              Per-user LLM token budget per calendar month (applies while the{" "}
+              <code>tokenQuota</code> flag is ON). Must stay well above the
+              per-request cap (4000) or every request would be rejected.
+            </p>
+            <input
+              style={{ ...s.input, width: 160, fontFamily: "monospace" }}
+              value={settings.monthlyTokenLimit || ""}
+              onChange={(e) => setSetting("monthlyTokenLimit", e.target.value)}
+            />
+
+            <h2 style={{ ...s.sectionTitle, marginTop: 32 }}>LLM prompt</h2>
+            <p style={s.settingHint}>
+              The prompt is assembled from the sections below. The data block in the
+              middle is structural and cannot be edited.
+            </p>
+
+            <h3 style={s.settingLabel}>1 · Role — who the LLM is</h3>
+            <textarea
+              style={s.promptArea} rows={2} spellCheck={false}
+              value={settings.promptRole || ""}
+              onChange={(e) => setSetting("promptRole", e.target.value)}
+            />
+
+            <h3 style={s.settingLabel}>2 · Data block (fixed)</h3>
+            <pre style={s.fixedBlock}>{"Student's learning goal: {goal}\n\nAvailable courses in the catalogue:\n{courses}"}</pre>
+
+            <h3 style={s.settingLabel}>3 · Instructions</h3>
+            <textarea
+              style={s.promptArea} rows={8} spellCheck={false}
+              value={settings.promptInstructions || ""}
+              onChange={(e) => setSetting("promptInstructions", e.target.value)}
+            />
+
+            <h3 style={s.settingLabel}>4 · Response format (JSON schema — edit with care)</h3>
+            <textarea
+              style={s.promptArea} rows={12} spellCheck={false}
+              value={settings.promptResponseFormat || ""}
+              onChange={(e) => setSetting("promptResponseFormat", e.target.value)}
+            />
+
+            <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 12 }}>
+              <button style={s.saveBtn} onClick={saveSettings}>Save settings</button>
+              {settingsStatus && (
+                <span style={{ fontSize: 13, color: settingsStatus.startsWith("✓") ? "#7ddb81" : "#e0a020" }}>
+                  {settingsStatus}
+                </span>
+              )}
+            </div>
           </section>
         )}
 
@@ -322,6 +498,13 @@ const s: Record<string, React.CSSProperties> = {
   input: { padding: "10px 14px", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, fontSize: 14, background: "rgba(255,255,255,0.05)", color: "#e8ecf5", outline: "none" },
   btn: { padding: "9px 18px", background: "linear-gradient(90deg, #0065BD, #4d9bff)", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 14, fontWeight: 600, boxShadow: "0 4px 14px rgba(0,101,189,0.4)" },
   deleteBtn: { padding: "5px 12px", background: "rgba(239,83,80,0.15)", color: "#ff9b98", border: "1px solid rgba(239,83,80,0.4)", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 600 },
+  toggleOn: { padding: "5px 16px", background: "rgba(76,175,80,0.18)", color: "#7ddb81", border: "1px solid rgba(76,175,80,0.5)", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 700, minWidth: 52 },
+  toggleOff: { padding: "5px 16px", background: "rgba(120,120,120,0.15)", color: "#9aa", border: "1px solid rgba(120,120,120,0.4)", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 700, minWidth: 52 },
+  settingHint: { color: "#888", fontSize: 13, marginTop: -8, marginBottom: 12 },
+  settingLabel: { fontSize: 14, fontWeight: 600, margin: "16px 0 6px", color: "#c6cde0" },
+  promptArea: { width: "100%", boxSizing: "border-box", fontFamily: "monospace", fontSize: 13, lineHeight: 1.5, padding: 12, borderRadius: 8, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(0,0,0,0.25)", color: "#dde3f0", resize: "vertical" },
+  fixedBlock: { fontFamily: "monospace", fontSize: 13, lineHeight: 1.5, padding: 12, borderRadius: 8, border: "1px dashed rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.04)", color: "#8a93a8", margin: 0, whiteSpace: "pre-wrap" },
+  saveBtn: { padding: "8px 20px", background: "#0065BD", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: 700 },
   success: { color: "#22c55e", marginBottom: 12, fontSize: 14 },
   table: { width: "100%", borderCollapse: "collapse", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, overflow: "hidden" },
   th: { textAlign: "left", padding: "12px 16px", background: "rgba(255,255,255,0.06)", fontSize: 13, fontWeight: 600, color: "#b8c1d9" },
