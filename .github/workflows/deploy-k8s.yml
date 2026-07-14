@@ -133,7 +133,7 @@ jobs:
       # Sensitive values (DB credentials, API keys) are passed at deploy time, not stored in values files.
       # PostgreSQL replication credentials enable primary-replica streaming replication for HA.
       # Grafana credentials from GitHub Secrets ensure secure admin access.
-      # --wait blocks until all pods are ready or the timeout is hit (ensures postgres starts).
+      # No --wait: readiness is gated by the explicit per-resource steps below instead (see comment above the helm command).
       - name: Deploy with Helm
         env:
           POSTGRES_USER: ${{ secrets.POSTGRES_USER || 'postgres' }}
@@ -180,13 +180,15 @@ jobs:
             exit 1
           fi
 
-          # --wait blocks until resources are ready. It tolerates promtail's one
-          # crashing pod because the DaemonSet's maxUnavailable:50% means helm's
-          # readiness check only needs ceil(28*0.5) pods ready, not all 28.
-          # (The separate kubectl rollout-status/wait steps below do NOT respect
-          # maxUnavailable, which is why promtail is best-effort there.)
-          # 8m ceiling: a routine deploy settles in ~6m; anything past that is a
-          # real failure we want surfaced quickly, not a 15m hang.
+          # No --wait here: helm's --wait requires 100% DaemonSet availability
+          # regardless of maxUnavailable (confirmed live twice — "Available:
+          # 27/28" ran out the clock at both 15m and 8m timeouts). promtail's
+          # cluster-wide discovery bug is fixed (see the promtail chart), but
+          # a single node's shared-cluster resource ceiling can still keep
+          # one replica down indefinitely, and that must not fail the whole
+          # deploy. The steps below do the real readiness gating instead:
+          # Deployments are a hard gate (next step), DaemonSets are
+          # best-effort (promtail is a log shipper, not the app under test).
           helm upgrade --install "$HELM_RELEASE_NAME" helm/team-devvopps/ \
             -f helm/team-devvopps/values-aet.yaml \
             --set postgres.credentials.username="$POSTGRES_USER" \
@@ -200,9 +202,7 @@ jobs:
             --set auth.jwtSigningKey="$JWT_SIGNING_KEY" \
             --set auth.adminEmail="$ADMIN_EMAIL" \
             --set auth.adminPassword="$ADMIN_PASSWORD" \
-            -n "$K8S_NAMESPACE" \
-            --wait \
-            --timeout 8m
+            -n "$K8S_NAMESPACE"
 
       # All images use the :latest tag, so helm upgrade alone does not restart
       # pods when only the image content changed. Force a rollout so every
