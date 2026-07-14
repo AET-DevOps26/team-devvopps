@@ -195,7 +195,7 @@ loki:
 # empty log dashboards) while keeping total namespace limits.cpu/memory
 # well under the quota.
 promtail:
-  image: grafana/promtail:3.0.0@sha256:d3de3da9431cfbe74a6a94555050df5257f357e827be8e63f8998d509c37af8b
+  image: grafana/promtail:3.6.8@sha256:6cfa64ec432b24a912d640e2edb940eeae2666f61861a66c121d763dd7241381
   # Log line format of the container runtime:
   #   cri    = containerd (AET cluster)
   #   docker = docker-desktop (values-local.yaml overrides to this)
