@@ -8,6 +8,31 @@ name: Deploy to AET Kubernetes Cluster
 # "another operation (install/upgrade/rollback) is in progress".
 on:
   workflow_call:
+    secrets:
+      KUBECONFIG:
+        required: true
+      POSTGRES_USER:
+        required: false
+      POSTGRES_PASSWORD:
+        required: true
+      POSTGRES_REPLICATION_USER:
+        required: false
+      POSTGRES_REPLICATION_PASSWORD:
+        required: true
+      GROQ_API_KEY:
+        required: false
+      LOGOS_API_KEY:
+        required: false
+      GRAFANA_ADMIN_USER:
+        required: true
+      GRAFANA_ADMIN_PASSWORD:
+        required: true
+      JWT_SIGNING_KEY:
+        required: true
+      ADMIN_EMAIL:
+        required: false
+      ADMIN_PASSWORD:
+        required: false
   workflow_dispatch:
 
 permissions:

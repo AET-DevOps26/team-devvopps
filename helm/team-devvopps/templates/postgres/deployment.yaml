@@ -31,6 +31,10 @@ spec:
           securityContext:
             runAsUser: 999
             runAsGroup: 999
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           # Resource limits required by AET cluster ResourceQuota
           # init-postgres only runs once during pod initialization (brief, light workload)
           resources:

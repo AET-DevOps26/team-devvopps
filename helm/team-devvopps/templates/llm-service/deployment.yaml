@@ -22,6 +22,11 @@ spec:
         - name: llm-service
           image: {{ .Values.imageRegistry }}/llm-service:{{ .Values.imageTag }}
           imagePullPolicy: {{ .Values.imagePullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           ports:
             - containerPort: {{ .Values.services.llmService.port }}
           resources:

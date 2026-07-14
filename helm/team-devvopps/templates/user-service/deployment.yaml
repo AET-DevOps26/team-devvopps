@@ -22,6 +22,11 @@ spec:
         - name: user-service
           image: {{ .Values.imageRegistry }}/user-service:{{ .Values.imageTag }}
           imagePullPolicy: {{ .Values.imagePullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           ports:
             - containerPort: {{ .Values.services.userService.port }}
           resources:
