@@ -40,6 +40,16 @@ spec:
                 port:
                   number: {{ .Values.services.llmService.port }}
 
+          # Grafana under /grafana — prefix is stripped by the rewrite, and
+          # GF_SERVER_ROOT_URL makes Grafana generate prefixed URLs back.
+          - path: /grafana(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: grafana
+                port:
+                  number: 3000
+
           - path: /()(.*)
             pathType: ImplementationSpecific
             backend:

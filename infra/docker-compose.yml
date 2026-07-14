@@ -5,9 +5,24 @@ services:
   # PostgreSQL database server initializes three schemas via init-databases.sql. Data persists in postgres_data volume.
   postgres:
     image: postgres:16
+    security_opt:
+      - no-new-privileges:true
+    # Can't cap_drop ALL here: the official entrypoint chowns/chmods the
+    # data dir as root on first init (fresh named volume starts root-owned,
+    # and compose has no fsGroup equivalent to pre-seed ownership like the
+    # Helm chart's postgres StatefulSet does). Drop everything except the
+    # handful of capabilities that startup step actually needs.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - FOWNER
+      - DAC_OVERRIDE
+      - SETUID
+      - SETGID
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ../server/init-databases.sql:/docker-entrypoint-initdb.d/init.sql
@@ -26,12 +41,16 @@ services:
     build:
       context: ../server/course-service
       dockerfile: Dockerfile.seeder
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: coursedb
       DB_USER: postgres
-      DB_PASSWORD: postgres
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     depends_on:
       postgres:
         condition: service_healthy
@@ -46,8 +65,12 @@ services:
   # Polls every 5s, times out after 360s (6 minutes).
   wait-for-courses:
     image: postgres:16
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
-      PGPASSWORD: postgres
+      PGPASSWORD: ${POSTGRES_PASSWORD:-postgres}
     depends_on:
       postgres:
         condition: service_healthy
@@ -67,11 +90,22 @@ services:
     build:
       context: ../server
       dockerfile: user-service/Dockerfile
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    ports:
+      - "127.0.0.1:8081:8081"
     environment:
       DB_HOST: postgres
       DB_NAME: userdb
       DB_USER: postgres
-      DB_PASSWORD: postgres
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      # Auth: signing key must match api-gateway's. Admin account is
+      # bootstrapped from infra/.env on startup (blank = skip bootstrap).
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:-dev-only-insecure-key-change-me-0123456789}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -80,11 +114,17 @@ services:
     build:
       context: ../server
       dockerfile: course-service/Dockerfile
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    ports:
+      - "127.0.0.1:8082:8082"
     environment:
       DB_HOST: postgres
       DB_NAME: coursedb
       DB_USER: postgres
-      DB_PASSWORD: postgres
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     depends_on:
       postgres:
         condition: service_healthy
@@ -103,11 +143,17 @@ services:
     build:
       context: ../server
       dockerfile: roadmap-service/Dockerfile
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    ports:
+      - "127.0.0.1:8083:8083"
     environment:
       DB_HOST: postgres
       DB_NAME: roadmapdb
       DB_USER: postgres
-      DB_PASSWORD: postgres
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       USER_SERVICE_HOST: user-service
       USER_SERVICE_PORT: "8081"        
       LLM_SERVICE_HOST: llm-service
@@ -123,8 +169,12 @@ services:
     build:
       context: ../server
       dockerfile: api-gateway/Dockerfile
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     environment:
       USER_SERVICE_HOST: user-service
       USER_SERVICE_PORT: "8081"        
@@ -132,6 +182,12 @@ services:
       COURSE_SERVICE_PORT: "8082"      
       ROADMAP_SERVICE_HOST: roadmap-service
       ROADMAP_SERVICE_PORT: "8083"
+      # Without this the gateway falls back to localhost:8084 and /llm/*
+      # proxying (token badge, admin logs) fails with connection refused.
+      LLM_SERVICE_HOST: llm-service
+      LLM_SERVICE_PORT: "8084"
+      # Must match user-service's JWT_SIGNING_KEY (verifies what it signs).
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:-dev-only-insecure-key-change-me-0123456789}
     depends_on:
       - user-service
       - course-service
@@ -142,6 +198,17 @@ services:
     build:
       context: ../client
       dockerfile: Dockerfile
+    security_opt:
+      - no-new-privileges:true
+    # nginx's master process chowns /var/cache/nginx etc. to uid 101 as root
+    # on startup; can't cap_drop ALL without that failing ("Operation not
+    # permitted"). Drop everything except what that one startup step needs.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
     ports:
       - "3000:80"
     depends_on:
@@ -156,8 +223,12 @@ services:
     build:
       context: ../server/llm-service
       dockerfile: Dockerfile
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
-      - "8084:8084"
+      - "127.0.0.1:8084:8084"
     depends_on:
       postgres:
         condition: service_healthy
@@ -184,8 +255,12 @@ services:
   # ── Monitoring ────────────────────────────────────────────────────────────
   prometheus:
     image: prom/prometheus:v2.52.0
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
       - ./prometheus/alerts.yaml:/etc/prometheus/alerts.yaml
@@ -201,6 +276,10 @@ services:
 
   grafana:
     image: grafana/grafana:10.2.3
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
       - "3001:3000"
     environment:
@@ -213,6 +292,7 @@ services:
       - ../helm/team-devvopps/grafana-dashboards/dashboard-request-metrics.json:/etc/grafana/provisioning/dashboards/request-metrics.json
       - ../helm/team-devvopps/grafana-dashboards/dashboard-system-health.json:/etc/grafana/provisioning/dashboards/system-health.json
       - ../helm/team-devvopps/grafana-dashboards/dashboard-logs.json:/etc/grafana/provisioning/dashboards/logs.json
+      - ../helm/team-devvopps/grafana-dashboards/dashboard-auth.json:/etc/grafana/provisioning/dashboards/auth.json
     depends_on:
       - prometheus
       - loki
@@ -220,8 +300,12 @@ services:
   # ── Logging ───────────────────────────────────────────────────────────────
   loki:
     image: grafana/loki:2.9.0
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
-      - "3100:3100"
+      - "127.0.0.1:3100:3100"
     volumes:
       - ./loki/loki-config.yaml:/etc/loki/local-config.yaml
       - loki_data:/loki
@@ -237,6 +321,10 @@ services:
     # 2.9.0's bundled docker client is incompatible with newer Docker Desktop
     # daemons (requires API >= 1.44); 3.0.0 fixes this.
     image: grafana/promtail:3.0.0
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     volumes:
       - ./promtail/promtail-config.yaml:/etc/promtail/config.yaml
       - /var/run/docker.sock:/var/run/docker.sock:ro

@@ -28,7 +28,7 @@ postgres:
   # Number of replicas: 2 = 1 primary + 1 replica (each gets separate storage)
   replicas: 2
   version: "16"
-  image: postgres:16
+  image: postgres:16@sha256:be01cf82fc7dbba824acf0a82e150b4b360f3ff93c6631d7844af431e841a95c
   # Storage per pod (StatefulSet creates separate PVC for each: postgres-storage-postgres-0, postgres-storage-postgres-1)
   # Total storage used = 2 × storage value
   storage: 1Gi
@@ -124,6 +124,17 @@ llmService:
   groqApiKey: ""
   logosApiKey: ""
 
+# Auth / JWT configuration (override via --set from infra/.env or GitHub Secrets)
+auth:
+  # HS256 signing key shared by user-service (signs) and api-gateway (verifies).
+  # MUST be at least 32 bytes. Empty here → required at deploy time via --set.
+  jwtSigningKey: ""
+  # Secure cookie flag: true for HTTPS environments; values-local.yaml sets false.
+  cookieSecure: true
+  # Optional admin account bootstrapped on user-service startup (blank = skip).
+  adminEmail: ""
+  adminPassword: ""
+
 # Prometheus Configuration
 # Requests match measured usage (Fair Use: reserve only what's measured).
 # Limits raised well above requests so query/scrape bursts aren't CFS-throttled
@@ -160,7 +171,7 @@ grafana:
 # Requests match measured usage. Limits raised so query bursts aren't
 # throttled (old 25m limit throttled ~34% of periods).
 loki:
-  image: grafana/loki:2.9.0
+  image: grafana/loki:2.9.0@sha256:b025a0220f390baaab01578aea2fe0ba677584d9f248c3fe5af15f84dd1de60d
   retention: 168h
   resources:
     requests:
@@ -184,7 +195,7 @@ loki:
 # empty log dashboards) while keeping total namespace limits.cpu/memory
 # well under the quota.
 promtail:
-  image: grafana/promtail:3.0.0
+  image: grafana/promtail:3.0.0@sha256:d3de3da9431cfbe74a6a94555050df5257f357e827be8e63f8998d509c37af8b
   # Log line format of the container runtime:
   #   cri    = containerd (AET cluster)
   #   docker = docker-desktop (values-local.yaml overrides to this)

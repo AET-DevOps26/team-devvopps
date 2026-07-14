@@ -2,32 +2,38 @@ name: Build Docker Images
 
 # Triggered on every push to main.
 # Builds all service images and pushes them to GitHub Container Registry (GHCR).
-# The deploy workflow listens for this workflow's completion before deploying.
+# On success on main, calls deploy-k8s.yml as a reusable workflow (workflow_call)
+# instead of deploy-k8s.yml listening via workflow_run — workflow_run runs with
+# full access to this repo's secrets regardless of what triggered the upstream
+# workflow, so making the dependency an explicit job-level call avoids that risk.
 
 on:
   push:
     branches:
     - main
-    - fix/llm
-    - feature/monitoring
+    - feature/signup-login
   workflow_dispatch:
 
-# Read access to repo contents; write access to push images to GHCR.      
 permissions:
   contents: read
-  packages: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Only this job pushes images to GHCR; deploy-k8s below doesn't need it.
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       # Authenticate with GHCR so we can push images.
       # GITHUB_TOKEN is automatically provided by GitHub Actions.
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -35,17 +41,17 @@ jobs:
 
       # QEMU enables building images for non-native architectures.
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
 
       # Buildx is required for advanced build features including GHA layer caching.
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       # Each service uses a separate cache scope so they don't overwrite each other.
       # cache-from: restores cached layers from the previous build.
       # cache-to mode=max: saves all intermediate layers, not just the final image.
       - name: Build and Push api-gateway
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
         with:
           context: ./server
           file: ./server/api-gateway/Dockerfile
@@ -55,7 +61,7 @@ jobs:
           cache-to: type=gha,scope=api-gateway,mode=max
 
       - name: Build and Push user-service
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
         with:
           context: ./server
           file: ./server/user-service/Dockerfile
@@ -65,7 +71,7 @@ jobs:
           cache-to: type=gha,scope=user-service,mode=max
 
       - name: Build and Push course-service
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
         with:
           context: ./server
           file: ./server/course-service/Dockerfile
@@ -75,7 +81,7 @@ jobs:
           cache-to: type=gha,scope=course-service,mode=max
 
       - name: Build and Push roadmap-service
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
         with:
           context: ./server
           file: ./server/roadmap-service/Dockerfile
@@ -85,7 +91,7 @@ jobs:
           cache-to: type=gha,scope=roadmap-service,mode=max
 
       - name: Build and Push client
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
         with:
           context: ./client
           file: ./client/Dockerfile
@@ -95,7 +101,7 @@ jobs:
           cache-to: type=gha,scope=client,mode=max
       
       - name: Build and Push llm-service
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
         with:
           context: ./server/llm-service
           file: ./server/llm-service/Dockerfile
@@ -105,7 +111,7 @@ jobs:
           cache-to: type=gha,scope=llm-service,mode=max
 
       - name: Build and Push course-seeder
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
         with:
           context: ./server/course-service
           file: ./server/course-service/Dockerfile.seeder
@@ -113,3 +119,21 @@ jobs:
           tags: ghcr.io/aet-devops26/team-devvopps/course-seeder:latest
           cache-from: type=gha,scope=course-seeder
           cache-to: type=gha,scope=course-seeder,mode=max
+
+  deploy-k8s:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/deploy-k8s.yml
+    secrets:
+      KUBECONFIG: ${{ secrets.KUBECONFIG }}
+      POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+      POSTGRES_REPLICATION_USER: ${{ secrets.POSTGRES_REPLICATION_USER }}
+      POSTGRES_REPLICATION_PASSWORD: ${{ secrets.POSTGRES_REPLICATION_PASSWORD }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      LOGOS_API_KEY: ${{ secrets.LOGOS_API_KEY }}
+      GRAFANA_ADMIN_USER: ${{ secrets.GRAFANA_ADMIN_USER }}
+      GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+      JWT_SIGNING_KEY: ${{ secrets.JWT_SIGNING_KEY }}
+      ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+      ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}

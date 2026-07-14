@@ -17,10 +17,15 @@ spec:
       labels:
         app: postgres
     spec:
+      # Doesn't call the Kubernetes API, so no need for its own service
+      # account token to be mounted into the pod.
+      automountServiceAccountToken: false
       # Pod-level security context (applies to all containers in the pod)
       # fsGroup ensures all processes can access volumes mounted with postgres group permissions
       securityContext:
         fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
       # Init container runs BEFORE main postgres container
       # Purpose: Set up storage (primary pod) or clone from primary (replica pods)
       initContainers:
@@ -31,6 +36,10 @@ spec:
           securityContext:
             runAsUser: 999
             runAsGroup: 999
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           # Resource limits required by AET cluster ResourceQuota
           # init-postgres only runs once during pod initialization (brief, light workload)
           resources:
@@ -153,6 +162,16 @@ spec:
       containers:
         - name: postgres
           image: {{ .Values.postgres.image }}
+          # Run as postgres user (UID 999), same as init-postgres above.
+          # Avoids needing chmod/chown capabilities at startup — fsGroup
+          # already gives this user ownership of the data volume.
+          securityContext:
+            runAsUser: 999
+            runAsGroup: 999
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           ports:
             - containerPort: {{ .Values.services.postgres.port }}
           resources:

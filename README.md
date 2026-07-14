@@ -280,14 +280,40 @@ redocly lint api/roadmap-service.yaml
 redocly lint api/llm-service.yaml
 ```
 ### Swagger UI
-Swagger UI is available, for local development, at `/swagger-ui.html` on each service:
+
+Swagger UI is available at `/swagger-ui.html` for each service.
+
+#### Docker Compose and local development
+
+When running with Docker Compose (`make docker-up`) or running the services locally (`make dev`):
 
 | Service | Local URL |
 |---|---|
 | User Service | http://localhost:8081/swagger-ui.html |
 | Course Service | http://localhost:8082/swagger-ui.html |
 | Roadmap Service | http://localhost:8083/swagger-ui.html |
-| LLM Service | http://localhost:8084/swagger-ui.html |
+| LLM Service | http://localhost:8084/docs |
+
+#### AET Kubernetes Cluster
+
+When deployed to the AET Kubernetes cluster, access the services using `kubectl port-forward`:
+
+```bash
+# Terminal 1: user-service
+kubectl port-forward svc/user-service 8081:8081 -n team-devvopps
+# Terminal 2: course-service
+kubectl port-forward svc/course-service 8082:8082 -n team-devvopps
+# Terminal 3: roadmap-service
+kubectl port-forward svc/roadmap-service 8083:8083 -n team-devvopps
+# Terminal 4: llm-service
+kubectl port-forward svc/llm-service 8084:8084 -n team-devvopps
+```
+
+The Swagger UIs are then available locally at:
+- http://localhost:8081/swagger-ui.html
+- http://localhost:8082/swagger-ui.html
+- http://localhost:8083/swagger-ui.html
+- http://localhost:8084/docs
 
 ### API Gateway
 The API Gateway exposes the current implemented service routes:
@@ -309,16 +335,37 @@ All service URLs are externalized as environment variables and centralized in:
 - `helm/team-devvopps/values.yaml` for Kubernetes deployments
 
 ### Endpoints
+
 Current implemented endpoints include:
 
-- `POST /users`
-- `GET /users`
-- `GET /users/{id}`
-- `GET /courses`
-- `GET /courses/{id}`
-- `GET /courses/search?title=<title>`
-- `POST /roadmaps/generate?userId=<id>&goal=<goal>`
-- `GET /roadmaps/{id}`
+#### User Service
+
+- `POST /users` — Create a new user
+- `GET /users` — Get all users
+- `GET /users/{id}` — Get a user by ID
+- `DELETE /users/{id}` — Delete a user by ID
+
+#### Course Service
+
+- `GET /courses` — Get all courses
+- `GET /courses/{id}` — Get a course by ID
+- `GET /courses/search?title=<title>` — Search courses by title
+
+#### Roadmap Service
+
+- `GET /roadmaps` — Get all roadmaps
+- `POST /roadmaps/generate?userId=<id>&goal=<goal>` — Generate a roadmap using the LLM service
+- `GET /roadmaps/{id}` — Get a roadmap by ID
+- `PATCH /roadmaps/{roadmapId}/tasks/{taskId}/complete` — Toggle task completion status
+- `GET /roadmaps/{roadmapId}/progress` — Get roadmap progress statistics
+
+#### LLM Service (not exposed through gateway)
+
+- `POST /recommend` — Generate an AI-powered roadmap recommendation
+- `GET /health` — Check LLM service health and active model
+- `GET /usage/{user_id}` — Get token usage and remaining quota for a user
+- `GET /logs` — Retrieve recent service logs
+- `GET /` — Get service information
 
 ## CI/CD
 
@@ -445,3 +492,19 @@ Every student contributor is responsible for keeping the project runnable, docum
 - **Linting:** Automatically runs on PR
 - **Docker images:** Automatically built and pushed to ghcr.io on merge
 - **Deployments:** Automatic to Azure VM, manual/automatic to AET cluster
+
+### Local Pre-commit Hooks
+
+Developer can install pre-commit hooks to run Lint OpenAPI specifications checks locally  before committing:
+
+```bash
+npm install
+pip install pre-commit 
+pre-commit install
+```
+
+After installation, configured checks run automatically on `git commit`. They can also be executed manually for all files:
+
+```bash
+pre-commit run -a
+```

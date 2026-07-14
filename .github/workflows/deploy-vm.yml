@@ -27,7 +27,9 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       
       # --- SSH access setup -------------------------------------------------
       # The VM's NSG only allows SSH (port 22) from the MWN/eduVPN range
@@ -42,7 +44,7 @@ jobs:
         # Required before any 'az' CLI command can manage Azure resources.
         # Uses the same service principle already used for Terraform/provisioning.
         # That principal needs "Network Contributor" on the NSG. 
-        uses: azure/login@v2
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
         with:
           creds: '{"clientId":"${{ secrets.ARM_CLIENT_ID }}","clientSecret":"${{ secrets.ARM_CLIENT_SECRET }}","subscriptionId":"${{ secrets.ARM_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.ARM_TENANT_ID }}"}'
 
@@ -78,7 +80,7 @@ jobs:
       # These are the only files needed on the VM; images are pulled from GHCR.
       # Must run after the NSG rule above, since this connects to SSH.
       - name: Copy Files to VM
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634 # v0.1.7
         with:
           host: ${{ vars.AZURE_PUBLIC_IP }}
           username: ${{ vars.AZURE_USER }}
@@ -89,7 +91,7 @@ jobs:
       # Write a .env.prod file on the VM with hostnames derived from the public IP.
       # nip.io provides free wildcard DNS so we don't need a custom domain.
       - name: SSH to VM and Create .env.prod
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
           host: ${{ vars.AZURE_PUBLIC_IP }}
           username: ${{ vars.AZURE_USER }}
@@ -104,7 +106,7 @@ jobs:
 
       # Pull the latest images from GHCR and restart all services.
       - name: SSH to VM and Execute Docker-Compose Up
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
           host: ${{ vars.AZURE_PUBLIC_IP }}
           username: ${{ vars.AZURE_USER }}

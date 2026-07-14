@@ -1,17 +1,42 @@
 name: Deploy to AET Kubernetes Cluster
 
-# Can be triggered manually via workflow_dispatch, or automatically on every push to main.
+# Called by build.yml as a reusable workflow once images are pushed to main,
+# or triggered manually via workflow_dispatch.
 # concurrency ensures only one deploy runs at a time per branch.
 # cancel-in-progress MUST stay false: killing helm mid-upgrade leaves the
 # release locked in pending-upgrade, and every later deploy fails with
 # "another operation (install/upgrade/rollback) is in progress".
 on:
-  workflow_run:
-    workflows:
-      - Build Docker Images
-    types:
-      - completed
+  workflow_call:
+    secrets:
+      KUBECONFIG:
+        required: true
+      POSTGRES_USER:
+        required: false
+      POSTGRES_PASSWORD:
+        required: true
+      POSTGRES_REPLICATION_USER:
+        required: false
+      POSTGRES_REPLICATION_PASSWORD:
+        required: true
+      GROQ_API_KEY:
+        required: false
+      LOGOS_API_KEY:
+        required: false
+      GRAFANA_ADMIN_USER:
+        required: true
+      GRAFANA_ADMIN_PASSWORD:
+        required: true
+      JWT_SIGNING_KEY:
+        required: true
+      ADMIN_EMAIL:
+        required: false
+      ADMIN_PASSWORD:
+        required: false
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: deploy-${{ github.ref }}
@@ -23,18 +48,15 @@ env:
 
 jobs:
   deploy:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'workflow_run' &&
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       - name: Set up Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@5119fcb9089d432beecbf79bb2c7915207344b78 # v3
         with:
           version: 'latest'
         env:
@@ -113,10 +135,22 @@ jobs:
           # admin/admin on the shared cluster would be a security risk.
           GRAFANA_ADMIN_USER: ${{ secrets.GRAFANA_ADMIN_USER }}
           GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+          # JWT signing key shared by user-service (signs) and api-gateway (verifies).
+          # Required — the auth-secret template fails the deploy if it is empty.
+          JWT_SIGNING_KEY: ${{ secrets.JWT_SIGNING_KEY }}
+          # Optional admin account bootstrapped on user-service startup.
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
         run: |
           if [ -z "$GRAFANA_ADMIN_USER" ] || [ -z "$GRAFANA_ADMIN_PASSWORD" ]; then
             echo "ERROR: GRAFANA_ADMIN_USER or GRAFANA_ADMIN_PASSWORD secret not configured"
             echo "Refusing to deploy Grafana with default admin/admin credentials"
+            exit 1
+          fi
+
+          if [ -z "$JWT_SIGNING_KEY" ]; then
+            echo "ERROR: JWT_SIGNING_KEY secret not configured"
+            echo "Add a random >=32-char key as the GitHub Secret 'JWT_SIGNING_KEY'"
             exit 1
           fi
 
@@ -142,6 +176,9 @@ jobs:
             --set llmService.logosApiKey="$LOGOS_API_KEY" \
             --set grafana.adminUser="$GRAFANA_ADMIN_USER" \
             --set grafana.adminPassword="$GRAFANA_ADMIN_PASSWORD" \
+            --set auth.jwtSigningKey="$JWT_SIGNING_KEY" \
+            --set auth.adminEmail="$ADMIN_EMAIL" \
+            --set auth.adminPassword="$ADMIN_PASSWORD" \
             -n "$K8S_NAMESPACE" \
             --wait \
             --timeout 10m

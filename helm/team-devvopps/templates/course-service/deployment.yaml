@@ -22,6 +22,11 @@ spec:
         - name: course-service
           image: {{ .Values.imageRegistry }}/course-service:{{ .Values.imageTag }}
           imagePullPolicy: {{ .Values.imagePullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           ports:
             - containerPort: {{ .Values.services.courseService.port }}
           resources:

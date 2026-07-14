@@ -21,6 +21,11 @@ spec:
         - name: api-gateway
           image: {{ .Values.imageRegistry }}/api-gateway:{{ .Values.imageTag }}
           imagePullPolicy: {{ .Values.imagePullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           ports:
             - containerPort: {{ .Values.services.apiGateway.port }}
           resources:
@@ -37,6 +42,16 @@ spec:
               value: course-service
             - name: ROADMAP_SERVICE_HOST
               value: roadmap-service
+            - name: LLM_SERVICE_HOST
+              value: llm-service
+            - name: LLM_SERVICE_PORT
+              value: "8084"
+            # Auth: JWT verification key (must match user-service's signing key).
+            - name: JWT_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: auth-secret
+                  key: jwt-signing-key
           readinessProbe:
             httpGet:
               path: /actuator/health

@@ -1,7 +1,8 @@
 openapi: 3.0.3
+
 info:
   title: Roadmap Service API
-  description: Generates and retrieves roadmaps. Calls user-service to verify users and the GenAI service to generate roadmap content.
+  description: Generates, retrieves and manages personalised learning roadmaps.
   version: 1.0.0
 
 servers:
@@ -13,18 +14,52 @@ tags:
     description: Roadmap management
 
 paths:
+
+  /roadmaps:
+    get:
+      tags: [roadmaps]
+      summary: Get roadmaps for the authenticated user
+      operationId: getRoadmaps
+      parameters:
+        - name: X-User-Id
+          in: header
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: List of roadmaps belonging to the user
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Roadmap'
+
+  /roadmaps/all:
+    get:
+      tags: [roadmaps]
+      summary: Get all roadmaps (admin)
+      operationId: getAllRoadmaps
+      responses:
+        '200':
+          description: List of all roadmaps
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Roadmap'
+
   /roadmaps/generate:
     post:
       tags: [roadmaps]
-      summary: Generate a roadmap for a user
+      summary: Generate a roadmap
       operationId: generateRoadmap
-      description: >
-        Verifies the user via user-service, then generates a roadmap for the
-        given goal. This endpoint calls the GenAI service to produce AI-generated 
-        milestones, tasks, and recommended courses.
       parameters:
-        - name: userId
-          in: query
+        - name: X-User-Id
+          in: header
           required: true
           schema:
             type: integer
@@ -34,7 +69,7 @@ paths:
           required: true
           schema:
             type: string
-          description: The user's goal in natural language
+          description: Learning goal used for AI roadmap generation
       responses:
         '200':
           description: Generated roadmap
@@ -43,13 +78,25 @@ paths:
               schema:
                 $ref: '#/components/schemas/Roadmap'
         '404':
-          description: User not found
+          description: User does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: LLM token quota exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: LLM returned invalid roadmap data
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '503':
-          description: User service unreachable
+          description: Dependent service unavailable
           content:
             application/json:
               schema:
@@ -58,9 +105,15 @@ paths:
   /roadmaps/{id}:
     get:
       tags: [roadmaps]
-      summary: Get a roadmap by ID
+      summary: Get roadmap by ID
       operationId: getRoadmap
       parameters:
+        - name: X-User-Id
+          in: header
+          required: true
+          schema:
+            type: integer
+            format: int64
         - name: id
           in: path
           required: true
@@ -81,46 +134,171 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /roadmaps/{roadmapId}/tasks/{taskId}/complete:
+    patch:
+      tags: [roadmaps]
+      summary: Toggle task completion
+      operationId: toggleTaskCompletion
+      parameters:
+        - name: X-User-Id
+          in: header
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: roadmapId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Updated roadmap
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Roadmap'
+        '404':
+          description: Roadmap or task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /roadmaps/{roadmapId}/progress:
+    get:
+      tags: [roadmaps]
+      summary: Get roadmap progress
+      operationId: getRoadmapProgress
+      parameters:
+        - name: roadmapId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Progress information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoadmapProgress'
+        '404':
+          description: Roadmap not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
   schemas:
+
     Roadmap:
       type: object
       properties:
-        id:
+        roadmap_id:
           type: integer
           format: int64
-          readOnly: true
+        user_id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        created_date:
+          type: string
+          format: date-time
+        progress:
+          type: integer
+          example: 50
         goal:
           $ref: '#/components/schemas/Goal'
         milestones:
           type: array
           items:
-            type: string
-        tasks:
-          type: array
-          items:
-            type: string
-        createdDate:
-          type: string
-          format: date-time
+            $ref: '#/components/schemas/Milestone'
 
     Goal:
       type: object
       properties:
-        id:
+        goal_id:
           type: integer
           format: int64
-          readOnly: true
         description:
           type: string
-        createdDate:
+        created_date:
           type: string
           format: date-time
+
+    Milestone:
+      type: object
+      properties:
+        milestone_id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum:
+            - NOT_STARTED
+            - IN_PROGRESS
+            - COMPLETED
+        orderIndex:
+          type: integer
+        course_id:
+          type: integer
+          format: int64
+          nullable: true
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+
+    Task:
+      type: object
+      properties:
+        task_id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        completed:
+          type: boolean
+
+    RoadmapProgress:
+      type: object
+      properties:
+        completedMilestones:
+          type: integer
+        totalMilestones:
+          type: integer
+        completedTasks:
+          type: integer
+        totalTasks:
+          type: integer
+        roadmapCompleted:
+          type: boolean
 
     ErrorResponse:
       type: object
       properties:
-        code:
+        timestamp:
+          type: string
+        status:
           type: integer
+        error:
+          type: string
         message:
+          type: string
+        path:
           type: string
