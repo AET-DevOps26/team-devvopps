@@ -180,11 +180,13 @@ jobs:
             exit 1
           fi
 
-          # timeout: measured 6m29s for a routine deploy (one DaemonSet
-          # change) vs 10m45s+ (timed out at 27/28 promtail pods) for a
-          # deploy that changed securityContext on all 11 workloads at
-          # once — a one-time cost the first time this many resources
-          # change together, not a sign of a slower baseline going forward.
+          # --wait blocks until resources are ready. It tolerates promtail's one
+          # crashing pod because the DaemonSet's maxUnavailable:50% means helm's
+          # readiness check only needs ceil(28*0.5) pods ready, not all 28.
+          # (The separate kubectl rollout-status/wait steps below do NOT respect
+          # maxUnavailable, which is why promtail is best-effort there.)
+          # 8m ceiling: a routine deploy settles in ~6m; anything past that is a
+          # real failure we want surfaced quickly, not a 15m hang.
           helm upgrade --install "$HELM_RELEASE_NAME" helm/team-devvopps/ \
             -f helm/team-devvopps/values-aet.yaml \
             --set postgres.credentials.username="$POSTGRES_USER" \
@@ -200,7 +202,7 @@ jobs:
             --set auth.adminPassword="$ADMIN_PASSWORD" \
             -n "$K8S_NAMESPACE" \
             --wait \
-            --timeout 15m
+            --timeout 8m
 
       # All images use the :latest tag, so helm upgrade alone does not restart
       # pods when only the image content changed. Force a rollout so every
@@ -239,6 +241,14 @@ jobs:
       # DaemonSets (e.g. promtail) are not covered by the Deployment restart loop above.
       # Without this, DaemonSet pods keep running with whatever resource limits they
       # started with, even after values.yaml/template changes are deployed via helm upgrade.
+      #
+      # BEST-EFFORT: promtail is a log shipper — it must not gate the app deploy.
+      # `kubectl rollout status` for a DaemonSet ignores maxUnavailable and demands
+      # 100% availability, so a single pod stuck on a node we don't control (e.g.
+      # worker5 inotify exhaustion) would otherwise block the workflow for the full
+      # timeout and fail it. We restart, then wait with a SHORT timeout and treat a
+      # non-ready DaemonSet as a WARNING, not a deploy failure. App readiness is
+      # gated by the Deployment loop above, not by log collection.
       - name: Restart daemonsets to pull latest images
         run: |
           set -euo pipefail
@@ -254,19 +264,14 @@ jobs:
             kubectl rollout restart daemonset/"$ds" -n "$K8S_NAMESPACE"
           done
 
-          failed=0
           for ds in $daemonsets; do
-            echo "Waiting for rollout of daemonset/$ds"
-            if ! kubectl rollout status daemonset/"$ds" -n "$K8S_NAMESPACE" --timeout=10m; then
-              echo "::error::Rollout failed for daemonset/$ds"
-              failed=1
+            echo "Waiting (best-effort) for rollout of daemonset/$ds"
+            if ! kubectl rollout status daemonset/"$ds" -n "$K8S_NAMESPACE" --timeout=2m; then
+              echo "::warning::daemonset/$ds did not reach full availability within 2m."
+              echo "::warning::This is non-fatal — log shipping is best-effort. Current state:"
+              kubectl get pods -n "$K8S_NAMESPACE" -l "app=$ds" -o wide 2>/dev/null || true
             fi
           done
-
-          if [ "$failed" -ne 0 ]; then
-            echo "One or more daemonsets failed to roll out"
-            exit 1
-          fi
 
       # Quick sanity check — prints pod/service/ingress state immediately after deploy.
       - name: Verify deployment
@@ -280,13 +285,18 @@ jobs:
           echo "Release status:"
           helm status "$HELM_RELEASE_NAME" -n "$K8S_NAMESPACE"
 
-      # Exclude the course-seeder job from readiness check (it is a one-off job
-      # that runs to completion and exits, so it will never reach Ready state).
+      # Gate on application pods being ready. Two exclusions:
+      #  - course-seeder: a one-off job that runs to completion and exits, so it
+      #    never reaches Ready.
+      #  - promtail: a best-effort log shipper (DaemonSet). One pod stuck on a
+      #    node we don't control (worker5 inotify exhaustion) must not fail the
+      #    app deploy or burn the full timeout here; its state is reported as a
+      #    warning by the daemonset step above.
       - name: Wait for pods to be ready
         run: |
-          echo "Waiting for deployment pods to be ready..."
+          echo "Waiting for application pods to be ready..."
           kubectl wait --for=condition=ready pod \
-            --selector='job-name!=course-seeder' \
+            --selector='job-name!=course-seeder,app!=promtail' \
             -n "$K8S_NAMESPACE" \
             --timeout=5m
 
