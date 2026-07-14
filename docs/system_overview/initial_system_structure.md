@@ -22,7 +22,7 @@ The API Gateway acts as the central entry point for all frontend requests and ro
 
 # Server Side : Spring Boot Microservices 
 
-The backend will be implemented using Spring Boot and divided into multiple microservices inside the Spring Boot subsystem. These services act as the conection layer between the frontend, GenAI microservice, and database.
+The backend will be implemented using Spring Boot and divided into multiple microservices inside the Spring Boot subsystem. These services act as the connection layer between the frontend, GenAI microservice, and database.
 
 ## API Gateway
 
@@ -45,9 +45,9 @@ The Roadmap Service stores, retrieves, and updates generated roadmaps. It commun
 
 ### 2. Course Service: 
 
-The course service manages TUM course information stored in the databse. It searches course titles and descriptions using keywords extracted from the user prompt.
+The course service manages TUM course information stored in the database. It searches course titles and descriptions using keywords extracted from the user prompt.
 
-- Responisbilities:
+- Responsibilities:
     - Search TUM course data
     - Retrieve course descriptions, titles, and prerequisites
     - Provide relevant course context to the GenAI service
@@ -91,7 +91,7 @@ The generated roadmap is returned as a structured JSON object containing milesto
 
 ## External AI Service
 
-The syste integrates an external AI servie using the Gemini API. The Gemini API is accessed through the LangChain RAG Orchestrator inside the GenAI microservice.
+The system integrates an external AI service using the Gemini API. The Gemini API is accessed through the LangChain RAG Orchestrator inside the GenAI microservice.
 
 - External AI service responsibilities:
     - Generate roadmap content

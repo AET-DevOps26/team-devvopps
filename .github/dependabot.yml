@@ -1,0 +1,49 @@
+version: 2
+updates:
+  # Keeps the commit-SHA-pinned actions (see workflow files) up to date —
+  # Dependabot understands the "# vX" comment and proposes SHA bumps as PRs.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: "npm"
+    directory: "/client"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: "gradle"
+    directory: "/server"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: "docker"
+    directories:
+      - "/client"
+      - "/server/api-gateway"
+      - "/server/user-service"
+      - "/server/course-service"
+      - "/server/roadmap-service"
+      - "/server/llm-service"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+
+  # Unverified: Dependabot's docker ecosystem is documented for Dockerfiles
+  # and docker-compose files, not custom Helm values.yaml structure. Added
+  # to try tracking the postgres/loki/promtail/prometheus digest pins in
+  # helm/team-devvopps — if it doesn't detect them after the first
+  # scheduled run, these 4 images will need manual digest bumps instead.
+  - package-ecosystem: "docker"
+    directory: "/helm/team-devvopps"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7

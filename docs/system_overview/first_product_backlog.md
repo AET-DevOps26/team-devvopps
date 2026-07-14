@@ -20,6 +20,6 @@
 | SS1  | Backend Course Filtering Logic   | Implement keyword-based filtering of relevant TUM courses before GenAI invocation. (Potentially with embeddings later on)             
 | SS2  | Combine Prompt with Context  | Combine user goal with retrieved course data before sending request to GenAI service. |
 | SS3 | Restrict Editing   | Ensure that generated roadmaps cannot be modified by users in the initial version.|
-| SS4 | Goal Input UI   | Provide a single input field and guide users to enter specific goals. (Potentially allow a chatbox interaction. The AI compoment asks back the user to specifiy their goal.)|
+| SS4 | Goal Input UI   | Provide a single input field and guide users to enter specific goals. (Potentially allow a chatbox interaction. The AI component asks back the user to specify their goal.)|
 
 

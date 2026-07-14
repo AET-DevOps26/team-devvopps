@@ -72,6 +72,19 @@ async function fetchUsageData(): Promise<TokenUsage | null> {
   }
 }
 
+// Fetches the runtime feature flags (admin-toggleable). Returns a name→enabled
+// map; on failure an empty map, so callers fall back to their defaults.
+async function fetchFeaturesData(): Promise<Record<string, boolean>> {
+  try {
+    const res = await fetch(`${API_URL}/features`, { credentials: "include" });
+    if (!res.ok) return {};
+    const list: { name: string; enabled: boolean }[] = await res.json();
+    return Object.fromEntries(list.map((f) => [f.name, f.enabled]));
+  } catch {
+    return {};
+  }
+}
+
 // Loads the signed-in user's saved roadmaps (newest first). Returns [] on failure.
 async function fetchMyRoadmapsData(): Promise<RoadmapResponse[]> {
   try {
@@ -124,6 +137,8 @@ export default function RoadmapChat() {
   const [togglingTaskId, setTogglingTaskId] = useState<number | null>(null);
   const [usage, setUsage] = useState<TokenUsage | null>(null);
   const [myRoadmaps, setMyRoadmaps] = useState<RoadmapResponse[]>([]);
+  // Feature flags — default to "enabled" until fetched so nothing flickers off.
+  const [flags, setFlags] = useState<Record<string, boolean>>({});
 
   // Token usage is best-effort: fetch on mount and refresh after each
   // generation so the remaining balance stays in sync.
@@ -137,14 +152,29 @@ export default function RoadmapChat() {
     setMyRoadmaps(await fetchMyRoadmapsData());
   }
 
+  // Opens/closes the roadmap view AND mirrors it in the URL hash
+  // (#roadmap-15), so a page refresh restores the same view instead of
+  // falling back to the start screen (plain useState resets on reload).
+  const showRoadmap = (r: RoadmapResponse | null) => {
+    window.location.hash = r ? `roadmap-${r.roadmap_id}` : "";
+    setRoadmap(r);
+  };
+
   // On mount, load token usage and the user's saved roadmaps in parallel.
   useEffect(() => {
     let active = true;
     (async () => {
-      const [u, rms] = await Promise.all([fetchUsageData(), fetchMyRoadmapsData()]);
+      const [u, rms, f] = await Promise.all([fetchUsageData(), fetchMyRoadmapsData(), fetchFeaturesData()]);
       if (!active) return;
       if (u) setUsage(u);
       setMyRoadmaps(rms);
+      setFlags(f);
+      // Restore the roadmap referenced in the URL hash (set by showRoadmap).
+      const m = window.location.hash.match(/^#roadmap-(\d+)$/);
+      if (m) {
+        const saved = rms.find((r) => r.roadmap_id === Number(m[1]));
+        if (saved) setRoadmap(saved);
+      }
     })();
     return () => { active = false; };
   }, []);
@@ -184,7 +214,7 @@ export default function RoadmapChat() {
 
       if (!res.ok) throw new Error(`Error ${res.status}: ${res.statusText}`);
       const data: RoadmapResponse = await res.json();
-      setRoadmap(data);
+      showRoadmap(data);
       fetchUsage();
       refreshMyRoadmaps();
 
@@ -274,7 +304,7 @@ export default function RoadmapChat() {
               <p style={styles.heroSub}>Tell us your learning goal — we'll build your roadmap.</p>
             </div>
 
-            {usage && (
+            {usage && flags.tokenQuota !== false && (
               <div style={styles.tokenBar}>
                 <div style={styles.tokenRow}>
                   <span style={styles.tokenLabel}>🎫 Remaining tokens</span>
@@ -330,7 +360,7 @@ export default function RoadmapChat() {
               const p = roadmapProgress(r);
               const barColor = p.pct === 100 ? GREEN : BRAND_GLOW;
               return (
-                <button key={r.roadmap_id} style={styles.savedCard} onClick={() => setRoadmap(r)}>
+                <button key={r.roadmap_id} style={styles.savedCard} onClick={() => showRoadmap(r)}>
                   <div style={styles.savedCardRow}>
                     <span style={styles.savedCardTitle}>{niceTitle(r.title)}</span>
                     <span style={{ fontWeight: 700, color: barColor }}>{p.pct}%</span>
@@ -358,7 +388,7 @@ export default function RoadmapChat() {
                   <p style={styles.rmGoal}>Goal: {niceTitle(roadmap.title)}</p>
                 </div>
               </div>
-              <button style={styles.ghostBtn} onClick={() => { setRoadmap(null); setGoal(""); refreshMyRoadmaps(); }}>
+              <button style={styles.ghostBtn} onClick={() => { showRoadmap(null); setGoal(""); refreshMyRoadmaps(); }}>
                 ← My roadmaps
               </button>
             </div>
@@ -459,7 +489,7 @@ export default function RoadmapChat() {
 
             <button
               style={styles.primaryBtn}
-              onClick={() => { setRoadmap(null); setGoal(""); refreshMyRoadmaps(); }}
+              onClick={() => { showRoadmap(null); setGoal(""); refreshMyRoadmaps(); }}
             >
               + New roadmap
             </button>

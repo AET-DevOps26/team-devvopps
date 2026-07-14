@@ -3,6 +3,16 @@ kind: Job
 metadata:
   name: course-seeder
   namespace: {{ .Values.namespace }}
+  # Helm hook: the seeder is a one-off task, not a regular release resource.
+  # - post-install/post-upgrade: helm runs it fresh AFTER each deploy instead
+  #   of trying to patch the previous (immutable, completed) Job.
+  # - before-hook-creation: helm deletes the old Job itself, so the manual
+  #   "kubectl delete job" cleanup steps are no longer needed.
+  # This also removes the --wait race where ttlSecondsAfterFinished deleted
+  # the Job mid-wait and helm failed with "Job not ready: NotFound".
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation
 spec:
   ttlSecondsAfterFinished: 300
   template:

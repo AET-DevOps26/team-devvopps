@@ -17,10 +17,23 @@ spec:
       # Disable legacy Docker-link env injection (USER_SERVICE_PORT=tcp://... etc.)
       # which collides with Spring relaxed binding of user.service.port properties.
       enableServiceLinks: false
+      # nginx's master process normally chowns its cache/run dirs to uid 101
+      # (the image's nginx user) as root before dropping privileges. With ALL
+      # capabilities dropped it can't chown, so we run as 101 from the start
+      # and fsGroup makes the emptyDir mounts writable by that uid instead.
+      securityContext:
+        fsGroup: 101
       containers:
         - name: client
           image: {{ .Values.imageRegistry }}/client:{{ .Values.imageTag }}
           imagePullPolicy: {{ .Values.imagePullPolicy }}
+          securityContext:
+            runAsUser: 101
+            runAsGroup: 101
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           ports:
             - containerPort: {{ .Values.services.client.port }}
           resources:

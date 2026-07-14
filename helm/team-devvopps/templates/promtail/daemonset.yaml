@@ -6,6 +6,15 @@ metadata:
   name: promtail
   namespace: {{ .Values.namespace }}
 spec:
+  # The cluster has ~28 nodes; the default rolling update (maxUnavailable: 1)
+  # replaces promtail pods nearly one node at a time, which blows past helm's
+  # --wait timeout ("DaemonSet not ready: Updated: 11/28"). Promtail is a log
+  # shipper — restarting half the fleet at once only delays log delivery
+  # briefly, so trade availability for rollout speed.
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 50%
   selector:
     matchLabels:
       app: promtail
@@ -15,6 +24,9 @@ spec:
         app: promtail
     spec:
       serviceAccountName: promtail
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: promtail
           image: {{ .Values.promtail.image }}
@@ -60,6 +72,25 @@ spec:
             - name: docker-logs
               mountPath: /var/lib/docker/containers
               readOnly: true
+          # timeoutSeconds raised from the 1s default: during a full cluster
+          # rollout (kubectl rollout restart of every deployment at once),
+          # promtail is busy tailing many log targets simultaneously and can
+          # take longer than 1s to answer, causing false Unhealthy events
+          # even though the process itself is fine.
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 9080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 9080
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
       volumes:
         - name: promtail-config
           configMap:

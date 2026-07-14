@@ -93,15 +93,17 @@ k8s-deploy: k8s-build
 		exit 1; \
 	fi
 	@GROQ_KEY=$$(grep -E '^GROQ_API_KEY=' infra/.env 2>/dev/null | cut -d= -f2-); \
-	if [ -z "$$GROQ_KEY" ]; then echo "WARNING: no GROQ_API_KEY in infra/.env — LLM calls will fail"; fi; \
+	LOGOS_KEY=$$(grep -E '^LOGOS_API_KEY=' infra/.env 2>/dev/null | cut -d= -f2-); \
+	if [ -z "$$GROQ_KEY" ] && [ -z "$$LOGOS_KEY" ]; then echo "WARNING: no GROQ_API_KEY or LOGOS_API_KEY in infra/.env — LLM calls will fail"; fi; \
+	if [ -n "$$LOGOS_KEY" ]; then echo "NOTE: LOGOS_API_KEY set — llm-service will use TUM Logos (needs eduVPN off-campus). Comment it out in infra/.env to use Groq."; fi; \
 	JWT_KEY=$$(grep -E '^JWT_SIGNING_KEY=' infra/.env 2>/dev/null | cut -d= -f2-); \
 	if [ -z "$$JWT_KEY" ]; then JWT_KEY=$$(openssl rand -hex 32); echo "NOTE: no JWT_SIGNING_KEY in infra/.env — generated an ephemeral key (sessions reset each deploy)"; fi; \
 	ADMIN_EMAIL=$$(grep -E '^ADMIN_EMAIL=' infra/.env 2>/dev/null | cut -d= -f2-); \
 	ADMIN_PASSWORD=$$(grep -E '^ADMIN_PASSWORD=' infra/.env 2>/dev/null | cut -d= -f2-); \
-	kubectl delete job course-seeder -n $(NAMESPACE) --ignore-not-found 2>/dev/null; \
 	helm upgrade --install team-devvopps helm/team-devvopps/ \
 		-f helm/team-devvopps/values-local.yaml \
 		--set llmService.groqApiKey="$$GROQ_KEY" \
+		--set llmService.logosApiKey="$$LOGOS_KEY" \
 		--set auth.jwtSigningKey="$$JWT_KEY" \
 		--set auth.adminEmail="$$ADMIN_EMAIL" \
 		--set auth.adminPassword="$$ADMIN_PASSWORD" \
