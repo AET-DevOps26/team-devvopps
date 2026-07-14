@@ -237,15 +237,6 @@ make helm-install-aet                   # Manual deploy fallback (requires crede
 > ⚠️ Remember to switch back with `kubectl config use-context docker-desktop`
 > before working locally again.
 
-#### Old Plain-YAML Manifests (Fallback Only)
-
-The original hand-written manifests in `infra/k8s/` are kept as a fallback.
-Do **not** mix with the Helm-based deploy — run `make k8s-down` before switching methods.
-
-```bash
-make k8s-deploy-old   # Build images and deploy using infra/k8s/ manifests
-```
-
 ### Azure VM (Cloud)
 
 > ⚠️ The VM is stopped by default to preserve free credits. Always stop it again after use.
@@ -379,7 +370,8 @@ GitHub Actions workflows are defined in `.github/workflows/`.
 | `deploy-k8s.yml` | Push to `main`, manual dispatch | Deploys the Helm chart to the AET Kubernetes cluster |
 | `provision.yml` | Manual dispatch | Provisions or imports Azure resources with Terraform, temporarily opens SSH for the runner's IP, configures the VM with Ansible, and updates the Azure public IP GitHub variable, then closes SSH access again |
 | `vm-start.yml` | Manual dispatch | Starts the Azure VM |
-| `vm-stop.yml` | Manual dispatch | Deallocates the Azure VM to stop billing 
+| `vm-stop.yml` | Manual dispatch | Deallocates the Azure VM to stop billing |
+| `testing.yml` | Pull requests to `main`, pushes to `main` | Runs Spring Boot tests for all backend services, pytest tests for the LLM service and vitest tests for the client |
 
 **Required GitHub configuration:**
 
@@ -457,7 +449,7 @@ For deployment to the AET Kubernetes cluster used in the course:
 
 ### Local Logs
 
-`make dev` writes Spring Boot logs to `logs/`:
+`make dev` writes Spring Boot logs to `logs/`
 
 ### For AET Kubernetes
 | Name | Type | Description |
@@ -473,11 +465,50 @@ For deployment to the AET Kubernetes cluster used in the course:
 | `LOGOS_API_KEY` | secret | Logos API key for llm-service (optional) |
 | `K8S_NAMESPACE` | variable | Kubernetes namespace (`team-devvopps`) |
 
+
+## Testing
+
+The project contains Spring Boot test suites for all backend services, pytest tests for the llm-service, and vitest tests the React client. 
+
+### Run all 
+
+```bash
+make test
+```
+
+### Run Spring Boot tests
+
+```bash
+make test-server
+```
+
+### Run tests for a specific service
+
+```bash
+cd server
+make test-user 
+make test-course
+make test-roadmap
+make test-gateway
+```
+
+### Run LLM Service Tests
+
+```bash
+make test-llm
+```
+
+### Run Client Tests
+
+```bash
+make test-client
+```
+
 ## Student Responsibilities
 
 Every student contributor is responsible for keeping the project runnable, documented, and reviewable.
 
-- Work on feature branches and open pull requests into `main`.
+- Work on feature/fix branches and open pull requests into `main`.
 - Keep changes small enough to review and describe the tested behavior in the PR.
 - Run relevant local checks before requesting review.
 - Update OpenAPI specs in `api/` whenever service endpoints or request/response shapes change.
