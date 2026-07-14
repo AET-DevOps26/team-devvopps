@@ -87,6 +87,19 @@ jobs:
           key: ${{ secrets.AZURE_PRIVATE_KEY }}
           source: "compose.azure.yml,server/init-databases.sql"
           target: /home/${{ vars.AZURE_USER }}
+      
+      # Refuse to deploy if POSTGRES_PASSWORD is not configured.
+      # ${{ secrets.X }} is always redacted/empty in `run:` shells, so we
+      # pass it explicitly via env: so the shell can actually test it.
+      - name: Check required secrets
+        env:
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+        run: |
+          if [ -z "$POSTGRES_PASSWORD" ]; then
+            echo "ERROR: POSTGRES_PASSWORD secret is not configured."
+            echo "Refusing to deploy postgres with a well-known default credential."
+            exit 1
+          fi
 
       # Write a .env.prod file on the VM with hostnames derived from the public IP.
       # nip.io provides free wildcard DNS so we don't need a custom domain.
@@ -103,6 +116,7 @@ jobs:
             echo "SERVER_HOST=api.${{ vars.AZURE_PUBLIC_IP }}.nip.io" >> .env.prod
             echo "PUBLIC_API_URL=https://api.${{ vars.AZURE_PUBLIC_IP }}.nip.io" >> .env.prod
             echo "GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}" >> .env.prod
+            echo "POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}" >> .env.prod
 
       # Pull the latest images from GHCR and restart all services.
       - name: SSH to VM and Execute Docker-Compose Up
