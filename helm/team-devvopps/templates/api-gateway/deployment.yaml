@@ -21,6 +21,11 @@ spec:
         - name: api-gateway
           image: {{ .Values.imageRegistry }}/api-gateway:{{ .Values.imageTag }}
           imagePullPolicy: {{ .Values.imagePullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           ports:
             - containerPort: {{ .Values.services.apiGateway.port }}
           resources:
