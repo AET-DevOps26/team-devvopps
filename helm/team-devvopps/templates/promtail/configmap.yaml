@@ -31,6 +31,14 @@ data:
           - {{ .Values.promtail.pipelineStage }}: {}
 
         relabel_configs:
+          # Without this, every replica of the DaemonSet discovers every pod in
+          # the namespace cluster-wide (kubernetes_sd_configs is scoped by
+          # namespace, not by node), multiplying file-target-manager watches
+          # by the node count and exhausting file descriptors. $HOSTNAME is
+          # injected as spec.nodeName and expanded via -config.expand-env=true.
+          - source_labels: ['__meta_kubernetes_pod_node_name']
+            regex: '${HOSTNAME}'
+            action: keep
           # "service" label keeps parity with docker-compose so the Grafana
           # Logs dashboard queries ({service=~".+"}) work unchanged.
           - source_labels: ['__meta_kubernetes_pod_label_app']

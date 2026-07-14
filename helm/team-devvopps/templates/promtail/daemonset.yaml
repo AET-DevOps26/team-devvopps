@@ -32,6 +32,7 @@ spec:
           image: {{ .Values.promtail.image }}
           args:
             - '-config.file=/etc/promtail/promtail-config.yaml'
+            - '-config.expand-env=true'
           ports:
             - containerPort: 9080
           env:
