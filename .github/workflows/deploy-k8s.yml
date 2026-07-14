@@ -172,6 +172,13 @@ jobs:
           # propagation race, not a real deploy failure (a manual re-run
           # always succeeds). Retrying in-place avoids needing a human to
           # notice and re-trigger the workflow.
+          #
+          # timeout raised from 10m to 15m: whenever a change to promtail's
+          # DaemonSet spec is part of the release (e.g. security-context
+          # fields), --wait now also waits for that rollout across all 28
+          # cluster nodes here, not just in the later dedicated "Restart
+          # daemonsets" step — and that rollout alone has taken up to ~9m
+          # on its own in past runs.
           for attempt in 1 2 3; do
             if helm upgrade --install "$HELM_RELEASE_NAME" helm/team-devvopps/ \
               -f helm/team-devvopps/values-aet.yaml \
@@ -188,7 +195,7 @@ jobs:
               --set auth.adminPassword="$ADMIN_PASSWORD" \
               -n "$K8S_NAMESPACE" \
               --wait \
-              --timeout 10m; then
+              --timeout 15m; then
               break
             fi
             if [ "$attempt" -eq 3 ]; then
