@@ -171,7 +171,7 @@ grafana:
 # Requests match measured usage. Limits raised so query bursts aren't
 # throttled (old 25m limit throttled ~34% of periods).
 loki:
-  image: grafana/loki:2.9.0@sha256:b025a0220f390baaab01578aea2fe0ba677584d9f248c3fe5af15f84dd1de60d
+  image: grafana/loki:3.7.3@sha256:70b9f699fc9bb868b62f1cfd4f787dfa50242f1fd92e6089787d5d7daea75fe8
   retention: 168h
   resources:
     requests:
