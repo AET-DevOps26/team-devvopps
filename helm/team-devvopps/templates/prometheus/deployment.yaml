@@ -15,10 +15,17 @@ spec:
       labels:
         app: prometheus
     spec:
+      # Doesn't call the Kubernetes API (static scrape targets, no
+      # kubernetes_sd_configs), so no need for its own service account
+      # token to be mounted into the pod.
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: prometheus
           # Use specific version for reproducibility (not 'latest')
-          image: prom/prometheus:v2.52.0
+          image: prom/prometheus:v2.52.0@sha256:5c435642ca4d8427ca26f4901c11114023004709037880cd7860d5b7176aa731
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -43,6 +50,18 @@ spec:
               mountPath: /etc/prometheus/alerts
             - name: prometheus-storage
               mountPath: /prometheus
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 9090
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: 9090
+            initialDelaySeconds: 15
+            periodSeconds: 15
           # Arguments passed to Prometheus binary at startup
           args:
             - '--config.file=/etc/prometheus/prometheus.yml'

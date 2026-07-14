@@ -35,3 +35,15 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
+
+  # Unverified: Dependabot's docker ecosystem is documented for Dockerfiles
+  # and docker-compose files, not custom Helm values.yaml structure. Added
+  # to try tracking the postgres/loki/promtail/prometheus digest pins in
+  # helm/team-devvopps — if it doesn't detect them after the first
+  # scheduled run, these 4 images will need manual digest bumps instead.
+  - package-ecosystem: "docker"
+    directory: "/helm/team-devvopps"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7

@@ -17,10 +17,15 @@ spec:
       labels:
         app: postgres
     spec:
+      # Doesn't call the Kubernetes API, so no need for its own service
+      # account token to be mounted into the pod.
+      automountServiceAccountToken: false
       # Pod-level security context (applies to all containers in the pod)
       # fsGroup ensures all processes can access volumes mounted with postgres group permissions
       securityContext:
         fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
       # Init container runs BEFORE main postgres container
       # Purpose: Set up storage (primary pod) or clone from primary (replica pods)
       initContainers:

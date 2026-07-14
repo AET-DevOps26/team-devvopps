@@ -15,6 +15,9 @@ spec:
         app: promtail
     spec:
       serviceAccountName: promtail
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: promtail
           image: {{ .Values.promtail.image }}
@@ -60,6 +63,25 @@ spec:
             - name: docker-logs
               mountPath: /var/lib/docker/containers
               readOnly: true
+          # timeoutSeconds raised from the 1s default: during a full cluster
+          # rollout (kubectl rollout restart of every deployment at once),
+          # promtail is busy tailing many log targets simultaneously and can
+          # take longer than 1s to answer, causing false Unhealthy events
+          # even though the process itself is fine.
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 9080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 9080
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
       volumes:
         - name: promtail-config
           configMap:
