@@ -115,6 +115,22 @@ jobs:
           kubectl delete job course-seeder -n "$K8S_NAMESPACE" --ignore-not-found
           echo "Cleanup complete"
 
+      # A cancelled/crashed run can leave the release locked in "pending-*",
+      # which fails every later helm upgrade with "another operation is in
+      # progress". Roll back to clear the lock. Safe on a brand-new cluster
+      # too: no existing release just means empty output below, no-op.
+      - name: Unstick a pending Helm release, if any
+        run: |
+          STATUS_JSON=$(helm status "$HELM_RELEASE_NAME" -n "$K8S_NAMESPACE" -o json 2>/dev/null || true)
+          if [ -z "$STATUS_JSON" ]; then
+            echo "No existing release named $HELM_RELEASE_NAME — nothing to unstick."
+          elif echo "$STATUS_JSON" | grep -q '"status":"pending-'; then
+            echo "Release is stuck in a pending-* state — rolling back to the last complete revision"
+            helm rollback "$HELM_RELEASE_NAME" -n "$K8S_NAMESPACE" --wait=false || true
+          else
+            echo "Release exists and is not pending — nothing to unstick."
+          fi
+
       # helm upgrade --install: creates the release if it doesn't exist, upgrades if it does.
       # Sensitive values (DB credentials, API keys) are passed at deploy time, not stored in values files.
       # PostgreSQL replication credentials enable primary-replica streaming replication for HA.
