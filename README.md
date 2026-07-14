@@ -465,45 +465,6 @@ For deployment to the AET Kubernetes cluster used in the course:
 | `LOGOS_API_KEY` | secret | Logos API key for llm-service (optional) |
 | `K8S_NAMESPACE` | variable | Kubernetes namespace (`team-devvopps`) |
 
-
-## Testing
-
-The project contains Spring Boot test suites for all backend services, pytest tests for the llm-service, and vitest tests the React client. 
-
-### Run all 
-
-```bash
-make test
-```
-
-### Run Spring Boot tests
-
-```bash
-make test-server
-```
-
-### Run tests for a specific service
-
-```bash
-cd server
-make test-user 
-make test-course
-make test-roadmap
-make test-gateway
-```
-
-### Run LLM Service Tests
-
-```bash
-make test-llm
-```
-
-### Run Client Tests
-
-```bash
-make test-client
-```
-
 ## Student Responsibilities
 
 Every student contributor is responsible for keeping the project runnable, documented, and reviewable.
