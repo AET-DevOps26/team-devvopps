@@ -180,45 +180,22 @@ jobs:
             exit 1
           fi
 
-          # Retries on failure: helm --wait occasionally reports the freshly
-          # recreated course-seeder Job as "NotFound" right after the cleanup
-          # step deletes and Helm recreates it — a transient K8s API
-          # propagation race, not a real deploy failure (a manual re-run
-          # always succeeds). Retrying in-place avoids needing a human to
-          # notice and re-trigger the workflow.
-          #
-          # timeout raised from 10m to 15m: whenever a change to promtail's
-          # DaemonSet spec is part of the release (e.g. security-context
-          # fields), --wait now also waits for that rollout across all 28
-          # cluster nodes here, not just in the later dedicated "Restart
-          # daemonsets" step — and that rollout alone has taken up to ~9m
-          # on its own in past runs.
-          for attempt in 1 2 3; do
-            if helm upgrade --install "$HELM_RELEASE_NAME" helm/team-devvopps/ \
-              -f helm/team-devvopps/values-aet.yaml \
-              --set postgres.credentials.username="$POSTGRES_USER" \
-              --set postgres.credentials.password="$POSTGRES_PASSWORD" \
-              --set postgres.replicationUser="$POSTGRES_REPLICATION_USER" \
-              --set postgres.replicationPassword="$POSTGRES_REPLICATION_PASSWORD" \
-              --set llmService.groqApiKey="$GROQ_API_KEY" \
-              --set llmService.logosApiKey="$LOGOS_API_KEY" \
-              --set grafana.adminUser="$GRAFANA_ADMIN_USER" \
-              --set grafana.adminPassword="$GRAFANA_ADMIN_PASSWORD" \
-              --set auth.jwtSigningKey="$JWT_SIGNING_KEY" \
-              --set auth.adminEmail="$ADMIN_EMAIL" \
-              --set auth.adminPassword="$ADMIN_PASSWORD" \
-              -n "$K8S_NAMESPACE" \
-              --wait \
-              --timeout 15m; then
-              break
-            fi
-            if [ "$attempt" -eq 3 ]; then
-              echo "::error::helm upgrade failed after $attempt attempts"
-              exit 1
-            fi
-            echo "helm upgrade failed (attempt $attempt/3), retrying in 15s..."
-            sleep 15
-          done
+          helm upgrade --install "$HELM_RELEASE_NAME" helm/team-devvopps/ \
+            -f helm/team-devvopps/values-aet.yaml \
+            --set postgres.credentials.username="$POSTGRES_USER" \
+            --set postgres.credentials.password="$POSTGRES_PASSWORD" \
+            --set postgres.replicationUser="$POSTGRES_REPLICATION_USER" \
+            --set postgres.replicationPassword="$POSTGRES_REPLICATION_PASSWORD" \
+            --set llmService.groqApiKey="$GROQ_API_KEY" \
+            --set llmService.logosApiKey="$LOGOS_API_KEY" \
+            --set grafana.adminUser="$GRAFANA_ADMIN_USER" \
+            --set grafana.adminPassword="$GRAFANA_ADMIN_PASSWORD" \
+            --set auth.jwtSigningKey="$JWT_SIGNING_KEY" \
+            --set auth.adminEmail="$ADMIN_EMAIL" \
+            --set auth.adminPassword="$ADMIN_PASSWORD" \
+            -n "$K8S_NAMESPACE" \
+            --wait \
+            --timeout 10m
 
       # All images use the :latest tag, so helm upgrade alone does not restart
       # pods when only the image content changed. Force a rollout so every
