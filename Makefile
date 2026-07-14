@@ -94,7 +94,6 @@ k8s-deploy: k8s-build
 	if [ -z "$$POSTGRES_PW" ]; then POSTGRES_PW=$$(openssl rand -hex 16); echo "NOTE: no POSTGRES_PASSWORD in infra/.env — generated an ephemeral password (data resets each deploy)"; fi; \
 	REPL_PW=$$(grep -E '^POSTGRES_REPLICATION_PASSWORD=' infra/.env 2>/dev/null | cut -d= -f2-); \
 	if [ -z "$$REPL_PW" ]; then REPL_PW=$$(openssl rand -hex 16); fi; \
-	kubectl delete job course-seeder -n $(NAMESPACE) --ignore-not-found 2>/dev/null; \
 	helm upgrade --install team-devvopps helm/team-devvopps/ \
 		-f helm/team-devvopps/values-local.yaml \
 		--set llmService.groqApiKey="$$GROQ_KEY" \

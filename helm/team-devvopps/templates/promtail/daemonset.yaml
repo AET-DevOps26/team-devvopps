@@ -6,6 +6,15 @@ metadata:
   name: promtail
   namespace: {{ .Values.namespace }}
 spec:
+  # The cluster has ~28 nodes; the default rolling update (maxUnavailable: 1)
+  # replaces promtail pods nearly one node at a time, which blows past helm's
+  # --wait timeout ("DaemonSet not ready: Updated: 11/28"). Promtail is a log
+  # shipper — restarting half the fleet at once only delays log delivery
+  # briefly, so trade availability for rollout speed.
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 50%
   selector:
     matchLabels:
       app: promtail
