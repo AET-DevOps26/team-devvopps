@@ -24,7 +24,7 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
-      
+
   reverse-proxy:
     image: traefik:v3.6.15
     command:
@@ -95,13 +95,6 @@ services:
       course-seeder:
         condition: service_started
     entrypoint: sh -c "while ! psql -h postgres -U postgres -d coursedb -c 'SELECT COUNT(*) FROM courses WHERE course_id > 0' 2>/dev/null | grep -q '[1-9]'; do sleep 5; done; echo 'Courses ready'; sleep infinity"
-    healthcheck:
-      test: ["CMD", "sh", "-c", "psql -h postgres -U postgres -d coursedb -c 'SELECT COUNT(*) FROM courses WHERE course_id > 0' 2>/dev/null | grep -q '[1-9]'"]
-      interval: 5s
-      timeout: 5s
-      retries: 1
-      start_period: 360s
-    restart: unless-stopped
     healthcheck:
       test: ["CMD", "sh", "-c", "psql -h postgres -U postgres -d coursedb -c 'SELECT COUNT(*) FROM courses WHERE course_id > 0' 2>/dev/null | grep -q '[1-9]'"]
       interval: 5s
