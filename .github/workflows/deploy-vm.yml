@@ -45,13 +45,18 @@ jobs:
         # so we can grant access to exactly that address (not a broader range)
         id: ip
         run: echo "ip=$(curl -s https://api.ipify.org)" >> "$GITHUB_OUTPUT"
-
+      
       - name: Allow runner IP in NSG
         # Adds a narrow, temporary inbound rule:
         #   - /32 = this single IP only
         #   - priority 101 = evaluated just after the standing MWN-only rule (priority 100)
         #   - destination port 22 = SSH only, nothing else is opened
         # This rule is the only thing that lets this job reach the VM over SSH
+        # 
+        # Using the Azure REST API directly instead of `az network nsg rule create`.
+        # The Azure CLI relies on its bundled Python runtime, which caused failures
+        # due to Python version compatibility issues in the CI runner environment.
+        # This avoids the CLI/Python dependency while performing the same NSG rule update.
         run: |
           curl -s -X PUT \
             "https://management.azure.com/subscriptions/${{ secrets.ARM_SUBSCRIPTION_ID }}/resourceGroups/team-devvopps/providers/Microsoft.Network/networkSecurityGroups/team-devvopps-nsg/securityRules/allow-ssh-ci-temp?api-version=2023-05-01" \
