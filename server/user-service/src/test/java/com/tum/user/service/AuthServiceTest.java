@@ -10,6 +10,8 @@ import com.tum.user.security.AuthEventLog;
 import com.tum.user.security.JwtService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.ResponseCookie;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -45,16 +47,23 @@ class AuthServiceTest {
 
     private AuthService authService;
 
-
     @BeforeEach
     void setup() {
-
+        // Mock external dependencies of AuthService so the test focuses only on
+        // the service logic and does not require a database, JWT generation,
+        // password hashing implementation, metrics system, or event storage.
         repo = mock(UserRepository.class);
         passwordEncoder = mock(PasswordEncoder.class);
         jwtService = mock(JwtService.class);
         metrics = mock(AuthMetrics.class);
         eventLog = mock(AuthEventLog.class);
 
+        // Create the service manually and inject the mocked dependencies.
+        // This replaces Spring dependency injection and makes the unit test
+        // independent from the application context.
+        //
+        // The final boolean parameter disables the optional behaviour configured
+        // by AuthService for this test scenario.
         authService = new AuthService(
                 repo,
                 passwordEncoder,

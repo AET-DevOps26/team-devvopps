@@ -2,7 +2,9 @@ package com.tum.gateway.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.*;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
@@ -32,13 +34,38 @@ class GatewayControllerTest {
     // Helper to create a controller with mocked RestTemplate and injected URLs
     private GatewayController createController(RestTemplate restTemplate) {
         GatewayController controller = new GatewayController(restTemplate);
+        
+        /*
+        * ReflectionTestUtils allows tests to access and modify private fields
+        * without using public setters.
+        *
+        * In the real application, Spring injects these values from configuration:
+        *
+        * userServiceUrl=${services.user.url}
+        * courseServiceUrl=${services.course.url}
+        * roadmapServiceUrl=${services.roadmap.url}
+        *
+        * Because this is a unit test and Spring is not running, we inject
+        * representative test values manually.
+        */
         ReflectionTestUtils.setField(controller, "userServiceUrl", "http://user-service:8081");
         ReflectionTestUtils.setField(controller, "courseServiceUrl", "http://course-service:8082");
         ReflectionTestUtils.setField(controller, "roadmapServiceUrl", "http://roadmap-service:8083");
+        
         return controller;
     }
 
-    // Helper to create a mock HttpServletRequest
+    /**
+     * Creates a mocked HttpServletRequest containing only the information
+     * required by GatewayController.
+     * The real servlet container normally creates HttpServletRequest objects
+     * during an HTTP request. Since this is a unit test without a running server,
+     * Mockito is used to create a fake request object.
+     * Only the methods used by the controller are stubbed:
+     * - getRequestURI(): provides the endpoint path
+     * - getQueryString(): provides optional query parameters
+     * - getMethod(): provides the HTTP method (GET, POST, PUT, DELETE, ...)
+     */
     private HttpServletRequest mockRequest(String uri, String query, String method) {
         HttpServletRequest request = mock(HttpServletRequest.class);
         when(request.getRequestURI()).thenReturn(uri);
@@ -280,4 +307,94 @@ class GatewayControllerTest {
                 eq(byte[].class)
         );
      }
+
+     /**
+     * Verifies that /features/** is forwarded to user-service.
+     */
+     @Test
+     void forwardFeatures_routesToUserService() {
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        GatewayController controller = createController(restTemplate);
+
+        when(restTemplate.exchange(any(URI.class), any(), any(), eq(byte[].class)))
+           .thenReturn(ResponseEntity.ok(new byte[]{}));
+
+        controller.forwardFeatures(
+            mockRequest("/features", null, "GET"),
+            new HttpEntity<>(new byte[]{})
+        );
+
+        verify(restTemplate).exchange(
+            eq(URI.create("http://user-service:8081/features")),
+            eq(HttpMethod.GET),
+            any(HttpEntity.class),
+            eq(byte[].class)
+        );
+    }
+
+    /**
+    * Verifies that /settings/** is forwarded to user-service.
+    */
+   @Test
+   void forwardSettings_routesToUserService() {
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        GatewayController controller = createController(restTemplate);
+
+        when(restTemplate.exchange(any(URI.class), any(), any(), eq(byte[].class)))
+            .thenReturn(ResponseEntity.ok(new byte[]{}));
+
+        controller.forwardSettings(
+            mockRequest("/settings", null, "GET"),
+            new HttpEntity<>(new byte[]{})
+        );
+
+        verify(restTemplate).exchange(
+            eq(URI.create("http://user-service:8081/settings")),
+            eq(HttpMethod.GET),
+            any(HttpEntity.class),
+            eq(byte[].class)
+        );
+    }
+
+    @Test
+void forwardFeatures_putMethodIsPreserved() {
+    RestTemplate restTemplate = mock(RestTemplate.class);
+    GatewayController controller = createController(restTemplate);
+
+    when(restTemplate.exchange(any(), any(), any(), eq(byte[].class)))
+            .thenReturn(ResponseEntity.ok(new byte[]{}));
+
+    controller.forwardFeatures(
+            mockRequest("/features/llm", null, "PUT"),
+            new HttpEntity<>(new byte[]{})
+    );
+
+    verify(restTemplate).exchange(
+            eq(URI.create("http://user-service:8081/features/llm")),
+            eq(HttpMethod.PUT),
+            any(HttpEntity.class),
+            eq(byte[].class)
+    );
+}
+
+@Test
+void forwardSettings_putMethodIsPreserved() {
+    RestTemplate restTemplate = mock(RestTemplate.class);
+    GatewayController controller = createController(restTemplate);
+
+    when(restTemplate.exchange(any(), any(), any(), eq(byte[].class)))
+            .thenReturn(ResponseEntity.ok(new byte[]{}));
+
+    controller.forwardFeatures(
+            mockRequest("/settings", null, "PUT"),
+            new HttpEntity<>(new byte[]{})
+    );
+
+    verify(restTemplate).exchange(
+            eq(URI.create("http://user-service:8081/settings")),
+            eq(HttpMethod.PUT),
+            any(HttpEntity.class),
+            eq(byte[].class)
+    );
+}
 }

@@ -3,12 +3,42 @@ import userEvent from "@testing-library/user-event";
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { AuthProvider, useAuth } from "../../src/context/AuthContext";
 
+/**
+ * Tests for the AuthContext provider and useAuth hook.
+ *
+ * These tests verify the authentication state management logic without
+ * depending on a real backend. The browser fetch API is mocked to simulate
+ * different authentication scenarios.
+ *
+ * The tests cover:
+ * - Loading the current authenticated user when the provider mounts
+ * - Handling unauthenticated users when /api/auth/me fails
+ * - Handling network failures during the initial authentication check
+ * - Updating authentication state after successful login
+ * - Propagating backend error messages during failed login attempts
+ * - Updating authentication state after successful signup
+ * - Clearing the user state after logout
+ * - Ensuring useAuth cannot be used outside an AuthProvider
+ *
+ * A small TestConsumer component is used because React hooks cannot be called
+ * directly outside a component. It exposes AuthContext values and actions so
+ * the tests can interact with the provider as a real component would.
+ *
+ * The tests use mocked fetch responses instead of real HTTP requests, which
+ * keeps the tests isolated from the backend while still verifying that the
+ * AuthProvider sends the correct requests and updates React state correctly.
+ */
+
+
 const mockUser = {
   userId: 1,
   email: "test@example.com",
   role: "USER",
 };
 
+// A test-only component used to access the AuthContext.
+// Since hooks can only be called inside React components, this component
+// exposes the context values and actions so the tests can interact with them.
 function TestConsumer() {
   const {
     user,
@@ -49,7 +79,13 @@ function TestConsumer() {
   );
 }
 
-
+// Helper that renders a component tree containing the real AuthProvider.
+// This allows tests to verify the complete context behavior:
+// - initial authentication state
+// - login/signup/logout actions
+// - state updates after API responses
+//
+// TestConsumer acts as a bridge between the provider and the test assertions.
 function renderAuth() {
   return render(
     <AuthProvider>
@@ -62,10 +98,15 @@ function renderAuth() {
 describe("AuthContext", () => {
 
   beforeEach(() => {
+    // Replace the browser fetch implementation with a mock.
+    // AuthProvider communicates with the backend through fetch,
+    // so mocking it keeps the test isolated from real HTTP requests.
     vi.stubGlobal("fetch", vi.fn());
   });
 
   afterEach(() => {
+    // Restore the original environment after every test.
+    // This prevents mocked network calls from leaking into other tests.
     vi.restoreAllMocks();
   });
 

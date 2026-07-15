@@ -33,17 +33,29 @@ class JwtServiceTest {
 
     /**
      * Test signing key.
+     * 
+     * This key corresponds to the JWT signing key configured in application.properties
      *
      * HS256 requires a sufficiently long secret (at least 256 bits / 32 bytes).
      */
     private static final String SIGNING_KEY =
             "this-is-a-test-signing-key-with-at-least-32-bytes";
 
+    // Token validity period used in tests.
     private static final long EXPIRATION_SECONDS = 3600;
 
     private JwtService jwtService;
     private SecretKey secretKey;
 
+    /**
+     * Initializes the JwtService before each test.
+     *
+     * Creates a JwtService instance with the test configuration and builds the
+     * corresponding HMAC secret key used for signing and validating JWT tokens.
+     *
+     * Each test receives a fresh service instance to avoid state leaking
+     * between test cases.
+     */
     @BeforeEach
     void setUp() {
         jwtService = new JwtService(SIGNING_KEY, EXPIRATION_SECONDS);

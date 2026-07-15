@@ -1,3 +1,4 @@
 pytest
 httpx2
 fastapi[all]
+langchain-core==0.3.85

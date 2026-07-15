@@ -27,9 +27,6 @@ public class CourseController {
      * GET /courses
      * 
      * Returns all available courses.
-     * 
-     * FUTURE AI USE:
-     * - AI service may fetch all courses for global filtering
      *
      * @return list of courses
      */
@@ -42,10 +39,6 @@ public class CourseController {
      * GET /courses/{id}
      * 
      * Returns a course by its ID.
-     * 
-     * FUTURE AI USE:
-     * - Validate course references
-     * - Enrich roadmap with full course metadata
      *
      * @param id course ID
      * @return matching course
@@ -59,11 +52,6 @@ public class CourseController {
      * GET /courses/search?title=...
      * 
      * Searches for a course by title.
-     * 
-     * FUTURE AI USE:
-     * - AI service extracts keywords. Example: "Learn Machine Learning" → ["machine learning", "python", "statistics"]
-     * - AI service queries course-service: /courses/search?title=machine learning
-     * - Course-service returns matching courses
      * 
      * @param title course title query
      * @return matching course

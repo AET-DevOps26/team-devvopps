@@ -5,6 +5,8 @@ import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
@@ -29,18 +31,31 @@ import static org.junit.jupiter.api.Assertions.*;
  * because the purpose of this component is to test the actual cryptographic
  * verification and claim extraction.
  */
+@SpringBootTest
+@ActiveProfiles("test")
 class JwtVerifierTest {
 
     /**
      * HS256 requires a sufficiently long signing key.
+     * This key corresponds to the JWT signing key configured in application.properties of user-service.
      */
     private static final String SIGNING_KEY =
-            "this-is-a-test-signing-key-with-at-least-32-bytes";
+            "dev-only-insecure-key-change-me-0123456789";
 
     private JwtVerifier verifier;
     private SecretKey secretKey;
 
 
+    /**
+     * Creates a real JwtVerifier instance using the shared test signing
+     * key, and derives a SecretKey from the same key so individual tests
+     * can mint their own valid (or intentionally malformed) JWTs without going
+     * through any application context.
+     * 
+     * Using a real JwtVerifier here (rather than a mock) means this suite
+     * exercises actual cryptographic verification logic, complementing the
+     * unit tests in JwtAuthFilterTest which mock it out.
+     */
     @BeforeEach
     void setUp() {
         verifier = new JwtVerifier(SIGNING_KEY);

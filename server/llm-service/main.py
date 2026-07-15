@@ -557,7 +557,8 @@ async def get_usage(x_user_id: str = Header(...)):
 
 
 @app.post("/recommend", response_model=RoadmapResponse)
-async def recommend(req: RoadmapRequest, user_id: str = "anonymous") -> RoadmapResponse:
+async def recommend(req: RoadmapRequest, x_user_id: str = Header("anonymous")) -> RoadmapResponse: 
+    user_id = x_user_id
     if not req.goal.strip():
         raise HTTPException(status_code=422, detail="goal cannot be empty")
 

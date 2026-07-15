@@ -10,6 +10,7 @@ import com.tum.user.service.AuthService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseCookie;
 import org.springframework.test.web.servlet.MockMvc;
@@ -51,22 +52,36 @@ class AuthControllerTest {
     private AuthController controller;
 
 
+    /**
+     * Initializes the dependencies and creates the controller before each test.
+     * 
+     * Instead of loading the full Spring application context, this unit test
+     * creates the controller manually and injects mocked dependencies.
+     * This keeps the test fast and focuses only on the controller behavior.
+     */
     @BeforeEach
     void setup() {
+        // Create mock dependencies so the controller can be tested without
+        // calling the real service layer, database, or event logging system.
         authService = Mockito.mock(AuthService.class);
         repo = Mockito.mock(UserRepository.class);
         eventLog = Mockito.mock(AuthEventLog.class);
 
+        // Manually construct the controller with the mocked dependencies.
+        // This replaces Spring's dependency injection in a lightweight way.
         controller = new AuthController(
                 authService,
                 repo,
                 eventLog
         );
 
+        // Configure MockMvc in standalone mode.
+        // This tests the controller endpoints without starting the full Spring context.
         mockMvc = MockMvcBuilders
                 .standaloneSetup(controller)
                 .build();
 
+        // Used for converting Java objects to/from JSON in HTTP request/response tests.
         objectMapper = new ObjectMapper();
     }
 

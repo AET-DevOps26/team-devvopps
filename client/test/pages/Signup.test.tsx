@@ -1,22 +1,57 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
-import { vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import Signup from "../../src/pages/Signup";
 import { useAuth } from "../../src/context/AuthContext";
 
+// Tests for the Signup page component.
+//
+// AuthContext is mocked to verify:
+// - form rendering
+// - input validation
+// - password matching rules
+// - successful signup
+// - signup errors
+// - loading state
+// - login navigation
+
+
+/**
+ * Mock the authentication context used by the Signup component.
+ *
+ * The real AuthContext communicates with the backend and manages global
+ * authentication state. For this component test, we replace it with a
+ * controlled mock so tests can simulate different authentication states
+ * without depending on a running backend or existing user session.
+ */
 vi.mock("../../src/context/AuthContext", () => ({
   useAuth: vi.fn(),
 }));
 
+/**
+ * Creates a mocked version of the useAuth hook.
+ *
+ * This allows the test to configure the returned authentication state and
+ * verify how the Signup component interacts with authentication functions.
+ */
 const mockedUseAuth = vi.mocked(useAuth);
 
 describe("Signup page", () => {
+  // Mock function used to verify that signup is called with the expected data.
   const signupMock = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
 
+    /**
+     * Resets all mock call history before each test and provides a predictable
+     * authentication context.
+     *
+     * The component receives a fake authenticated state instead of the real
+     * AuthProvider. This keeps every test independent and ensures that only the
+     * Signup component behavior is evaluated.
+     */
     mockedUseAuth.mockReturnValue({
       user: null,
       loading: false,
@@ -26,6 +61,12 @@ describe("Signup page", () => {
     });
   });
 
+  /**
+   * Renders the Signup component inside a lightweight in-memory router.
+   *
+   * MemoryRouter provides the routing context required by React Router without
+   * interacting with the real browser URL.
+   */
   function renderSignup() {
     return render(
       <MemoryRouter>

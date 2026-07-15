@@ -44,12 +44,32 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class RoadmapServiceTest {
 
+    /**
+     * "@Mock" creates a mock version of the RoadmapRepository, GoalRepository, 
+     * and RestTemplate..
+     *
+     * For repositories:
+     * The mock replaces the real database repository, allowing the test to
+     * verify the service logic without accessing a database.
+     * 
+     * For RestTemplate:
+     * The mock prevents real HTTP calls to external services and allows tests
+     * to simulate different responses from dependent services.
+     */
     @Mock RoadmapRepository roadmapRepository;
     @Mock GoalRepository goalRepository;
     @Mock RestTemplate restTemplate;
 
+    /**
+     * Creates the RoadmapService instance and automatically injects the mocks
+     * above into its dependencies.
+     *
+     * This allows testing only the service behavior while keeping all external
+     * dependencies (database repositories and HTTP clients) replaced by mocks.
+     */
     @InjectMocks RoadmapService service;
 
+    
     // ---------------------------------------------------------------------------
     // generateRoadmap
     // ---------------------------------------------------------------------------

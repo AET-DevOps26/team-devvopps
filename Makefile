@@ -204,7 +204,7 @@ test-llm:
 	cd server/llm-service && \
 	pip install -r requirements.txt && \
 	pip install -r requirements-test.txt && \
-	pytest test_llm_service.py -v
+	pytest test-llm-service.py -v
 
 test-client:
 	@echo "Running client tests..."

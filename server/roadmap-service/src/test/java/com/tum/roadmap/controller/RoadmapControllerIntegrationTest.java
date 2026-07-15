@@ -55,11 +55,23 @@ public class RoadmapControllerIntegrationTest {
     static WireMockServer wireMock = new WireMockServer(wireMockConfig().dynamicPort());
     static ObjectMapper objectMapper = new ObjectMapper();
 
+    /**
+     * Configures dynamic properties for the Spring test context.
+     *
+     * Starts a WireMock server on a random available port and overrides the
+     * application properties so that external service calls (user-service and
+     * LLM-service) are redirected to the mock server instead of real services.
+     *
+     * This allows the integration test to run independently without requiring
+     * the actual microservices to be running.
+     */
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
         wireMock.start();
+        // Redirect user-service calls to the WireMock instance
         registry.add("user.service.host", () -> "localhost");
         registry.add("user.service.port", () -> String.valueOf(wireMock.port()));
+        // Redirect LLM-service calls to the WireMock instance
         registry.add("llm.service.host", () -> "localhost");
         registry.add("llm.service.port", () -> String.valueOf(wireMock.port()));
     }
@@ -73,6 +85,16 @@ public class RoadmapControllerIntegrationTest {
     @Autowired
     private GoalRepository goalRepository;
 
+    /**
+     * Runs before each test.
+     *
+     * Resets WireMock to remove any previously configured stubs or recorded
+     * requests, and clears the database tables to ensure every test starts with
+     * a clean state.
+     *
+     * This prevents tests from affecting each other and makes test results
+     * deterministic.
+     */
     @BeforeEach
     void setUp() {
         wireMock.resetAll();
@@ -80,6 +102,14 @@ public class RoadmapControllerIntegrationTest {
         goalRepository.deleteAll();
     }
 
+    /**
+     * Runs after each test.
+     *
+     * Cleans up WireMock state after the test has finished, ensuring that
+     * stubs, mappings, and request history do not leak into following tests.
+     *
+     * This provides additional isolation between test cases.
+     */
     @AfterEach
     void tearDown() {
         wireMock.resetAll();

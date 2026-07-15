@@ -55,6 +55,17 @@ class GatewayControllerIntegrationTest {
 
     private static final String SIGNING_KEY = "dev-only-insecure-key-change-me-0123456789";
 
+    /**
+     * Starts a single WireMockServer on a random port for the entire
+     * test class, then registers its address as the upstream URL for every
+     * downstream service the gateway knows about. The JWT signing key is also
+     * registered so the full Spring Security filter chain initialises with the
+     * same secret used to sign tokens in individual tests.
+     * 
+     * Using a dynamic port avoids conflicts when multiple test suites run in
+     * parallel, and @DynamicPropertySource ensures the values are
+     * injected into the application context before the first test runs.
+     */
     static WireMockServer wireMock =
             new WireMockServer(
                     com.github.tomakehurst.wiremock.core.WireMockConfiguration
@@ -62,44 +73,45 @@ class GatewayControllerIntegrationTest {
                             .dynamicPort()
             );
 
-
+    /**
+     * Overrides application properties for the integration test environment.
+     *
+     * Routes service URLs to the WireMock server instead of real services and
+     * provides a test JWT signing key so authentication works during tests.
+     */
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
 
         wireMock.start();
 
-        registry.add(
-                "services.user.url",
-                () -> "http://localhost:" + wireMock.port()
-        );
-
-        registry.add(
-                "services.course.url",
-                () -> "http://localhost:" + wireMock.port()
-        );
-
-        registry.add(
-                "services.roadmap.url",
-                () -> "http://localhost:" + wireMock.port()
-        );
-
-        registry.add(
-                "services.llm.url",
-                () -> "http://localhost:" + wireMock.port()
-        );
-
+        registry.add("services.user.url", () -> "http://localhost:" + wireMock.port());
+        registry.add("services.course.url", () -> "http://localhost:" + wireMock.port());
+        registry.add("services.roadmap.url", () -> "http://localhost:" + wireMock.port());
+        registry.add("services.llm.url", () -> "http://localhost:" + wireMock.port());
         registry.add("app.jwt.signing-key", () -> SIGNING_KEY);
     }
 
 
+    /** Injects MockMvc to send HTTP requests through the full filter
+     *  and controller stack without starting a real server. 
+     */
     @Autowired
     private MockMvc mockMvc;
 
+    /**
+     * Clears all WireMock stub mappings and recorded requests before each test
+     * so that stubs registered in one test cannot influence another.
+     */
     @BeforeEach
     void setUp() {
         wireMock.resetAll();
     }
 
+    /**
+     * Clears WireMock state after each test as a safety net for any stubs or
+     * requests that may have been recorded after the @BeforeEach reset
+     * but that the test itself did not clean up.
+     */
     @AfterEach
     void tearDown() {
         wireMock.resetAll();
@@ -343,6 +355,154 @@ class GatewayControllerIntegrationTest {
                 get("/users/99").cookie(new Cookie("token", token))
         )
         .andExpect(status().isNotFound());
+    }
+
+    // -------------------------------------------------------------------------
+    // FEATURES ROUTING
+    // -------------------------------------------------------------------------
+
+    /**
+     * Verifies /features/** is forwarded to user-service.
+     */
+    @Test
+    void forwardsFeaturesRequests() throws Exception {
+        wireMock.stubFor(com.github.tomakehurst.wiremock.client.WireMock
+            .get(urlEqualTo("/features"))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody("""
+                        {
+                          "llm": true
+                        }
+                        """)
+            )
+        );
+
+        String token = createJwt(1L, "USER");
+
+        mockMvc.perform(
+            get("/features")
+                    .cookie(new Cookie("token", token))
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.llm").value(true));
+
+        wireMock.verify(
+            getRequestedFor(urlEqualTo("/features"))
+                    .withHeader("X-User-Id", equalTo("1"))
+                    .withHeader("X-User-Role", equalTo("USER"))
+        );
+    }
+
+    /**
+     * Verifies PUT /features/** is forwarded correctly.
+     */
+    @Test
+    void forwardsFeatureUpdates() throws Exception {
+        wireMock.stubFor(com.github.tomakehurst.wiremock.client.WireMock
+            .put(urlEqualTo("/features"))
+            .willReturn(
+                aResponse()
+                    .withStatus(204)
+            )
+        );
+
+        String token = createJwt(1L, "ADMIN");
+
+        mockMvc.perform(
+            put("/features")
+                    .cookie(new Cookie("token", token))
+                    .contentType("application/json")
+                    .content("""
+                        {
+                          "llm": false
+                        }
+                        """)
+        )
+        .andExpect(status().isNoContent());
+
+        wireMock.verify(
+            com.github.tomakehurst.wiremock.client.WireMock.putRequestedFor(
+                    urlEqualTo("/features"))
+                    .withHeader("X-User-Id", equalTo("1"))
+                    .withHeader("X-User-Role", equalTo("ADMIN"))
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // FEATURES ROUTING
+    // -------------------------------------------------------------------------
+    
+    /**
+     * Verifies /settings/** is forwarded to user-service.
+     */
+    @Test
+    void forwardsSettingsRequests() throws Exception {
+        wireMock.stubFor(com.github.tomakehurst.wiremock.client.WireMock
+            .get(urlEqualTo("/settings"))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody("""
+                        {
+                          "tokenLimit": 8000
+                        }
+                        """)
+            )
+        );
+
+        String token = createJwt(1L, "USER");
+
+        mockMvc.perform(
+            get("/settings")
+                    .cookie(new Cookie("token", token))
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.tokenLimit").value(8000));
+
+        wireMock.verify(
+            getRequestedFor(urlEqualTo("/settings"))
+                    .withHeader("X-User-Id", equalTo("1"))
+                    .withHeader("X-User-Role", equalTo("USER"))
+        );
+    }
+
+    /**
+     * Verifies PUT /settings/** is forwarded correctly.
+     */
+    @Test
+    void forwardsSettingsUpdates() throws Exception {
+        wireMock.stubFor(com.github.tomakehurst.wiremock.client.WireMock
+            .put(urlEqualTo("/settings"))
+            .willReturn(
+                aResponse()
+                    .withStatus(204)
+            )
+        );
+
+        String token = createJwt(1L, "ADMIN");
+
+        mockMvc.perform(
+            put("/settings")
+                    .cookie(new Cookie("token", token))
+                    .contentType("application/json")
+                    .content("""
+                        {
+                          "tokenLimit": 12000
+                        }
+                        """)
+        )
+        .andExpect(status().isNoContent());
+
+        wireMock.verify(
+            com.github.tomakehurst.wiremock.client.WireMock.putRequestedFor(
+                    urlEqualTo("/settings"))
+                    .withHeader("X-User-Id", equalTo("1"))
+                    .withHeader("X-User-Role", equalTo("ADMIN"))
+        );
     }
 
     // -------------------------------------------------------------------------

@@ -330,16 +330,29 @@ Current implemented endpoints include:
 - `GET /users/{id}` — Get a user by ID
 - `DELETE /users/{id}` — Delete a user by ID
 
+- `POST /auth/signup` - Register and starts a session
+- `POST /auth/login` - Verify credentials and start a session
+- `POST /auth/logout` - Clear the session cookie
+- `GET /auth/me` - Returns the currently authenticated user
+- `GET /auth/logs` - Recent auth events for the admin panel (admin only)
+
+- `GET /features` - Returns all flags with their state and description
+- `PUT /features/{name}` - Enables or disables a flag
+
+- `GET /settings`- Returns all settings
+- `PUT /settings/{name}` - Updates a setting's value
+
 #### Course Service
 
 - `GET /courses` — Get all courses
 - `GET /courses/{id}` — Get a course by ID
-- `GET /courses/search?title=<title>` — Search courses by title
+- `GET /courses/search` — Search courses by title
 
 #### Roadmap Service
 
-- `GET /roadmaps` — Get all roadmaps
-- `POST /roadmaps/generate?userId=<id>&goal=<goal>` — Generate a roadmap using the LLM service
+- `GET /roadmaps` — Returns the authenticated user's own roadmaps
+- `GET /roadmaps/all` - Returns every roadmap (admin only)
+- `POST /roadmaps/generate` — Generate a roadmap using the LLM service
 - `GET /roadmaps/{id}` — Get a roadmap by ID
 - `PATCH /roadmaps/{roadmapId}/tasks/{taskId}/complete` — Toggle task completion status
 - `GET /roadmaps/{roadmapId}/progress` — Get roadmap progress statistics
@@ -348,7 +361,7 @@ Current implemented endpoints include:
 
 - `POST /recommend` — Generate an AI-powered roadmap recommendation
 - `GET /health` — Check LLM service health and active model
-- `GET /usage/{user_id}` — Get token usage and remaining quota for a user
+- `GET /usage` — Get token usage and remaining quota for a user
 - `GET /logs` — Retrieve recent service logs
 - `GET /` — Get service information
 
