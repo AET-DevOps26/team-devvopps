@@ -33,6 +33,7 @@ services:
       - "--providers.docker=true"
       - "--providers.docker.endpoint=tcp://docker-socket-proxy:2375"
       - "--providers.docker.exposedByDefault=false"
+      - "--providers.docker.refreshSeconds=15"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
       - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
@@ -291,7 +292,7 @@ services:
     # python3 (also used as the container's entrypoint). No PORT env var
     # is set here, so main.py falls back to its default of 8004.
     healthcheck:
-      test: ["CMD", "/venv/bin/python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/health', timeout=3)"]
+      test: ["CMD", "/venv/bin/python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8084/health', timeout=3)"]
       interval: 5s
       timeout: 5s
       retries: 20
