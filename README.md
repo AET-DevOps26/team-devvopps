@@ -156,6 +156,10 @@ Runs the full stack with a single command. No Kubernetes or local Java installat
 
 Prerequisites:
 - **Docker Desktop** (must be open and running)
+- `infra/.env` containing `POSTGRES_PASSWORD=...` and `GRAFANA_ADMIN_PASSWORD=...`
+  (git-ignored; pick any values for local dev — postgres and Grafana no
+  longer start with a default/hardcoded password, so these must be set or
+  `docker-up` will fail immediately with a clear error)
 
 Commands:
 
@@ -199,7 +203,11 @@ Prerequisites:
 - **Docker Desktop** with **Kubernetes enabled**
   - Settings → Kubernetes → Enable Kubernetes → Apply & Restart
 - **Helm 3.x** (install from https://helm.sh/docs/intro/install/)
-- `infra/.env` containing `GROQ_API_KEY=...` (git-ignored; ask a teammate for the key)
+- `infra/.env` containing `GROQ_API_KEY=...` (git-ignored; ask a teammate for the key).
+  `POSTGRES_PASSWORD` / `POSTGRES_REPLICATION_PASSWORD` are optional here —
+  if unset, `make k8s-deploy` generates a random ephemeral password each
+  deploy (data resets on redeploy); set them in `infra/.env` for a stable
+  password across deploys.
 
 Deploy:
 
@@ -371,6 +379,7 @@ For Azure VM:
 | `ARM_SUBSCRIPTION_ID` | secret | Azure subscription ID |
 | `ARM_TENANT_ID` | secret | Azure tenant ID |
 | `PAT_TOKEN` | secret | GitHub PAT for updating AZURE_PUBLIC_IP |
+| `POSTGRES_PASSWORD` | secret | Database password — `deploy-vm.yml` refuses to deploy without it (no default/fallback credential) |
 
 For AET Kubernetes:
 
@@ -407,6 +416,10 @@ The application is automatically built and deployed to an Azure VM on every merg
 
 **Stack on VM:**
 - Traefik (reverse proxy + Let's Encrypt HTTPS)
+- Docker socket proxy (`tecnativa/docker-socket-proxy`): brokers Traefik's
+  access to the Docker socket read-only, scoped to just the container-list
+  API it needs for service discovery — Traefik never mounts the real
+  socket directly
 - Postgres 16
 - All microservices
 

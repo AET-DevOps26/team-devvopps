@@ -32,6 +32,7 @@ spec:
           image: {{ .Values.promtail.image }}
           args:
             - '-config.file=/etc/promtail/promtail-config.yaml'
+            - '-config.expand-env=true'
           ports:
             - containerPort: 9080
           env:
@@ -67,11 +68,16 @@ spec:
             - name: pod-logs
               mountPath: /var/log/pods
               readOnly: true
-            # On docker-desktop, files under /var/log/pods are symlinks into
-            # /var/lib/docker/containers; harmless no-op on containerd (AET).
+            {{- if eq .Values.promtail.pipelineStage "docker" }}
+            # docker-desktop only: files under /var/log/pods are symlinks
+            # into /var/lib/docker/containers, so the symlink target needs
+            # to be reachable too. Not mounted on AET (containerd) at all —
+            # there's no such symlink there, so this hostPath mount would
+            # just be unused attack surface.
             - name: docker-logs
               mountPath: /var/lib/docker/containers
               readOnly: true
+            {{- end }}
           # timeoutSeconds raised from the 1s default: during a full cluster
           # rollout (kubectl rollout restart of every deployment at once),
           # promtail is busy tailing many log targets simultaneously and can
@@ -100,6 +106,8 @@ spec:
         - name: pod-logs
           hostPath:
             path: /var/log/pods
+        {{- if eq .Values.promtail.pipelineStage "docker" }}
         - name: docker-logs
           hostPath:
             path: /var/lib/docker/containers
+        {{- end }}

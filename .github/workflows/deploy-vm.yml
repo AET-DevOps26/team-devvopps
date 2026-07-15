@@ -84,6 +84,16 @@ jobs:
           source: "compose.azure.yml,server/init-databases.sql"
           target: /home/${{ vars.AZURE_USER }}
 
+      # Refuse to deploy with no password configured — a well-known default
+      # on a public VM is a real compromise, not a theoretical one.
+      - name: Check required secrets
+        run: |
+          if [ -z "${{ secrets.POSTGRES_PASSWORD }}" ]; then
+            echo "ERROR: POSTGRES_PASSWORD secret not configured"
+            echo "Refusing to deploy postgres with a well-known default credential"
+            exit 1
+          fi
+
       # Write a .env.prod file on the VM with hostnames derived from the public IP.
       # nip.io provides free wildcard DNS so we don't need a custom domain.
       - name: SSH to VM and Create .env.prod
@@ -98,6 +108,7 @@ jobs:
             echo "CLIENT_HOST=client.${{ vars.AZURE_PUBLIC_IP }}.nip.io" >> .env.prod
             echo "SERVER_HOST=api.${{ vars.AZURE_PUBLIC_IP }}.nip.io" >> .env.prod
             echo "PUBLIC_API_URL=https://api.${{ vars.AZURE_PUBLIC_IP }}.nip.io" >> .env.prod
+            echo "POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}" >> .env.prod
 
       # Pull the latest images from GHCR and restart all services.
       - name: SSH to VM and Execute Docker-Compose Up

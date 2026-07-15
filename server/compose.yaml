@@ -1,12 +1,25 @@
 services:
   postgres:
     image: 'postgres:17.5'
+    security_opt:
+      - no-new-privileges:true
+    # Can't cap_drop ALL: the official entrypoint chowns/chmods the data
+    # dir as root on first init. Drop everything except what that startup
+    # step needs (same fix as infra/docker-compose.yml's postgres service).
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - FOWNER
+      - DAC_OVERRIDE
+      - SETUID
+      - SETGID
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set (export it or use a .env file)}
       POSTGRES_INITDB_ARGS: "-c max_connections=200"
     ports:
-      - '5432:5432'
+      - '127.0.0.1:5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql
       - ./init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql
