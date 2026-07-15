@@ -71,6 +71,19 @@ public class GatewayController {
         return forward(request, entity, courseServiceUrl, request.getRequestURI());
     }
 
+    // Feature flags live in user-service; GET is any signed-in user,
+    // PUT is ADMIN-only (enforced in JwtAuthFilter).
+    @RequestMapping("/features/**")
+    public ResponseEntity<byte[]> forwardFeatures(HttpServletRequest request, HttpEntity<byte[]> entity) {
+        return forward(request, entity, userServiceUrl, request.getRequestURI());
+    }
+
+    // Runtime settings (prompt sections, token limit) — same auth model as features.
+    @RequestMapping("/settings/**")
+    public ResponseEntity<byte[]> forwardSettings(HttpServletRequest request, HttpEntity<byte[]> entity) {
+        return forward(request, entity, userServiceUrl, request.getRequestURI());
+    }
+
     @RequestMapping(
         value = "/roadmaps/**",
         method = {

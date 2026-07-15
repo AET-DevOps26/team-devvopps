@@ -5,7 +5,7 @@ groups:
     rules:
       # Critical: Service is completely down and unreachable
       - alert: ServiceDown
-        expr: up{job=~"user-service|course-service|roadmap-service|api-gateway"} == 0
+        expr: up{job=~"user-service|course-service|roadmap-service|api-gateway|llm-service"} == 0
         for: 1m
         labels:
           severity: critical

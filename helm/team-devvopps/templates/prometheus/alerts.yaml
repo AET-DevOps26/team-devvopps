@@ -13,7 +13,7 @@ data:
           # Critical: Service is completely down and unreachable
           - alert: ServiceDown
             # Query: Check if any monitored service is down (up metric == 0)
-            expr: up{job=~"user-service|course-service|roadmap-service|api-gateway"} == 0
+            expr: up{job=~"user-service|course-service|roadmap-service|api-gateway|llm-service"} == 0
             # Wait 1 minute before alerting to avoid flapping on transient failures
             for: 1m
             labels:

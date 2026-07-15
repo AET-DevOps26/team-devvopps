@@ -62,7 +62,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             return;
         }
 
-        if (isAdminOnly(path) && !"ADMIN".equals(identity.role())) {
+        if (isAdminOnly(path, request.getMethod()) && !"ADMIN".equals(identity.role())) {
             forbidden.increment();
             response.sendError(HttpServletResponse.SC_FORBIDDEN, "Admin role required");
             return;
@@ -81,11 +81,16 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     }
 
     /** Endpoints that require the ADMIN role. */
-    private boolean isAdminOnly(String path) {
+    private boolean isAdminOnly(String path, String method) {
         return path.startsWith("/users")
                 || path.equals("/auth/logs")
                 || path.equals("/llm/logs")
-                || path.equals("/roadmaps/all");
+                || path.equals("/roadmaps/all")
+                // Feature flags & settings: any signed-in user may READ them
+                // (clients need them to decide what to render), only admins
+                // may modify.
+                || (path.startsWith("/features") && !"GET".equals(method))
+                || (path.startsWith("/settings") && !"GET".equals(method));
     }
 
     private String readCookie(HttpServletRequest request) {

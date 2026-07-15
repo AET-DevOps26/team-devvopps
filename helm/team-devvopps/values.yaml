@@ -32,12 +32,17 @@ postgres:
   # Storage per pod (StatefulSet creates separate PVC for each: postgres-storage-postgres-0, postgres-storage-postgres-1)
   # Total storage used = 2 × storage value
   storage: 1Gi
-  # Superuser credentials (overridden by values-local.yaml or --set)
+  # Superuser credentials (overridden by values-local.yaml or --set).
+  # Chart default only — never deployed as-is: deploy-k8s.yml refuses to
+  # run helm upgrade unless POSTGRES_PASSWORD is set from GitHub Secrets,
+  # and templates/secret.yaml's `required` guard fails the render if the
+  # value passed to --set is ever empty.
   credentials:
     username: postgres
     password: postgres
   # Replication user credentials for primary-replica streaming replication
   # Limited permissions: can only stream WAL, cannot modify data
+  # Same as above: chart default only, never deployed without --set.
   replicationUser: replication
   replicationPassword: replication
   # Resource limits required by AET cluster ResourceQuota.
@@ -156,6 +161,10 @@ prometheus:
 # within a scheduling period instead of being throttled (old 25m limit
 # throttled 74-78% of periods during a live dashboard refresh).
 grafana:
+  # Chart default only — never deployed as-is: deploy-k8s.yml refuses to
+  # run helm upgrade unless GRAFANA_ADMIN_PASSWORD is set from GitHub
+  # Secrets, and templates/grafana/secret.yaml's `required` guard fails
+  # the render if the value passed to --set is ever empty.
   adminUser: admin
   adminPassword: admin
   replicas: 1

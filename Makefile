@@ -90,7 +90,10 @@ k8s-deploy: k8s-build
 	if [ -z "$$JWT_KEY" ]; then JWT_KEY=$$(openssl rand -hex 32); echo "NOTE: no JWT_SIGNING_KEY in infra/.env — generated an ephemeral key (sessions reset each deploy)"; fi; \
 	ADMIN_EMAIL=$$(grep -E '^ADMIN_EMAIL=' infra/.env 2>/dev/null | cut -d= -f2-); \
 	ADMIN_PASSWORD=$$(grep -E '^ADMIN_PASSWORD=' infra/.env 2>/dev/null | cut -d= -f2-); \
-	kubectl delete job course-seeder -n $(NAMESPACE) --ignore-not-found 2>/dev/null; \
+	POSTGRES_PW=$$(grep -E '^POSTGRES_PASSWORD=' infra/.env 2>/dev/null | cut -d= -f2-); \
+	if [ -z "$$POSTGRES_PW" ]; then POSTGRES_PW=$$(openssl rand -hex 16); echo "NOTE: no POSTGRES_PASSWORD in infra/.env — generated an ephemeral password (data resets each deploy)"; fi; \
+	REPL_PW=$$(grep -E '^POSTGRES_REPLICATION_PASSWORD=' infra/.env 2>/dev/null | cut -d= -f2-); \
+	if [ -z "$$REPL_PW" ]; then REPL_PW=$$(openssl rand -hex 16); fi; \
 	helm upgrade --install team-devvopps helm/team-devvopps/ \
 		-f helm/team-devvopps/values-local.yaml \
 		--set llmService.groqApiKey="$$GROQ_KEY" \
@@ -98,6 +101,8 @@ k8s-deploy: k8s-build
 		--set auth.jwtSigningKey="$$JWT_KEY" \
 		--set auth.adminEmail="$$ADMIN_EMAIL" \
 		--set auth.adminPassword="$$ADMIN_PASSWORD" \
+		--set postgres.credentials.password="$$POSTGRES_PW" \
+		--set postgres.replicationPassword="$$REPL_PW" \
 		-n $(NAMESPACE) --create-namespace \
 		--wait --timeout 5m
 	@echo ""
