@@ -41,7 +41,7 @@ jobs:
           pip install -r requirements-test.txt
         
       - name: Run LLM service tests
-        run: pytest test_llm_service.py -v
+        run: pytest test-llm-service.py -v
   
   client:
     runs-on: ubuntu-latest
