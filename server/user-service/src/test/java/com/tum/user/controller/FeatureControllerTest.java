@@ -8,6 +8,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.boot.test.context.SpringBootTest;
 
 
@@ -44,9 +45,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   the "enabled" field.
  * - PUT /features/{name} returns 400 when the request body is empty.
  */
-@SpringBootTest
-@AutoConfigureMockMvc
-@ActiveProfiles("test")
+@WebMvcTest(FeatureController.class)
 class FeatureControllerTest {
 
     @Autowired

@@ -23,7 +23,7 @@ public class AppSetting {
 
     /** The setting's value — free text, may be multi-line. */
     @Lob
-    @Column(nullable = false, name = "setting_value")
+    @Column(nullable = false)
     private String value;
 
     /** Human-readable explanation shown in the admin panel. */
