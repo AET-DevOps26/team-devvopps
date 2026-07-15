@@ -1,4 +1,4 @@
-name: Deploy to VM
+name: Deploy to Virtual Machine
 
 # Runs automatically after the Build workflow completes successfully on main.
 # Copies the compose file to the Azure VM and restarts all services via Docker Compose.
@@ -40,14 +40,6 @@ jobs:
       # a /32 (a single address), and remove the rule again at the end of the
       # job (see "Remove temporary CI rule"), even if the job fails.
 
-      - name: Azure login
-        # Required before any 'az' CLI command can manage Azure resources.
-        # Uses the same service principle already used for Terraform/provisioning.
-        # That principal needs "Network Contributor" on the NSG. 
-        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
-        with:
-          creds: '{"clientId":"${{ secrets.ARM_CLIENT_ID }}","clientSecret":"${{ secrets.ARM_CLIENT_SECRET }}","subscriptionId":"${{ secrets.ARM_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.ARM_TENANT_ID }}"}'
-
       - name: Get runner IP
         # Determines the public IP this specific runner instance is using, 
         # so we can grant access to exactly that address (not a broader range)
@@ -61,16 +53,25 @@ jobs:
         #   - destination port 22 = SSH only, nothing else is opened
         # This rule is the only thing that lets this job reach the VM over SSH
         run: |
-          az network nsg rule create \
-            --resource-group team-devvopps \
-            --nsg-name team-devvopps-nsg \
-            --name allow-ssh-ci-temp \
-            --priority 101 \
-            --access Allow \
-            --protocol Tcp \
-            --direction Inbound \
-            --source-address-prefixes ${{ steps.ip.outputs.ip }}/32 \
-            --destination-port-ranges 22
+          curl -s -X PUT \
+            "https://management.azure.com/subscriptions/${{ secrets.ARM_SUBSCRIPTION_ID }}/resourceGroups/team-devvopps/providers/Microsoft.Network/networkSecurityGroups/team-devvopps-nsg/securityRules/allow-ssh-ci-temp?api-version=2023-05-01" \
+            -H "Authorization: Bearer $(curl -s -X POST \
+              "https://login.microsoftonline.com/${{ secrets.ARM_TENANT_ID }}/oauth2/v2.0/token" \
+              -d "client_id=${{ secrets.ARM_CLIENT_ID }}&client_secret=${{ secrets.ARM_CLIENT_SECRET }}&scope=https://management.azure.com/.default&grant_type=client_credentials" \
+              | jq -r .access_token)" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "properties": {
+                "priority": 101,
+                "protocol": "Tcp",
+                "access": "Allow",
+                "direction": "Inbound",
+                "sourceAddressPrefix": "${{ steps.ip.outputs.ip }}/32",
+                "sourcePortRange": "*",
+                "destinationAddressPrefix": "*",
+                "destinationPortRange": "22"
+              }
+            }'
 
       
       # --- Deployment steps (now that SSH access is open for this runner) ---
@@ -148,7 +149,10 @@ jobs:
         # so a failed deploy never leaves an open SSH rule behind.
         if: always()
         run: |
-          az network nsg rule delete \
-            --resource-group team-devvopps \
-            --nsg-name team-devvopps-nsg \
-            --name allow-ssh-ci-temp
+          TOKEN=$(curl -s -X POST \
+            "https://login.microsoftonline.com/${{ secrets.ARM_TENANT_ID }}/oauth2/v2.0/token" \
+            -d "client_id=${{ secrets.ARM_CLIENT_ID }}&client_secret=${{ secrets.ARM_CLIENT_SECRET }}&scope=https://management.azure.com/.default&grant_type=client_credentials" \
+            | jq -r .access_token)
+          curl -s -X DELETE \
+            "https://management.azure.com/subscriptions/${{ secrets.ARM_SUBSCRIPTION_ID }}/resourceGroups/team-devvopps/providers/Microsoft.Network/networkSecurityGroups/team-devvopps-nsg/securityRules/allow-ssh-ci-temp?api-version=2023-05-01" \
+            -H "Authorization: Bearer $TOKEN"
