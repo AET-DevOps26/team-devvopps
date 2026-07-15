@@ -12,11 +12,12 @@ The monitoring stack consists of:
 - **Promtail** — Agent that discovers Docker containers and ships logs to Loki
 
 
-Dashboards auto-load on startup:
+Dashboards auto-load on startup (exported JSON lives in `helm/team-devvopps/grafana-dashboards/`, shared by the compose and Kubernetes setups):
 - **Request Metrics** — request rate, latency (p95, p99), error rate by service
 - **System Health** — service up/down status, JVM memory/threads, HTTP status distribution, active alerts
 - **Logs Dashboard** — Grafana dashboard for viewing logs. Includes live logs, error counts, and log volume by service
 - **LLM Service** — roadmap generation success rate, request outcomes (success / parse_error / provider_error / quota_exceeded), LLM call latency by provider, token consumption, and live error logs
+- **Auth & Security** — registered users, signups, login rate by result, login failures, gateway JWT rejections by reason, and live auth event logs
 
 Log format differs per runtime:
 - **AET (containerd):** `cri` pipeline stage (default in values.yaml)
@@ -42,10 +43,10 @@ Metrics are collected every 15 seconds. Alert rules are evaluated every 15 secon
 
 ### Accessing Dashboards on Docker
 
-- **Grafana:** http://localhost:3001 (login: `admin` / `admin`)
+- **Grafana:** http://localhost:3001 — login with `GRAFANA_ADMIN_USER` (default `admin`) / `GRAFANA_ADMIN_PASSWORD` from your `infra/.env`
 - **Prometheus:** http://localhost:9090
 
-> **Note:** The default `admin`/`admin` credentials are intentional and fine for local Docker — Grafana is only reachable from your machine. On the AET cluster, Grafana is publicly exposed via ingress, so the deploy workflow requires the `GRAFANA_ADMIN_USER`/`GRAFANA_ADMIN_PASSWORD` GitHub Secrets and fails fast if they are missing.
+> **Note:** Grafana no longer starts with a default password anywhere. Locally, compose fails fast unless `GRAFANA_ADMIN_PASSWORD` is set in `infra/.env` (pick any value — Grafana is only reachable from your machine). On the AET cluster, Grafana is publicly exposed via ingress, so the deploy workflow requires the `GRAFANA_ADMIN_USER`/`GRAFANA_ADMIN_PASSWORD` GitHub Secrets and fails fast if they are missing.
 
 <br>
 
@@ -56,7 +57,7 @@ Metrics are collected every 15 seconds. Alert rules are evaluated every 15 secon
 Set your kubeconfig to point to the AET cluster:
 
 ```bash
-export KUBECONFIG=~/pathtostud.yaml
+export KUBECONFIG=~/path/to/stud.yaml
 ```
 
 ### Logging Stack (Kubernetes-specific)
@@ -68,13 +69,17 @@ On Kubernetes, Promtail runs as a **DaemonSet** (one pod per node) and discovers
 
 ### Accessing Dashboards
 
-Port-forward to expose the services locally:
+On AET, Grafana is publicly reachable through the ingress:
+
+- **Grafana:** https://team-devvopps.stud.k8s.aet.cit.tum.de/grafana (login: credentials from the `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` GitHub Secrets)
+
+Prometheus and Loki are not publicly exposed — port-forward to reach them (works for Grafana too):
 
 ```bash
-# Terminal 1: Grafana
+# Terminal 1: Grafana (alternative to the ingress URL)
 kubectl port-forward -n team-devvopps svc/grafana 3001:3000
 
-# Terminal 2: Prometheus  
+# Terminal 2: Prometheus
 kubectl port-forward -n team-devvopps svc/prometheus 9090:9090
 
 # Terminal 3: Loki (if needed for API access)
@@ -82,7 +87,7 @@ kubectl port-forward -n team-devvopps svc/loki 3100:3100
 ```
 
 Then access:
-- **Grafana:** http://localhost:3001 (login: credentials from the `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` GitHub Secrets)
+- **Grafana:** http://localhost:3001
 - **Prometheus:** http://localhost:9090
 
 <br>
@@ -99,7 +104,7 @@ Then access:
 **Cause:** Wrong kubeconfig or namespace.  
 **Fix:** Ensure you ran:
 ```bash
-export KUBECONFIG=~/Downloads/stud-6.yaml
+export KUBECONFIG=~/path/to/stud.yaml
 ```
 ### To test alerts
 
@@ -177,3 +182,20 @@ docker start infra-roadmap-service-1
 - ServiceDown alert = a service crashed or is unreachable 
 - HighErrorRate = too many errors (> 5%) 
 - HighLatency = requests are slow (p95 > 1s) 
+
+### Auth & Security Dashboard
+
+**Registered Users / Signups**
+- Total user count and signup rate over time
+- Sudden signup spikes can indicate abuse
+
+**Login Rate by Result / Login Failures (5m)**
+- Successful vs. failed logins per second
+- A burst of failures for one account or from steady traffic = possible brute-force attempt
+
+**Gateway Rejections by Reason**
+- Requests the api-gateway rejected before they reached a service (missing token, expired token, invalid signature, insufficient role)
+- A spike in `invalid signature` after a deploy usually means the `JWT_SIGNING_KEY` changed and old sessions are being invalidated
+
+**Auth Events (live)**
+- Live tail of auth event logs from user-service (signups, logins, logouts, rejections) for incident triage
