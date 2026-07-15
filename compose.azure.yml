@@ -1,4 +1,29 @@
 services:
+  # Docker socket proxy: gives Traefik read-only access to just the
+  # container list/inspect endpoints it needs for service discovery,
+  # instead of mounting /var/run/docker.sock directly into Traefik. A
+  # direct socket mount is root-equivalent host access — if Traefik were
+  # ever compromised, the attacker gets the whole VM, not just the
+  # container. The proxy is not published on any port and only reachable
+  # from reverse-proxy over the default Docker network.
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    environment:
+      CONTAINERS: 1
+      # Everything else defaults to 0 (denied) in this image.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:2375/_ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
   reverse-proxy:
     image: traefik:v3.6.15
     command:
@@ -13,6 +38,9 @@ services:
       - "--certificatesresolvers.letsencrypt.acme.email=admin@tum.de"
       - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
     restart: unless-stopped
+    depends_on:
+      docker-socket-proxy:
+        condition: service_healthy
     ports:
       - "80:80"
       - "443:443"
@@ -138,9 +166,17 @@ services:
     environment:
       - PUBLIC_API_URL=${PUBLIC_API_URL}
     depends_on:
-      - api-gateway
-      - llm-service
+      api-gateway:
+        condition: service_healthy
+      llm-service:
+        condition: service_started
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:80/"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.client.rule=Host(`${CLIENT_HOST}`)"
@@ -165,6 +201,12 @@ services:
       - course-service
       - wait-for-courses
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/venv/bin/python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8084/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
     labels:
       - "traefik.enable=false"
     extra_hosts:
