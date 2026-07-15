@@ -45,3 +45,9 @@ data:
         static_configs:
           - targets: ['api-gateway:{{ .Values.services.apiGateway.port }}']
         metrics_path: '/actuator/prometheus'
+
+      # FastAPI service exposes prometheus_client metrics at /metrics
+      - job_name: 'llm-service'
+        static_configs:
+          - targets: ['llm-service:{{ .Values.services.llmService.port }}']
+        metrics_path: '/metrics'

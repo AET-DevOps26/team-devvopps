@@ -38,3 +38,9 @@ scrape_configs:
     static_configs:
       - targets: ['api-gateway:8080']
     metrics_path: '/actuator/prometheus'
+
+  # FastAPI service exposes prometheus_client metrics at /metrics
+  - job_name: 'llm-service'
+    static_configs:
+      - targets: ['llm-service:8084']
+    metrics_path: '/metrics'

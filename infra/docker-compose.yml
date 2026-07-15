@@ -336,6 +336,7 @@ services:
       - ../helm/team-devvopps/grafana-dashboards/dashboard-system-health.json:/etc/grafana/provisioning/dashboards/system-health.json
       - ../helm/team-devvopps/grafana-dashboards/dashboard-logs.json:/etc/grafana/provisioning/dashboards/logs.json
       - ../helm/team-devvopps/grafana-dashboards/dashboard-auth.json:/etc/grafana/provisioning/dashboards/auth.json
+      - ../helm/team-devvopps/grafana-dashboards/dashboard-llm.json:/etc/grafana/provisioning/dashboards/llm.json
     depends_on:
       - prometheus
       - loki

@@ -26,6 +26,7 @@ def _log(level: str, message: str, **extra):
     print(f"[{level}] {message}", flush=True)
 from langchain_core.language_models.llms import LLM
 from langchain_core.callbacks.manager import CallbackManagerForLLMRun
+from prometheus_client import Counter, Histogram, make_asgi_app
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
@@ -267,6 +268,45 @@ def check_user_limit(user_id: str) -> None:
         )
 
 # ---------------------------------------------------------------------------
+# Prometheus metrics, exposed at /metrics.
+# The provider/model labels matter because the "llmUseLogos" flag switches
+# providers at runtime — without them a flag flip would look like an
+# unexplained latency/error shift.
+# ---------------------------------------------------------------------------
+LLM_REQUESTS = Counter(
+    "llm_requests",  # exported as llm_requests_total
+    "Roadmap generation requests by outcome",
+    ["provider", "model", "status"],  # status: success|parse_error|provider_error|quota_exceeded
+)
+LLM_DURATION = Histogram(
+    "llm_request_duration_seconds",
+    "Duration of the provider LLM call only (excludes TF-IDF filtering and parsing)",
+    ["provider"],
+    # Groq answers in a few seconds; Logos gpt-oss routinely takes 130-160s.
+    buckets=[1, 5, 15, 30, 60, 120, 180, 240, 300],
+)
+LLM_TOKENS = Counter(
+    "llm_tokens",  # exported as llm_tokens_total
+    "Tokens consumed as reported by the provider",
+    ["provider", "type"],  # type: prompt|completion
+)
+
+# Pre-create every label combination at 0. Without this, a counter's series
+# only appears in Prometheus at its first increment, and rate()/increase()
+# treat that first sample as the baseline — so the first roadmap after every
+# restart would never show up on the dashboard.
+# LM Studio is deliberately excluded: it's the no-API-key laptop fallback and
+# never serves traffic on compose/AET, so pre-creating it would only clutter
+# the dashboard with permanently-zero series. If it IS used, its series appear
+# lazily on first use.
+for _p in (PROVIDER_LOGOS, PROVIDER_GROQ):
+    for _status in ("success", "parse_error", "provider_error", "quota_exceeded"):
+        LLM_REQUESTS.labels(provider=_p["name"], model=_p["model"], status=_status)
+    for _type in ("prompt", "completion"):
+        LLM_TOKENS.labels(provider=_p["name"], type=_type)
+    LLM_DURATION.labels(provider=_p["name"])
+
+# ---------------------------------------------------------------------------
 # App lifecycle
 # ---------------------------------------------------------------------------
 @asynccontextmanager
@@ -299,6 +339,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Prometheus scrape endpoint
+app.mount("/metrics", make_asgi_app())
 
 
 class RoadmapRequest(BaseModel):
@@ -525,8 +568,12 @@ async def recommend(req: RoadmapRequest, user_id: str = "anonymous") -> RoadmapR
         )
     reserved = False
     total_tokens = 0
-    t0 = time.time()      
+    t0 = time.time()
     t_llm = time.time()
+
+    # Resolved once so every metric emitted for this request carries the same
+    # provider/model labels, even if the admin flips the flag mid-request.
+    provider = current_provider()
 
     try:
         # Check user limit before calling llm (skipped entirely when the
@@ -568,15 +615,35 @@ async def recommend(req: RoadmapRequest, user_id: str = "anonymous") -> RoadmapR
         llm_ms = round((time.time() - t_llm) * 1000)
         _log("INFO", f"LLM responded in {llm_ms}ms", goal=req.goal, llm_ms=llm_ms)
 
+        LLM_DURATION.labels(provider=provider["name"]).observe(time.time() - t_llm)
+        LLM_TOKENS.labels(provider=provider["name"], type="prompt").inc(usage.get("prompt_tokens") or 0)
+        LLM_TOKENS.labels(provider=provider["name"], type="completion").inc(usage.get("completion_tokens") or 0)
+
         result = parse_llm_response(raw)
 
-    except HTTPException:
+        # An empty milestone list means the LLM answered but the JSON was
+        # malformed/truncated (parse_llm_response falls back to []).
+        LLM_REQUESTS.labels(
+            provider=provider["name"],
+            model=provider["model"],
+            status="success" if result.milestones else "parse_error",
+        ).inc()
+
+    except HTTPException as e:
+        if e.status_code == 429:
+            LLM_REQUESTS.labels(
+                provider=provider["name"], model=provider["model"], status="quota_exceeded"
+            ).inc()
         raise
     except Exception as e:
         # Catch everything (timeouts, connection errors, provider SDK errors),
         # not just RuntimeError — otherwise failures bypass the structured log.
         llm_ms = round((time.time() - t_llm) * 1000)
         _log("ERROR", f"LLM call failed after {llm_ms}ms: {e}", goal=req.goal, llm_ms=llm_ms)
+        LLM_DURATION.labels(provider=provider["name"]).observe(time.time() - t_llm)
+        LLM_REQUESTS.labels(
+            provider=provider["name"], model=provider["model"], status="provider_error"
+        ).inc()
         raise HTTPException(status_code=503, detail=str(e)) from e
     
     finally: 
@@ -610,7 +677,11 @@ async def root():
         }
     }
 
-# Entry point for direct execution
+# Entry point for direct execution. Pass the app OBJECT, not the "main:app"
+# string: the string form makes uvicorn re-import this module, which
+# re-registers the Prometheus metrics and crashes with "Duplicated timeseries
+# in CollectorRegistry". For hot reload during development, run
+# `uvicorn main:app --reload` instead.
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8004))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=port)
