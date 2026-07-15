@@ -1,10 +1,37 @@
 services:
+  # Docker socket proxy: gives Traefik read-only access to just the
+  # container list/inspect endpoints it needs for service discovery,
+  # instead of mounting /var/run/docker.sock directly into Traefik. A
+  # direct socket mount is root-equivalent host access — if Traefik were
+  # ever compromised, the attacker gets the whole VM, not just the
+  # container. The proxy is not published on any port and only reachable
+  # from reverse-proxy over the default Docker network.
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    environment:
+      CONTAINERS: 1
+      # Everything else defaults to 0 (denied) in this image.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:2375/_ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
   # Traefik acts as a reverse proxy and handles TLS termination.
   # It automatically obtains Let's Encrypt certificates via HTTP challenge and redirects all HTTP traffic to HTTPS.
   reverse-proxy:
     image: traefik:v3.6.15
     command:
       - "--providers.docker=true"
+      - "--providers.docker.endpoint=tcp://docker-socket-proxy:2375"
       - "--providers.docker.exposedByDefault=false"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
@@ -14,21 +41,56 @@ services:
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
       - "--certificatesresolvers.letsencrypt.acme.email=admin@tum.de"
       - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      # Dedicated internal entrypoint for --ping, not published to the host
+      # (no "ports:" mapping for it) — only reachable from inside the
+      # container for the healthcheck below, never from the internet.
+      - "--entrypoints.healthcheck.address=:8082"
+      - "--ping=true"
+      - "--ping.entrypoint=healthcheck"
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    # Traefik binds ports 80/443 (<1024) as its entrypoint; it's the
+    # official image's design to run this way. cap_drop: ALL still
+    # removes every other Linux capability the container doesn't need.
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    depends_on:
+      - docker-socket-proxy
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock   # Needed for Traefik to discover services
       - ./letsencrypt:/letsencrypt                  # Persists TLS certificates across restarts
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:8082/ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
   # Shared PostgreSQL instance for all services.
   # Each service uses its own database (userdb, coursedb, roadmapdb) created by init-databases.sql.
   postgres:
     image: postgres:16
+    security_opt:
+      - no-new-privileges:true
+    # Can't cap_drop ALL here: the official entrypoint chowns/chmods the
+    # data dir as root on first init. Drop everything except what that
+    # startup step needs (same fix as infra/docker-compose.yml).
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - FOWNER
+      - DAC_OVERRIDE
+      - SETUID
+      - SETGID
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env.prod}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-databases.sql:/docker-entrypoint-initdb.d/init.sql # Runs once on first start
@@ -41,35 +103,59 @@ services:
 
   user-service:
     image: ghcr.io/aet-devops26/team-devvopps/user-service:latest
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       DB_HOST: postgres
       DB_NAME: userdb
       DB_USER: postgres
-      DB_PASSWORD: postgres
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env.prod}
     depends_on:
       postgres:
         condition: service_healthy    # Wait for postgres to be ready before starting
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8081 && printf 'GET /actuator/health HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '\"status\":\"UP\"' <&3"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
 
   course-service:
     image: ghcr.io/aet-devops26/team-devvopps/course-service:latest
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       DB_HOST: postgres
       DB_NAME: coursedb
       DB_USER: postgres
-      DB_PASSWORD: postgres
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env.prod}
     depends_on:
       postgres:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8082 && printf 'GET /actuator/health HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '\"status\":\"UP\"' <&3"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
 
   roadmap-service:
     image: ghcr.io/aet-devops26/team-devvopps/roadmap-service:latest
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       DB_HOST: postgres
       DB_NAME: roadmapdb
       DB_USER: postgres
-      DB_PASSWORD: postgres
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env.prod}
       USER_SERVICE_HOST: user-service
       LLM_SERVICE_HOST: llm-service
     depends_on:
@@ -78,12 +164,22 @@ services:
       user-service:
         condition: service_started
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8083 && printf 'GET /actuator/health HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '\"status\":\"UP\"' <&3"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
 
   # The API gateway is the single entry point for all frontend requests.
   # It proxies /users/**, /courses/**, /roadmaps/** to the respective services.
   # Traefik routes external HTTPS traffic to this container on port 8080.
   api-gateway:
     image: ghcr.io/aet-devops26/team-devvopps/api-gateway:latest
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       USER_SERVICE_HOST: user-service
       COURSE_SERVICE_HOST: course-service
@@ -93,6 +189,12 @@ services:
       - course-service
       - roadmap-service
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8080 && printf 'GET /actuator/health HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '\"status\":\"UP\"' <&3"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.api-gateway.rule=Host(`${SERVER_HOST}`)"
@@ -104,11 +206,27 @@ services:
   # via the client-compress middleware to reduce transfer size.
   client:
     image: ghcr.io/aet-devops26/team-devvopps/client:latest
+    security_opt:
+      - no-new-privileges:true
+    # nginx's master process chowns /var/cache/nginx etc. to its runtime
+    # user as root on startup; can't cap_drop ALL without that failing.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
     environment:
       - PUBLIC_API_URL=${PUBLIC_API_URL}
     depends_on:
       - api-gateway
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:80/"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.client.rule=Host(`${CLIENT_HOST}`)"
@@ -122,12 +240,25 @@ services:
   # It is only reachable by other services within the Docker network.
   llm-service:
     image: ghcr.io/aet-devops26/team-devvopps/llm-service:latest
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       LLM_API_URL: http://llm-backend:1234/v1/chat/completions
       COURSE_SERVICE_HOST: course-service
     depends_on:
       - course-service
     restart: unless-stopped
+    # Distroless final image has no shell/curl/wget, only the venv's
+    # python3 (also used as the container's entrypoint). No PORT env var
+    # is set here, so main.py falls back to its default of 8004.
+    healthcheck:
+      test: ["CMD", "/venv/bin/python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
     labels:
       - "traefik.enable=false"
 

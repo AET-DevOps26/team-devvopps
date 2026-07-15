@@ -13,12 +13,12 @@ postgres:
   # Single instance locally — no replication needed for development
   replicas: 1
   storage: 1Gi
-  # Local-only credentials (production credentials come from GitHub Secrets via --set)
+  # Credentials are injected by `make k8s-deploy` via --set from the
+  # git-ignored infra/.env (POSTGRES_PASSWORD), same as auth.jwtSigningKey
+  # below. Falls back to a random ephemeral password if unset.
   credentials:
     username: postgres
-    password: postgres
   replicationUser: replication
-  replicationPassword: replication
 
 # groqApiKey is injected by `make k8s-deploy` via --set from the git-ignored infra/.env
 llmService:

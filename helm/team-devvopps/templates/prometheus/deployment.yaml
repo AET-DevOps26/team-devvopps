@@ -27,6 +27,12 @@ spec:
           # Use specific version for reproducibility (not 'latest')
           image: prom/prometheus:v2.52.0@sha256:5c435642ca4d8427ca26f4901c11114023004709037880cd7860d5b7176aa731
           securityContext:
+            # The official image already runs as uid 65534 (nobody) by
+            # default; making it explicit here so Kubernetes/scanners can
+            # verify it instead of assuming the image's default applies.
+            runAsUser: 65534
+            runAsGroup: 65534
+            runAsNonRoot: true
             allowPrivilegeEscalation: false
             capabilities:
               drop:
