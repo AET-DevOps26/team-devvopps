@@ -24,3 +24,4 @@ binaryData:
   system-health.json: {{ .Files.Get "grafana-dashboards/dashboard-system-health.json" | b64enc }}
   logs.json: {{ .Files.Get "grafana-dashboards/dashboard-logs.json" | b64enc }}
   auth.json: {{ .Files.Get "grafana-dashboards/dashboard-auth.json" | b64enc }}
+  llm.json: {{ .Files.Get "grafana-dashboards/dashboard-llm.json" | b64enc }}

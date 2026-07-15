@@ -15,7 +15,8 @@ The monitoring stack consists of:
 Dashboards auto-load on startup:
 - **Request Metrics** — request rate, latency (p95, p99), error rate by service
 - **System Health** — service up/down status, JVM memory/threads, HTTP status distribution, active alerts
-- **Logs Dashboard** — Grafana dashboard for viewing logs. Includes live logs, error counts, log volume by service, and DB count stat panels
+- **Logs Dashboard** — Grafana dashboard for viewing logs. Includes live logs, error counts, and log volume by service
+- **LLM Service** — roadmap generation success rate, request outcomes (success / parse_error / provider_error / quota_exceeded), LLM call latency by provider, token consumption, and live error logs
 
 Log format differs per runtime:
 - **AET (containerd):** `cri` pipeline stage (default in values.yaml)
@@ -151,7 +152,7 @@ docker start infra-roadmap-service-1
 ### System Health Dashboard
 
 **Services UP / Services DOWN**
-- UP = 4 means all services (roadmap, user, course, api-gateway) are reachable
+- UP = 5 means all services (roadmap, user, course, api-gateway, llm) are reachable
 - DOWN > 0 = ServiceDown alert is firing (critical)
 
 **Success Rate (%)**
