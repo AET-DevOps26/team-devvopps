@@ -33,6 +33,7 @@ services:
       - "--providers.docker=true"
       - "--providers.docker.endpoint=tcp://docker-socket-proxy:2375"
       - "--providers.docker.exposedByDefault=false"
+      - "--providers.docker.allowEmptyServices=true"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
       - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
@@ -262,7 +263,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-      start_period: 10s
+      start_period: 30s
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.client.rule=Host(`${CLIENT_HOST}`)"
