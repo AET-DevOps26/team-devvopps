@@ -33,8 +33,11 @@ export default function Login() {
 
         {error && <div style={st.error}>⚠️ {error}</div>}
 
-        <label style={st.label}>Email</label>
+        <label htmlFor="Email" style={st.label}>
+          Email
+        </label>
         <input
+          id="Email"
           style={st.input}
           type="email"
           autoComplete="email"
@@ -43,8 +46,11 @@ export default function Login() {
           required
         />
 
-        <label style={st.label}>Password</label>
+        <label htmlFor="Password" style={st.label}>
+          Password
+        </label>
         <input
+          id="Password"
           style={st.input}
           type="password"
           autoComplete="current-password"

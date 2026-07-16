@@ -62,17 +62,21 @@ public class RoadmapService {
     }
 
     /**
-     * Calls user-service to verify that the user exists.
+     * Represents the completion progress of a roadmap.
+     *
+     * @param completedMilestones number of milestones that are completed
+     * @param totalMilestones total number of milestones in the roadmap
+     * @param completedTasks number of completed tasks across all milestones
+     * @param totalTasks total number of tasks across all milestones
+     * @param roadmapCompleted whether all milestones in the roadmap are completed
      */
-    private Object getUser(Long userId) {
-        try {
-            return restTemplate.getForObject(getUserUrl(userId), Object.class);
-        } catch (HttpClientErrorException.NotFound e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User " + userId + " not found");
-        } catch (Exception e) {
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "User service not reachable");
-        }
-    }
+    public record RoadmapProgress(
+        int completedMilestones,
+        int totalMilestones,
+        int completedTasks,
+        long totalTasks,
+        boolean roadmapCompleted
+    ) {}
 
     /**
      * Returns all roadmaps (admin only — enforced at the gateway).
@@ -111,9 +115,9 @@ public class RoadmapService {
         Roadmap roadmap = new Roadmap();
         roadmap.setUser_id(userId);
         roadmap.setGoal(goal);
-        roadmap.setTitle(user_goal);
         roadmap.setProgress(0);
         roadmap.setCreated_date(LocalDateTime.now());
+        roadmap.setTitle("Roadmap for " + user_goal);
 
         // Call LLM
         log.info("[LLM] Calling llm-service at {} for goal='{}'", getLlmUrl(), user_goal);
@@ -138,6 +142,7 @@ public class RoadmapService {
                 milestone.setStatus(Status.NOT_STARTED);
                 milestone.setOrderIndex(index++);
                 milestone.setRoadmap(roadmap);
+                milestone.setStatus(Status.NOT_STARTED);
 
                 List<Task> tasks = new ArrayList<>();
                 
@@ -172,7 +177,11 @@ public class RoadmapService {
     }
     
     /**
-     * Returns roadmap by ID.
+     * Retrieves a roadmap by its identifier.
+     *
+     * @param id the roadmap ID
+     * @return the matching roadmap
+     * @throws ResponseStatusException if no roadmap exists with this ID
      */
     public Roadmap getRoadmap(Long id) {
         return roadmapRepository.findById(id)
@@ -213,11 +222,23 @@ public class RoadmapService {
         return roadmapRepository.save(roadmap);
     }
 
+    /**
+     * Computes progress statistics for a roadmap.
+     *
+     * @param roadmapId the roadmap identifier
+     * @return progress information containing completed and total milestones/tasks
+     */
     public RoadmapProgress getProgress(Long roadmapId) {
         Roadmap roadmap = getRoadmap(roadmapId);
         return computeProgress(roadmap);
     }
 
+    /**
+     * Calculates completion progress from an existing roadmap object.
+     *
+     * @param roadmap roadmap entity used for calculation
+     * @return calculated roadmap progress
+     */
     public RoadmapProgress computeProgress(Roadmap roadmap) {
         List<Milestone> milestones = roadmap.getMilestones();
         if (milestones == null || milestones.isEmpty()) {
@@ -241,7 +262,35 @@ public class RoadmapService {
         return new RoadmapProgress((int) completedMilestones, totalMilestones, (int) completedTasks, totalTasks, roadmapCompleted);
     }
 
-    // Private Helper
+    // PRIVATE HELPERS
+
+    /**
+     * Calls the user-service to verify that a user exists.
+     *
+     * @param userId the ID of the user to be verified
+     * @return the user data returned by the user-service
+     * @throws ResponseStatusException with HTTP 404 if the user does not exist
+     * @throws ResponseStatusException with HTTP 503 if the user-service is unavailable
+     */
+    private Object getUser(Long userId) {
+        try {
+            return restTemplate.getForObject(getUserUrl(userId), Object.class);
+        } catch (HttpClientErrorException.NotFound e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User " + userId + " not found");
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "User service not reachable");
+        }
+    }
+
+    /**
+     * Calls the LLM service to generate milestone and task recommendations.
+     *
+     * @param goal the user's goal description
+     * @param userId the user requesting the recommendation
+     * @return generated roadmap data from the LLM service
+     * @throws ResponseStatusException with HTTP 429 if the user exceeds the token quota
+     * @throws ResponseStatusException if the LLM service is unavailable or returns an error
+     */
     private RoadmapResponse callLLM(String goal, Long userId) {
         try {
             HttpHeaders headers = new HttpHeaders();
@@ -265,12 +314,4 @@ public class RoadmapService {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "LLM service not reachable");
         }
     }
-
-    public record RoadmapProgress(
-        int completedMilestones,
-        int totalMilestones,
-        int completedTasks,
-        long totalTasks,
-        boolean roadmapCompleted
-    ) {}
 }

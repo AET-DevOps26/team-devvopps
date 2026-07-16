@@ -47,7 +47,7 @@ public class FeatureController {
      * Only existing (seeded) flags can be toggled — no arbitrary flag creation.
      */
     @PutMapping("/{name}")
-    public FeatureFlag update(@PathVariable String name, @RequestBody Map<String, Boolean> body) {
+    public FeatureFlag update(@PathVariable(name = "name") String name, @RequestBody Map<String, Boolean> body) {
         Boolean enabled = body.get("enabled");
         if (enabled == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Body must contain \"enabled\": true|false");
