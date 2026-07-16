@@ -601,7 +601,7 @@ async def recommend(req: RoadmapRequest, x_user_id: str = Header("anonymous")) -
                     _log("WARN", "Course index still empty — proceeding without courses")
 
         courses_str = filter_courses(req.goal)
-        course_count = len([l for l in courses_str.splitlines() if l.strip().startswith("-")])
+        course_count = len([line for line in courses_str.splitlines() if line.strip().startswith("-")])
         _log("INFO", f"TF-IDF filtered {course_count} relevant courses", goal=req.goal)
         _log("INFO", f"Calling LLM ({current_provider()['model']})...", goal=req.goal)
 
