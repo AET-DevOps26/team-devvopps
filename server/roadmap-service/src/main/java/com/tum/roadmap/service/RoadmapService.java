@@ -20,6 +20,8 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -292,9 +294,13 @@ public class RoadmapService {
      */
     private RoadmapResponse callLLM(String goal, Long userId) {
         try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("X-User-Id", String.valueOf(userId));
+            HttpEntity<RoadmapRequest> entity = new HttpEntity<>(new RoadmapRequest(goal), headers);
+
             return restTemplate.postForObject(
-                    getLlmUrl() + "/recommend?user_id=" + userId,
-                    new RoadmapRequest(goal),
+                    getLlmUrl() + "/recommend",
+                    entity,
                     RoadmapResponse.class
             );
         } catch (HttpClientErrorException e) {
