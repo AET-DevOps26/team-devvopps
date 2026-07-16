@@ -135,6 +135,7 @@ jobs:
             echo "POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}" >> .env.prod
             echo "ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}" >> .env.prod
             echo "ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}" >> .env.prod
+            echo "JWT_SIGNING_KEY=${{ secrets.JWT_SIGNING_KEY }}" >> .env.prod
 
       # Pull the latest images from GHCR and restart all services.
       - name: SSH to VM and Execute Docker-Compose Up
