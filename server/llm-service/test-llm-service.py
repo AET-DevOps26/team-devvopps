@@ -337,8 +337,8 @@ class TestRecommendEndpoint:
         assert "milestones" in data
         assert len(data["milestones"]) == 1
 
-    def test_returns_empty_milestones_when_llm_returns_invalid_json(self):
-        """Malformed LLM output falls back to empty milestones rather than 500."""
+    def test_returns_502_when_llm_returns_invalid_json(self):
+        """Malformed LLM output is a 502 naming the AI provider, not a silent empty result."""
         with patch.object(
                 main.OpenAICompatibleLLM,
                 "ainvoke",
@@ -347,8 +347,8 @@ class TestRecommendEndpoint:
              patch("main.feature_enabled", return_value=False):
             response = client.post("/recommend", json={"goal": "Learn something"})
 
-        assert response.status_code == 200
-        assert response.json()["milestones"] == []
+        assert response.status_code == 502
+        assert "AI provider" in response.json()["detail"]
 
     def test_returns_503_when_llm_raises_exception(self):
         """Exception from the LLM returns 503 Service Unavailable."""
@@ -397,7 +397,13 @@ class TestRecommendEndpoint:
 
         main._user_token_usage.clear()
 
-        mock_output = json.dumps({"milestones": []})
+        # A real milestone, not an empty list — these tests exercise token
+        # accounting / quota / validation, not the empty-milestones path.
+        mock_output = json.dumps({
+            "milestones": [
+                {"title": "T", "description": "D", "tasks": [{"title": "Task", "completed": False}]}
+            ]
+        })
 
         async def mock_ainvoke(*args, **kwargs):
             main.llm.last_usage = {
@@ -499,7 +505,13 @@ class TestTokenLimit:
         limit = main.monthly_token_limit()
         main._user_token_usage["user"] = limit
 
-        mock_output = json.dumps({"milestones": []})
+        # A real milestone, not an empty list — these tests exercise token
+        # accounting / quota / validation, not the empty-milestones path.
+        mock_output = json.dumps({
+            "milestones": [
+                {"title": "T", "description": "D", "tasks": [{"title": "Task", "completed": False}]}
+            ]
+        })
 
         with patch.object(
                 main.OpenAICompatibleLLM,
@@ -534,7 +546,13 @@ class TestGoalValidation:
         import main
 
         goal = "a" * main.MAX_GOAL_CHARS
-        mock_output = json.dumps({"milestones": []})
+        # A real milestone, not an empty list — these tests exercise token
+        # accounting / quota / validation, not the empty-milestones path.
+        mock_output = json.dumps({
+            "milestones": [
+                {"title": "T", "description": "D", "tasks": [{"title": "Task", "completed": False}]}
+            ]
+        })
 
         with patch.object(
                 main.OpenAICompatibleLLM,

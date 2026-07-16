@@ -189,6 +189,35 @@ def build_index() -> int:
     return len(_courses)
 
 
+async def retry_course_index_until_ready(interval_seconds: int = 30) -> None:
+    """
+    Keeps retrying the course-index build every interval_seconds, independent
+    of any request, until it succeeds.
+
+    Without this, recovery from a failed startup build depends entirely on
+    /recommend's own retry (rate-limited to once/60s) — which only fires if
+    a real request happens to arrive while _courses is still empty. On
+    Kubernetes specifically, nothing gates llm-service's own startup on the
+    course-seeder finishing (unlike Docker Compose's depends_on chain), so
+    without this loop, course data could otherwise only ever get loaded by
+    accident, whenever some user's request happens to land at the right
+    moment. Runs build_index() in a thread (asyncio.to_thread) so a slow
+    course-service response doesn't block the event loop — unlike the
+    startup burst and /recommend's retry, which both call it directly.
+    """
+    global _last_index_attempt
+    while not _courses:
+        await asyncio.sleep(interval_seconds)
+        if _courses:
+            break
+        _log("INFO", "Background retry: attempting to build course index...")
+        _last_index_attempt = time.time()
+        count = await asyncio.to_thread(build_index)
+        if count > 0:
+            _log("INFO", f"Background retry succeeded — {count} courses indexed")
+            break
+
+
 def filter_courses(goal: str, k: int = TOP_K) -> str:
     """Return the top-k most relevant courses for the given goal as a formatted string."""
     if _vectorizer is None or _matrix is None or not _courses:
@@ -321,6 +350,7 @@ async def lifespan(app: FastAPI):
         await asyncio.sleep(10)
     else:
         _log("ERROR", "Could not build course index after 5 attempts — proceeding without courses")
+        asyncio.create_task(retry_course_index_until_ready())
     yield
 
 
@@ -631,7 +661,7 @@ async def recommend(req: RoadmapRequest, x_user_id: str = Header("anonymous")) -
         _log("INFO", f"Calling LLM ({current_provider()['model']})...", goal=req.goal)
 
         t_llm = time.time()
-    
+
         raw = await llm.ainvoke(build_prompt(req.goal, courses_str))
 
         
@@ -654,6 +684,20 @@ async def recommend(req: RoadmapRequest, x_user_id: str = Header("anonymous")) -
             model=provider["model"],
             status="success" if result.milestones else "parse_error",
         ).inc()
+
+        if not result.milestones:
+            # Previously returned 200 with an empty list, silently — roadmap-service
+            # then had no way to tell "the AI produced garbage" apart from any other
+            # empty-response cause. Raising here lets that distinction actually reach
+            # the caller instead of being lost.
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "The AI model returned invalid output. This is a temporary "
+                    "issue with the AI provider, not a bug in the application — "
+                    "please try again."
+                ),
+            )
 
     except HTTPException as e:
         if e.status_code == 429:
