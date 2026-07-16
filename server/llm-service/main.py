@@ -14,6 +14,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from langchain_core.language_models.llms import LLM
+from langchain_core.callbacks.manager import CallbackManagerForLLMRun
+from prometheus_client import Counter, Histogram, make_asgi_app
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
 
 # ---------------------------------------------------------------------------
 # In-memory log store (last 200 entries, newest first)
@@ -24,12 +30,6 @@ def _log(level: str, message: str, **extra):
     entry = {"timestamp": datetime.now(timezone.utc).isoformat(), "level": level, "message": message, **extra}
     _logs.appendleft(entry)
     print(f"[{level}] {message}", flush=True)
-from langchain_core.language_models.llms import LLM
-from langchain_core.callbacks.manager import CallbackManagerForLLMRun
-from prometheus_client import Counter, Histogram, make_asgi_app
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
 
 
 # ---------------------------------------------------------------------------

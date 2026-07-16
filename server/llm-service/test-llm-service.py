@@ -19,12 +19,12 @@ import sys
 from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
 
+from main import app, parse_llm_response, filter_courses, build_index, RoadmapResponse  # noqa: E402
+import main  
+
 fake_langchain = MagicMock()
 fake_langchain.verbose = False
 sys.modules["langchain"] = fake_langchain
-
-from main import app, parse_llm_response, filter_courses, build_index, RoadmapResponse
-import main
 
 client = TestClient(app)
 
@@ -194,7 +194,7 @@ class TestFilterCourses:
         """Never returns more than k courses."""
         result = filter_courses("learning", k=1)
 
-        lines = [l for l in result.splitlines() if l.startswith("-")]
+        lines = [line for line in result.splitlines() if line.startswith("-")]
         assert len(lines) <= 1
 
     def test_includes_course_code_in_output(self):
