@@ -13,7 +13,6 @@ tags:
     description: LLM-powered roadmap generation
 
 paths:
-
   /:
     get:
       summary: Root
@@ -21,16 +20,23 @@ paths:
       operationId: root
       responses:
         '200':
-          description: Successful Response - Service information
+          description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RootResponse'
+                type: string
 
   /health:
     get:
       summary: Health Check
-      description: Health check endpoint.
+      description: >
+        Health check endpoint, polled by Docker's healthcheck.
+        Returns 503 while no courses are indexed so `docker compose ps` shows
+        "unhealthy"/"starting" instead of "healthy" during the window where the
+        process is up but roadmap generation would run without course context.
+        Flips back to 200 automatically once a course fetch succeeds (either at
+        startup or via the retry-on-request in /recommend).
+        Not used as the Kubernetes readiness probe — see /livez for that.
       operationId: healthCheck
       responses:
         '200':
@@ -38,7 +44,22 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HealthResponse'
+                type: string
+
+  /livez:
+    get:
+      summary: Liveness Check
+      description: >
+        Kubernetes readiness probe target: process is up and serving HTTP.
+        Deliberately independent of course-index state — see /health's docstring.
+      operationId: livezCheck
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: string
 
   /usage:
     get:
@@ -56,26 +77,25 @@ paths:
             type: string
       responses:
         '200':
-          description: Successful Response - Token usage information
+          description: Successful Response
           content:
-              application/json:
-                schema:
-                  $ref: '#/components/schemas/UsageResponse'
+            application/json:
+              schema:
+                type: string
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/HTTPValidationError'
 
   /recommend:
     post:
-      tags: [recommendations]
       summary: Recommend
       operationId: generateRecommendation
       parameters:
-        - name: user_id
-          in: query
+        - name: x-user-id
+          in: header
           required: false
           schema:
             type: string
@@ -98,19 +118,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '429':
-          description: User token limit exceeded
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '503':
-          description: LLM backend unavailable
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/HTTPValidationError'
 
   /logs:
     get:
@@ -118,15 +126,14 @@ paths:
       operationId: getLogs
       responses:
         '200':
-          description: Successful Response - Recent service logs
+          description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LogsResponse'
+                type: string
 
 components:
   schemas:
-
     RoadmapRequest:
       type: object
       description: Request schema for generate endpoint.
@@ -143,38 +150,9 @@ components:
       properties:
         milestones:
           type: array
-          items:
-            $ref: '#/components/schemas/Milestone'
-    
-    Milestone:
-      type: object
-      properties:
-        title:
-          type: string
-        description:
-          type: string
-        tasks:
-          type: array
-          items:
-            $ref: '#/components/schemas/Task'
-
-    Task:
-      type: object
-      properties:
-        title:
-          type: string
-        completed:
-          type: boolean
-
-    ErrorResponse:
-      type: object
-      properties:
-        detail:
-          oneOf:
-            - type: string
-            - type: array
-              items:
-                $ref: '#/components/schemas/ValidationError'
+          description: Learning milestones
+          default: []
+          items: {}
 
     ValidationError:
       type: object
@@ -193,69 +171,11 @@ components:
           type: string
         type:
           type: string
-    
-    UsageResponse:
+
+    HTTPValidationError:
       type: object
       properties:
-        user_id:
-          type: string
-        used:
-          type: integer
-        limit:
-          type: integer
-        remaining:
-          type: integer
-        period:
-          type: string
-    
-    HealthResponse:
-      type: object
-      properties:
-        status:
-          type: string
-        service:
-          type: string
-        provider:
-          type: string
-        model:
-          type: string
-        api_key_configured:
-          type: boolean
-        courses_indexed:
-          type: integer
-    
-    RootResponse:
-      type: object
-      properties:
-        service:
-          type: string
-        version:
-          type: string
-        description:
-          type: string
-        endpoints:
-          type: object
-          additionalProperties:
-            type: string
-    
-    LogsResponse:
-      type: object
-      properties:
-        logs:
+        detail:
           type: array
           items:
-            $ref: '#/components/schemas/LogEntry'
-
-
-    LogEntry:
-      type: object
-      properties:
-        timestamp:
-          type: string
-          format: date-time
-        level:
-          type: string
-        message:
-          type: string
-        goal:
-          type: string
+            $ref: '#/components/schemas/ValidationError'
