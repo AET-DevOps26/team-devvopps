@@ -202,7 +202,8 @@ jobs:
             --set auth.jwtSigningKey="$JWT_SIGNING_KEY" \
             --set auth.adminEmail="$ADMIN_EMAIL" \
             --set auth.adminPassword="$ADMIN_PASSWORD" \
-            -n "$K8S_NAMESPACE"
+            -n "$K8S_NAMESPACE" \
+            --create-namespace
 
       # All images use the :latest tag, so helm upgrade alone does not restart
       # pods when only the image content changed. Force a rollout so every

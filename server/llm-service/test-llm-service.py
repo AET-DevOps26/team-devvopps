@@ -250,14 +250,37 @@ class TestBuildIndex:
 # ---------------------------------------------------------------------------
 
 class TestHealthEndpoint:
-    """Tests for the /health endpoint."""
+    """
+    Tests for the /health endpoint.
 
-    def test_returns_200(self):
-        """Health endpoint returns 200."""
+    Status code/body track whether courses are indexed: Docker's healthcheck
+    polls this to decide "healthy" vs "unhealthy", so it must reflect real
+    readiness (a process that's up but has no course context yet shouldn't
+    report "healthy").
+    """
+
+    def setup_method(self):
+        main._courses = []
+
+    def teardown_method(self):
+        main._courses = []
+
+    def test_returns_503_when_no_courses_indexed(self):
+        """Health endpoint returns 503 while the course index is empty."""
+        assert client.get("/health").status_code == 503
+
+    def test_returns_degraded_status_when_no_courses_indexed(self):
+        """Health endpoint reports degraded status while unindexed."""
+        assert client.get("/health").json()["status"] == "degraded"
+
+    def test_returns_200_when_courses_indexed(self):
+        """Health endpoint returns 200 once courses are indexed."""
+        main._courses = [{"title": "Intro to Testing"}]
         assert client.get("/health").status_code == 200
 
-    def test_returns_healthy_status(self):
-        """Health endpoint reports healthy status."""
+    def test_returns_healthy_status_when_courses_indexed(self):
+        """Health endpoint reports healthy status once courses are indexed."""
+        main._courses = [{"title": "Intro to Testing"}]
         assert client.get("/health").json()["status"] == "healthy"
 
     def test_returns_model_name(self):
@@ -314,8 +337,8 @@ class TestRecommendEndpoint:
         assert "milestones" in data
         assert len(data["milestones"]) == 1
 
-    def test_returns_empty_milestones_when_llm_returns_invalid_json(self):
-        """Malformed LLM output falls back to empty milestones rather than 500."""
+    def test_returns_502_when_llm_returns_invalid_json(self):
+        """Malformed LLM output is a 502 naming the AI provider, not a silent empty result."""
         with patch.object(
                 main.OpenAICompatibleLLM,
                 "ainvoke",
@@ -324,8 +347,8 @@ class TestRecommendEndpoint:
              patch("main.feature_enabled", return_value=False):
             response = client.post("/recommend", json={"goal": "Learn something"})
 
-        assert response.status_code == 200
-        assert response.json()["milestones"] == []
+        assert response.status_code == 502
+        assert "AI provider" in response.json()["detail"]
 
     def test_returns_503_when_llm_raises_exception(self):
         """Exception from the LLM returns 503 Service Unavailable."""
@@ -374,7 +397,13 @@ class TestRecommendEndpoint:
 
         main._user_token_usage.clear()
 
-        mock_output = json.dumps({"milestones": []})
+        # A real milestone, not an empty list — these tests exercise token
+        # accounting / quota / validation, not the empty-milestones path.
+        mock_output = json.dumps({
+            "milestones": [
+                {"title": "T", "description": "D", "tasks": [{"title": "Task", "completed": False}]}
+            ]
+        })
 
         async def mock_ainvoke(*args, **kwargs):
             main.llm.last_usage = {
@@ -476,7 +505,13 @@ class TestTokenLimit:
         limit = main.monthly_token_limit()
         main._user_token_usage["user"] = limit
 
-        mock_output = json.dumps({"milestones": []})
+        # A real milestone, not an empty list — these tests exercise token
+        # accounting / quota / validation, not the empty-milestones path.
+        mock_output = json.dumps({
+            "milestones": [
+                {"title": "T", "description": "D", "tasks": [{"title": "Task", "completed": False}]}
+            ]
+        })
 
         with patch.object(
                 main.OpenAICompatibleLLM,
@@ -511,7 +546,13 @@ class TestGoalValidation:
         import main
 
         goal = "a" * main.MAX_GOAL_CHARS
-        mock_output = json.dumps({"milestones": []})
+        # A real milestone, not an empty list — these tests exercise token
+        # accounting / quota / validation, not the empty-milestones path.
+        mock_output = json.dumps({
+            "milestones": [
+                {"title": "T", "description": "D", "tasks": [{"title": "Task", "completed": False}]}
+            ]
+        })
 
         with patch.object(
                 main.OpenAICompatibleLLM,

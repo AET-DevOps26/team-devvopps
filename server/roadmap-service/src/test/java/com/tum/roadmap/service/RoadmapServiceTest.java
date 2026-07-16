@@ -11,6 +11,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.server.ResponseStatusException;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -162,6 +163,27 @@ class RoadmapServiceTest {
                 () -> service.generateRoadmap(1L, "ML"));
  
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, ex.getStatusCode());
+    }
+
+    /**
+     * Verifies that a 502 from llm-service (the AI model returned invalid,
+     * unparseable output) propagates as BAD_GATEWAY with a message naming the
+     * AI provider — not the generic "LLM service not reachable" fallback,
+     * which would misreport an AI-output hiccup as an app outage.
+     */
+    @Test
+    void generateRoadmap_throwsBadGateway_whenLlmReturns502() {
+        when(restTemplate.getForObject(anyString(), eq(Object.class)))
+                .thenReturn(new Object());
+        when(restTemplate.postForObject(anyString(), any(), eq(RoadmapResponse.class)))
+                .thenThrow(HttpServerErrorException.create(
+                        HttpStatus.BAD_GATEWAY, "Bad Gateway", null, null, null));
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> service.generateRoadmap(1L, "ML"));
+
+        assertEquals(HttpStatus.BAD_GATEWAY, ex.getStatusCode());
+        assertTrue(ex.getReason().contains("AI provider"));
     }
 
     /**

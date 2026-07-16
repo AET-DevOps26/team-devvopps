@@ -17,6 +17,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpEntity;
@@ -305,6 +306,19 @@ public class RoadmapService {
         } catch (HttpClientErrorException e) {
             if (e.getStatusCode().value() == 429) {
                 throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Token quota exceeded");
+            }
+            log.error("[LLM] HTTP error {}: {}", e.getStatusCode(), e.getMessage());
+            throw new ResponseStatusException(e.getStatusCode(), "LLM service returned an error: " + e.getMessage());
+        } catch (HttpServerErrorException e) {
+            // llm-service returns 502 when the AI model itself produced invalid
+            // output (see its /recommend handler) — surface that distinctly so
+            // it isn't swallowed by the generic "not reachable" fallback below,
+            // which would misreport an AI-provider hiccup as an app outage.
+            if (e.getStatusCode().value() == 502) {
+                log.warn("[LLM] AI model returned invalid output: {}", e.getMessage());
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                        "The AI model returned invalid output. This is a temporary issue "
+                                + "with the AI provider, not a bug in the application — please try again.");
             }
             log.error("[LLM] HTTP error {}: {}", e.getStatusCode(), e.getMessage());
             throw new ResponseStatusException(e.getStatusCode(), "LLM service returned an error: " + e.getMessage());

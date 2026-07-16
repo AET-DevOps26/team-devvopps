@@ -11,7 +11,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, List, Optional
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from langchain_core.language_models.llms import LLM
@@ -189,6 +189,35 @@ def build_index() -> int:
     return len(_courses)
 
 
+async def retry_course_index_until_ready(interval_seconds: int = 30) -> None:
+    """
+    Keeps retrying the course-index build every interval_seconds, independent
+    of any request, until it succeeds.
+
+    Without this, recovery from a failed startup build depends entirely on
+    /recommend's own retry (rate-limited to once/60s) — which only fires if
+    a real request happens to arrive while _courses is still empty. On
+    Kubernetes specifically, nothing gates llm-service's own startup on the
+    course-seeder finishing (unlike Docker Compose's depends_on chain), so
+    without this loop, course data could otherwise only ever get loaded by
+    accident, whenever some user's request happens to land at the right
+    moment. Runs build_index() in a thread (asyncio.to_thread) so a slow
+    course-service response doesn't block the event loop — unlike the
+    startup burst and /recommend's retry, which both call it directly.
+    """
+    global _last_index_attempt
+    while not _courses:
+        await asyncio.sleep(interval_seconds)
+        if _courses:
+            break
+        _log("INFO", "Background retry: attempting to build course index...")
+        _last_index_attempt = time.time()
+        count = await asyncio.to_thread(build_index)
+        if count > 0:
+            _log("INFO", f"Background retry succeeded — {count} courses indexed")
+            break
+
+
 def filter_courses(goal: str, k: int = TOP_K) -> str:
     """Return the top-k most relevant courses for the given goal as a formatted string."""
     if _vectorizer is None or _matrix is None or not _courses:
@@ -321,6 +350,7 @@ async def lifespan(app: FastAPI):
         await asyncio.sleep(10)
     else:
         _log("ERROR", "Could not build course index after 5 attempts — proceeding without courses")
+        asyncio.create_task(retry_course_index_until_ready())
     yield
 
 
@@ -524,17 +554,42 @@ def parse_llm_response(raw: str) -> RoadmapResponse:
 # ---------------------------------------------------------------------------
 
 @app.get("/health")
-async def health_check():
-    """Health check endpoint."""
+async def health_check(response: Response):
+    """
+    Health check endpoint, polled by Docker's healthcheck.
+
+    Returns 503 while no courses are indexed so `docker compose ps` shows
+    "unhealthy"/"starting" instead of "healthy" during the window where the
+    process is up but roadmap generation would run without course context.
+    Flips back to 200 automatically once a course fetch succeeds (either at
+    startup or via the retry-on-request in /recommend).
+
+    Not used as the Kubernetes readiness probe — see /livez for that. A pod
+    that permanently lost the startup race with course-service (e.g. on a
+    fresh cluster where course-service is also cold-starting) would never
+    recover here on its own without an actual /recommend call, which would
+    wedge Kubernetes rollout waits indefinitely even though the process is
+    otherwise fully able to serve traffic in degraded mode.
+    """
     p = current_provider()
+    courses_indexed = len(_courses)
+    if courses_indexed == 0:
+        response.status_code = 503
     return {
-        "status": "healthy",
+        "status": "healthy" if courses_indexed > 0 else "degraded",
         "service": "LLM Roadmap Generation Service",
         "provider": p["name"],
         "model": p["model"],
         "api_key_configured": bool(p["key"]),
-        "courses_indexed": len(_courses),
+        "courses_indexed": courses_indexed,
     }
+
+
+@app.get("/livez")
+async def liveness_check():
+    """Kubernetes readiness probe target: process is up and serving HTTP.
+    Deliberately independent of course-index state — see /health's docstring."""
+    return {"status": "alive"}
 
 
 @app.get("/usage")
@@ -606,7 +661,7 @@ async def recommend(req: RoadmapRequest, x_user_id: str = Header(default="anonym
         _log("INFO", f"Calling LLM ({current_provider()['model']})...", goal=req.goal)
 
         t_llm = time.time()
-    
+
         raw = await llm.ainvoke(build_prompt(req.goal, courses_str))
 
         
@@ -629,6 +684,20 @@ async def recommend(req: RoadmapRequest, x_user_id: str = Header(default="anonym
             model=provider["model"],
             status="success" if result.milestones else "parse_error",
         ).inc()
+
+        if not result.milestones:
+            # Previously returned 200 with an empty list, silently — roadmap-service
+            # then had no way to tell "the AI produced garbage" apart from any other
+            # empty-response cause. Raising here lets that distinction actually reach
+            # the caller instead of being lost.
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "The AI model returned invalid output. This is a temporary "
+                    "issue with the AI provider, not a bug in the application — "
+                    "please try again."
+                ),
+            )
 
     except HTTPException as e:
         if e.status_code == 429:
