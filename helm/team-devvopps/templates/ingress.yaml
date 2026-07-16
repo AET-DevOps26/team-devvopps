@@ -32,13 +32,11 @@ spec:
                 port:
                   number: {{ .Values.services.apiGateway.port }}
 
-          - path: /llm(/|$)(.*)
-            pathType: ImplementationSpecific
-            backend:
-              service:
-                name: llm-service
-                port:
-                  number: {{ .Values.services.llmService.port }}
+          # llm-service intentionally has no rule of its own here — it must
+          # only be reached through api-gateway's JWT check (/api/llm/**
+          # above, or client's nginx proxying bare /llm/ to the gateway). A
+          # direct rule to llm-service would bypass that auth entirely, the
+          # way it used to — see FAIR_USE.md §3.
 
           # Grafana under /grafana — prefix is stripped by the rewrite, and
           # GF_SERVER_ROOT_URL makes Grafana generate prefixed URLs back.
