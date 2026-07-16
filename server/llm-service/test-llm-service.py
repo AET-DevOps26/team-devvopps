@@ -250,14 +250,37 @@ class TestBuildIndex:
 # ---------------------------------------------------------------------------
 
 class TestHealthEndpoint:
-    """Tests for the /health endpoint."""
+    """
+    Tests for the /health endpoint.
 
-    def test_returns_200(self):
-        """Health endpoint returns 200."""
+    Status code/body track whether courses are indexed: Docker's healthcheck
+    polls this to decide "healthy" vs "unhealthy", so it must reflect real
+    readiness (a process that's up but has no course context yet shouldn't
+    report "healthy").
+    """
+
+    def setup_method(self):
+        main._courses = []
+
+    def teardown_method(self):
+        main._courses = []
+
+    def test_returns_503_when_no_courses_indexed(self):
+        """Health endpoint returns 503 while the course index is empty."""
+        assert client.get("/health").status_code == 503
+
+    def test_returns_degraded_status_when_no_courses_indexed(self):
+        """Health endpoint reports degraded status while unindexed."""
+        assert client.get("/health").json()["status"] == "degraded"
+
+    def test_returns_200_when_courses_indexed(self):
+        """Health endpoint returns 200 once courses are indexed."""
+        main._courses = [{"title": "Intro to Testing"}]
         assert client.get("/health").status_code == 200
 
-    def test_returns_healthy_status(self):
-        """Health endpoint reports healthy status."""
+    def test_returns_healthy_status_when_courses_indexed(self):
+        """Health endpoint reports healthy status once courses are indexed."""
+        main._courses = [{"title": "Intro to Testing"}]
         assert client.get("/health").json()["status"] == "healthy"
 
     def test_returns_model_name(self):

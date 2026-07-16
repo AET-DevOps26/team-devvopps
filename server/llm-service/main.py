@@ -11,7 +11,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, List, Optional
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -524,16 +524,27 @@ def parse_llm_response(raw: str) -> RoadmapResponse:
 # ---------------------------------------------------------------------------
 
 @app.get("/health")
-async def health_check():
-    """Health check endpoint."""
+async def health_check(response: Response):
+    """
+    Health check endpoint, polled by Docker's healthcheck.
+
+    Returns 503 while no courses are indexed so `docker compose ps` shows
+    "unhealthy"/"starting" instead of "healthy" during the window where the
+    process is up but roadmap generation would run without course context.
+    Flips back to 200 automatically once a course fetch succeeds (either at
+    startup or via the retry-on-request in /recommend).
+    """
     p = current_provider()
+    courses_indexed = len(_courses)
+    if courses_indexed == 0:
+        response.status_code = 503
     return {
-        "status": "healthy",
+        "status": "healthy" if courses_indexed > 0 else "degraded",
         "service": "LLM Roadmap Generation Service",
         "provider": p["name"],
         "model": p["model"],
         "api_key_configured": bool(p["key"]),
-        "courses_indexed": len(_courses),
+        "courses_indexed": courses_indexed,
     }
 
 
