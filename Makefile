@@ -202,9 +202,9 @@ test-gateway:
 test-llm:
 	@echo "Running LLM service tests..."
 	cd server/llm-service && \
-	pip install -r requirements.txt && \
-	pip install -r requirements-test.txt && \
-	pytest test-llm-service.py -v
+	$(PIP) install -r requirements.txt && \
+	$(PIP) install -r requirements-test.txt && \
+	$(PYTEST) test-llm-service.py -v
 
 test-client:
 	@echo "Running client tests..."
@@ -212,7 +212,11 @@ test-client:
 
 
 ifeq ($(OS),Windows_NT)
+PIP=pip
+PYTEST=pytest
 GRADLE=gradlew.bat
 else
+PIP=pip3
+PYTEST=python3 -m pytest
 GRADLE=./gradlew
 endif
