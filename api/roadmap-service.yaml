@@ -44,7 +44,7 @@ paths:
       operationId: getAllRoadmaps
       responses:
         '200':
-          description: List of all roadmaps
+          description: List of all roadmaps - admin only
           content:
             application/json:
               schema:
@@ -96,7 +96,33 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '503':
-          description: Dependent service unavailable
+          description: LLM returned no usable roadmap milestones
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  
+    /roadmaps/{roadmapId}/progress:
+    get:
+      tags: [roadmaps]
+      summary: Get roadmap progress
+      operationId: getRoadmapProgress
+      parameters:
+        - name: roadmapId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Progress information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoadmapProgress'
+        '404':
+          description: Roadmap not found
           content:
             application/json:
               schema:
@@ -172,37 +198,17 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /roadmaps/{roadmapId}/progress:
-    get:
-      tags: [roadmaps]
-      summary: Get roadmap progress
-      operationId: getRoadmapProgress
-      parameters:
-        - name: roadmapId
-          in: path
-          required: true
-          schema:
-            type: integer
-            format: int64
-      responses:
-        '200':
-          description: Progress information
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RoadmapProgress'
-        '404':
-          description: Roadmap not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
 components:
   schemas:
 
     Roadmap:
       type: object
+      required:
+        - roadmap_id
+        - user_id
+        - title
+        - goal
+        - milestones
       properties:
         roadmap_id:
           type: integer
@@ -286,6 +292,7 @@ components:
           type: integer
         totalTasks:
           type: integer
+          format: int64
         roadmapCompleted:
           type: boolean
 

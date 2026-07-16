@@ -14,6 +14,10 @@ tags:
     description: User account management
   - name: auth
     description: Authentication and session management
+  - name: features
+    description: Runtime feature flag management
+  - name: settings
+    description: Runtime application settings management
 
 paths:
 
@@ -109,7 +113,7 @@ paths:
             schema:
               $ref: '#/components/schemas/SignupRequest'
       responses:
-        '200':
+        '201':
           description: Account created successfully
           content:
             application/json:
@@ -141,8 +145,12 @@ paths:
       summary: Log out the current session
       operationId: logout
       responses:
-        '200':
+        '204':
           description: Logged out successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
 
   /auth/me:
     get:
@@ -171,15 +179,138 @@ paths:
       operationId: getLogs
       responses:
         '200':
-          description: Map of email to list of auth events
+          description: Authentication events
           content:
             application/json:
               schema:
                 type: object
-                additionalProperties:
-                  type: array
-                  items:
-                    $ref: '#/components/schemas/AuthEvent'
+                properties:
+                  logs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AuthEvent'
+  
+  /features:
+    get:
+      tags: [features]
+      summary: Get all feature flags
+      operationId: getAllFeatures
+      responses:
+        '200':
+          description: List of feature flags
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FeatureFlag'
+
+  /features/{name}:
+    put:
+      tags: [features]
+      summary: Enable or disable a feature flag
+      operationId: updateFeatureFlag
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - enabled
+              properties:
+                enabled:
+                  type: boolean
+      responses:
+        '200':
+          description: Updated feature flag
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeatureFlag'
+
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+        '404':
+          description: Feature flag not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+
+  /settings:
+    get:
+      tags: [settings]
+      summary: Get all application settings
+      operationId: getAllSettings
+      responses:
+        '200':
+          description: List of application settings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AppSetting'
+
+
+  /settings/{name}:
+    put:
+      tags: [settings]
+      summary: Update an application setting
+      operationId: updateSetting
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - value
+              properties:
+                value:
+                  type: string
+
+      responses:
+        '200':
+          description: Updated application setting
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppSetting'
+
+        '400':
+          description: Invalid setting value
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+        '404':
+          description: Setting not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
 components:
   schemas:
@@ -195,7 +326,9 @@ components:
           format: email
         role:
           type: string
-          enum: [USER]
+          enum:
+            - USER
+            - ADMIN
         name:
           type: string
 
@@ -235,7 +368,9 @@ components:
           format: email
         role:
           type: string
-          enum: [USER]
+          enum:
+            - USER
+            - ADMIN
 
     AuthEvent:
       type: object
@@ -248,6 +383,34 @@ components:
           type: string
           format: email
         result:
+          type: string
+    
+    FeatureFlag:
+      type: object
+      required:
+        - name
+        - enabled
+        - description
+      properties:
+        name:
+          type: string
+        enabled:
+          type: boolean
+        description:
+          type: string
+
+    AppSetting:
+      type: object
+      required:
+        - name
+        - value
+        - description
+      properties:
+        name:
+          type: string
+        value:
+          type: string
+        description:
           type: string
 
     ErrorResponse:

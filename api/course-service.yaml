@@ -27,6 +27,26 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Course'
+  
+  /courses/search:
+    get:
+      tags: [courses]
+      summary: Search for a course by title
+      operationId: searchCourses
+      parameters:
+        - name: title
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Full or partial course title (case-insensitive)
+      responses:
+        '200':
+          description: Matching course
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Course'
 
   /courses/{id}:
     get:
@@ -54,30 +74,14 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /courses/search:
-    get:
-      tags: [courses]
-      summary: Search for a course by title
-      operationId: searchCourses
-      parameters:
-        - name: title
-          in: query
-          required: true
-          schema:
-            type: string
-          description: Full or partial course title (case-insensitive)
-      responses:
-        '200':
-          description: Matching course
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Course'
-
 components:
   schemas:
     Course:
       type: object
+      required:
+        - course_id
+        - title
+        - tum_number
       properties:
         course_id:
           type: integer

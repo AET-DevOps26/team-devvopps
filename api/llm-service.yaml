@@ -21,11 +21,11 @@ paths:
       operationId: root
       responses:
         '200':
-          description: Successful Response
+          description: Successful Response - Service information
           content:
             application/json:
               schema:
-                type: string
+                $ref: '#/components/schemas/RootResponse'
 
   /health:
     get:
@@ -38,7 +38,7 @@ paths:
           content:
             application/json:
               schema:
-                type: string
+                $ref: '#/components/schemas/HealthResponse'
 
   /usage:
     get:
@@ -56,17 +56,17 @@ paths:
             type: string
       responses:
         '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                type: string
+          description: Successful Response - Token usage information
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UsageResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: '#/components/schemas/ErrorResponse'
 
   /recommend:
     post:
@@ -98,19 +98,19 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: User token limit exceeded
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: '#/components/schemas/ErrorResponse'
         '503':
           description: LLM backend unavailable
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: '#/components/schemas/ErrorResponse'
 
   /logs:
     get:
@@ -118,11 +118,11 @@ paths:
       operationId: getLogs
       responses:
         '200':
-          description: Successful Response
+          description: Successful Response - Recent service logs
           content:
             application/json:
               schema:
-                type: string
+                $ref: '#/components/schemas/LogsResponse'
 
 components:
   schemas:
@@ -143,15 +143,38 @@ components:
       properties:
         milestones:
           type: array
-          items: {}
+          items:
+            $ref: '#/components/schemas/Milestone'
+    
+    Milestone:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task"
 
-    HTTPValidationError:
+    Task:
+      type: object
+      properties:
+        title:
+          type: string
+        completed:
+          type: boolean
+
+    ErrorResponse:
       type: object
       properties:
         detail:
-          type: array
-          items:
-            $ref: '#/components/schemas/ValidationError'
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                $ref: '#/components/schemas/ValidationError'
 
     ValidationError:
       type: object
@@ -169,4 +192,70 @@ components:
         msg:
           type: string
         type:
+          type: string
+    
+    UsageResponse:
+      type: object
+      properties:
+        user_id:
+          type: string
+        used:
+          type: integer
+        limit:
+          type: integer
+        remaining:
+          type: integer
+        period:
+          type: string
+    
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        service:
+          type: string
+        provider:
+          type: string
+        model:
+          type: string
+        api_key_configured:
+          type: boolean
+        courses_indexed:
+          type: integer
+    
+    RootResponse:
+      type: object
+      properties:
+        service:
+          type: string
+        version:
+          type: string
+        description:
+          type: string
+        endpoints:
+          type: object
+          additionalProperties:
+            type: string
+    
+    LogsResponse:
+      type: object
+      properties:
+        logs:
+          type: array
+          items:
+            $ref: '#/components/schemas/LogEntry'
+
+
+    LogEntry:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        level:
+          type: string
+        message:
+          type: string
+        goal:
           type: string
