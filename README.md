@@ -15,6 +15,7 @@ This repository currently includes:
 - OpenAPI specifications for the service APIs in `api/`.
 - CI/CD pipelines for linting, image builds, Azure VM deployment, AET Kubernetes deployment, and Azure VM provisioning.
 - A monitoring stack (Prometheus, Grafana, Loki/Promtail) with exported dashboards and alert rules, documented in [docs/MONITORING.md](docs/MONITORING.md).
+- A testing suite covering the Spring Boot services, the GenAI service, and the React client, with run instructions (`make test`) and automatic execution in CI.
 - Operational instructions for logs, Kubernetes status checks, Helm release checks, and deployment troubleshooting.
 - A student responsibilities section documenting who is responsible for which subsystem.
 
@@ -26,31 +27,25 @@ provider architecture — and the **database schema** in
 [docs/system_overview/database_schema.md](docs/system_overview/database_schema.md)
 (ER diagrams per database). This section is a short summary.
 
-> **TODO:**
->
-> - Add the remaining mandatory UML diagrams to `docs/ARCHITECTURE.md`: Use Case Diagram
->   and Analysis Object Model (subsystem decomposition + ER diagrams already exist as Mermaid)
-> - The summary below and the API Documentation section still describe the pre-auth system —
->   update the component descriptions, the gateway routes table (`/auth/**`, `/features/**`,
->   `/settings/**`, `/llm/**` are missing), and the endpoints list (auth endpoints; `userId`
->   now comes from the verified JWT, not a query param). `docs/ARCHITECTURE.md` §3 already
->   has the correct tables to copy from. The Swagger UI / OpenAPI specs in `api/` are up to date.
-
 The application uses a microservice-based client-server architecture.
 
 ### Components
 The backend consists of **3 independent Spring Boot microservices and 1 Python service** behind an API Gateway:
 
-**api-gateway** (port 8080): Routes all incoming requests to the appropriate service
-- **user-service** (port 8081): User management
+- **api-gateway** (port 8080): Routes all incoming requests to the owning service, verifies the JWT session cookie, and injects the spoof-proof `X-User-Id`/`X-User-Role` identity headers
+- **user-service** (port 8081): User accounts and roles, authentication (issues JWTs), feature flags, and runtime settings
 - **course-service** (port 8082): Mock TUM course database (source of truth for university courses)
 - **roadmap-service** (port 8083): Personalized learning roadmap generation and tracking
-- **llm-service** (port 8084): Responsible for all AI-driven logic 
+- **llm-service** (port 8084): Responsible for all AI-driven logic (GenAI component)
 
-Each service has:
+Each Spring Boot service has:
 - Its own PostgreSQL database (userdb, coursedb, roadmapdb)
 - Independent entity models with auto-created schema
 - REST API endpoints
+
+### GenAI Component
+
+The **llm-service** (Python/FastAPI) turns a student's goal into a roadmap with real TUM course recommendations — it fetches the course catalogue, narrows it with TF-IDF, prompts an LLM, and returns structured milestones and tasks. It supports **both cloud and local models**: TUM-hosted Logos (`gpt-oss-120b`) and Groq (`llama-3.3-70b-versatile`) in the cloud, or a local LM Studio server with no cloud dependency. Admins can switch providers at runtime via the `llmUseLogos` feature flag, and each user has a monthly token quota. Details in [docs/ARCHITECTURE.md §2.6](docs/ARCHITECTURE.md).
 
 Architecture diagrams and product context are in `docs/system_overview/`, including:
 
@@ -59,6 +54,10 @@ Architecture diagrams and product context are in `docs/system_overview/`, includ
 - `docs/system_overview/initial_system_structure.md`
 - `docs/system_overview/first_product_backlog.md`
 - `docs/system_overview/diagrams/system_architecture.png`
+- `docs/system_overview/diagrams/subsystem_decomposition_uml.png`
+- `docs/system_overview/diagrams/subsystem_decomposition_apollon.png`
+- `docs/system_overview/diagrams/use_case_diagram_updated.png`
+- `docs/system_overview/diagrams/final_analysis_object_model.png`
 
 ## Repository Structure
 
@@ -265,11 +264,11 @@ make k8s-down        # Tear down (deletes the namespace and all local data)
 
 ### Azure VM (Staging/Demo)
 
-> **TODO:** Verify the VM deployment end-to-end. Two suspected gaps found during the docs review:
-> `compose.azure.yml` sets no `JWT_SIGNING_KEY` (user-service and api-gateway fall back to the
-> committed dev-only key on a publicly reachable host), and the llm-service there has no
-> Groq/Logos key and points at a nonexistent `llm-backend` container — roadmap generation on
-> the VM likely fails. Needs checking and probably a fix in `compose.azure.yml` + `deploy-vm.yml`.
+> **TODO:** One remaining gap from the docs review (the LLM provider key and admin bootstrap
+> were fixed in PR #142): `compose.azure.yml` still sets no `JWT_SIGNING_KEY`, so user-service
+> and api-gateway fall back to the committed dev-only key on a publicly reachable host.
+> Fix: pass a `JWT_SIGNING_KEY` secret through `deploy-vm.yml` → `.env.prod` → `compose.azure.yml`
+> (same pattern as `GROQ_API_KEY`).
 
 The application is automatically built and deployed to an Azure VM on every merge to main.
 
@@ -300,6 +299,10 @@ The application is automatically built and deployed to an Azure VM on every merg
 | `ARM_TENANT_ID` | secret | Azure tenant ID |
 | `PAT_TOKEN` | secret | GitHub PAT for updating AZURE_PUBLIC_IP |
 | `POSTGRES_PASSWORD` | secret | Database password — `deploy-vm.yml` refuses to deploy without it (no default/fallback credential) |
+| `GROQ_API_KEY` | secret | Groq API key for the llm-service (written to `.env.prod` on deploy) |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | secret | Bootstrap admin account for user-service (optional) |
+
+The VM can be stopped and started on demand to save cost via the `vm-stop.yml` / `vm-start.yml` workflows (manual dispatch).
 
 **Stack on VM:**
 - Traefik (reverse proxy + Let's Encrypt HTTPS)
@@ -460,11 +463,17 @@ The Swagger UIs are then available locally at:
 ### API Gateway
 The API Gateway exposes the current implemented service routes:
 
-| Gateway Route | Target Service | Notes |
+| Gateway Route | Target Service | Access |
 |---|---|---|
-| `/users/**` | `user-service` | Create and fetch users |
-| `/courses/**` | `course-service` | List courses, fetch course by ID, search by title |
-| `/roadmaps/**` | `roadmap-service` | Generate and retrieve roadmaps |
+| `/auth/**` | `user-service` | `login`/`signup` public; `me`/`logout` signed-in; `logs` admin |
+| `/users/**` | `user-service` | admin |
+| `/courses/**` | `course-service` | signed-in |
+| `/roadmaps/**` | `roadmap-service` | signed-in (own roadmaps); `/roadmaps/all` admin |
+| `/features/**` | `user-service` | GET signed-in; PUT admin |
+| `/settings/**` | `user-service` | GET signed-in; PUT admin |
+| `/llm/**` | `llm-service` (prefix stripped) | signed-in; `/llm/logs` admin |
+
+Authentication uses a JWT in an HTTP-only `token` cookie, issued by user-service on login and verified by the gateway. The gateway strips any client-supplied `X-User-Id`/`X-User-Role` headers and injects the identity from the verified JWT, so callers cannot impersonate other users.
 
 ### Service Discovery
 Inter-service communication uses DNS-based service discovery, i.e., no hardcoded IPs or ports.
@@ -496,7 +505,7 @@ Current implemented endpoints include:
 - `GET /features` - Returns all flags with their state and description
 - `PUT /features/{name}` - Enables or disables a flag
 
-- `GET /settings`- Returns all settings
+- `GET /settings` - Returns all settings
 - `PUT /settings/{name}` - Updates a setting's value
 
 #### Course Service
@@ -514,7 +523,7 @@ Current implemented endpoints include:
 - `PATCH /roadmaps/{roadmapId}/tasks/{taskId}/complete` — Toggle task completion status
 - `GET /roadmaps/{roadmapId}/progress` — Get roadmap progress statistics
 
-#### LLM Service (not exposed through gateway)
+#### LLM Service (exposed through the gateway under `/llm/**`)
 
 - `POST /recommend` — Generate an AI-powered roadmap recommendation
 - `GET /health` — Check LLM service health and active model
@@ -535,7 +544,7 @@ GitHub Actions workflows are defined in `.github/workflows/`.
 | `provision.yml` | Manual dispatch | Provisions or imports Azure resources with Terraform, temporarily opens SSH for the runner's IP, configures the VM with Ansible, and updates the Azure public IP GitHub variable, then closes SSH access again |
 | `vm-start.yml` | Manual dispatch | Starts the Azure VM |
 | `vm-stop.yml` | Manual dispatch | Deallocates the Azure VM to stop billing |
-| `testing.yml` | Pull requests to `main`, pushes to `main` | Runs Spring Boot tests for all backend services, pytest tests for the LLM service and vitest tests for the client |
+| `testing.yml` | Every push and every pull request | Runs Spring Boot tests for all backend services, pytest tests for the LLM service, and vitest tests for the client |
 
 Required GitHub configuration (secrets and variables) is documented per deployment target under Setup Instructions:
 [AET Kubernetes Cluster (Production)](#aet-kubernetes-cluster-production) and [Azure VM (Staging/Demo)](#azure-vm-stagingdemo).
@@ -562,51 +571,43 @@ On both Docker and the AET cluster, Grafana can also be opened from inside the a
 
 ## Testing
 
-> **TODO:** Testing suite is not implemented yet. This section will document:
->
-> - Unit tests for critical server-side logic (Spring Boot services)
-> - Unit tests for the GenAI component (llm-service)
-> - Client-side tests for core workflows and interactions
-> - How to run the full test suite locally
-> - How tests run automatically in the CI pipeline (on every pull request)
+The project contains test suites for all backend services, the GenAI service, and the React client:
 
+- **Spring Boot services** (JUnit): unit and integration tests for controllers, services, and
+  security — including the gateway's JWT filter and verifier, auth/user/feature-flag/setting
+  logic, and roadmap generation/progress. Located in each service's `src/test/java/`.
+- **LLM service** (pytest): `server/llm-service/test-llm-service.py` — provider selection,
+  recommendation flow, quota handling.
+- **Client** (Vitest + React Testing Library): `client/test/` — login, signup, roadmap chat,
+  admin panel, and auth context workflows.
 
-## Testing
+No Docker or database setup is needed: Spring Boot tests run against in-memory H2, and
+cross-service calls are stubbed with WireMock.
 
-The project contains test suites for all backend services and the React client. 
+All suites run automatically in CI via `testing.yml` (see [CI/CD](#cicd)).
 
-### Run all 
+### Run all
 
 ```bash
 make test
 ```
 
-### Run Spring Boot tests
+Prerequisites: Java (Gradle wrapper), Python 3 + pip, and Node.js — all included in the
+conda environment (`environment.yml`).
+
+### Run a single suite
+
+Run from the repository root:
 
 ```bash
-make test-server
-```
-
-### Run tests for a specific service
-
-```bash
-cd server
-make test-user 
+make test-server     # All Spring Boot services
+make test-user       # ...or one service:
 make test-course
 make test-roadmap
 make test-gateway
-```
 
-### Run LLM Service Tests
-
-```bash
-make test-llm
-```
-
-### Run Client Tests
-
-```bash
-make test-client
+make test-llm        # LLM service (pytest)
+make test-client     # React client (vitest)
 ```
 
 ## Student Responsibilities

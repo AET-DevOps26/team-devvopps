@@ -230,9 +230,10 @@ secret is missing rather than falling back to defaults.
 ## 4. Diagrams
 
 - Subsystem decomposition: section 1 above (Mermaid) and
-  `system_overview/diagrams/system_architecture.png`
+  `system_overview/diagrams/system_architecture.png`; formal UML component
+  view: `system_overview/diagrams/subsystem_decomposition_uml.png`, and in the
+  Apollon notation used for the initial design:
+  `system_overview/diagrams/subsystem_decomposition_apollon.png`
 - Database ER diagrams: [database_schema.md](system_overview/database_schema.md)
-
-> **TODO:** Add the remaining mandatory UML diagrams — a Use Case Diagram and an
-> Analysis Object Model — and, if required by the tutors, a formal UML version of
-> the subsystem decomposition.
+- Use Case Diagram: `system_overview/diagrams/use_case_diagram_updated.png`
+- Analysis Object Model: `system_overview/diagrams/final_analysis_object_model.png`
