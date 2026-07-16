@@ -13,7 +13,6 @@ tags:
     description: LLM-powered roadmap generation
 
 paths:
-
   /:
     get:
       summary: Root
@@ -30,8 +29,30 @@ paths:
   /health:
     get:
       summary: Health Check
-      description: Health check endpoint.
+      description: >
+        Health check endpoint, polled by Docker's healthcheck.
+        Returns 503 while no courses are indexed so `docker compose ps` shows
+        "unhealthy"/"starting" instead of "healthy" during the window where the
+        process is up but roadmap generation would run without course context.
+        Flips back to 200 automatically once a course fetch succeeds (either at
+        startup or via the retry-on-request in /recommend).
+        Not used as the Kubernetes readiness probe — see /livez for that.
       operationId: healthCheck
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: string
+
+  /livez:
+    get:
+      summary: Liveness Check
+      description: >
+        Kubernetes readiness probe target: process is up and serving HTTP.
+        Deliberately independent of course-index state — see /health's docstring.
+      operationId: livezCheck
       responses:
         '200':
           description: Successful Response
@@ -70,12 +91,11 @@ paths:
 
   /recommend:
     post:
-      tags: [recommendations]
       summary: Recommend
       operationId: generateRecommendation
       parameters:
-        - name: user_id
-          in: query
+        - name: x-user-id
+          in: header
           required: false
           schema:
             type: string
@@ -99,18 +119,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-        '429':
-          description: User token limit exceeded
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '503':
-          description: LLM backend unavailable
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
 
   /logs:
     get:
@@ -126,7 +134,6 @@ paths:
 
 components:
   schemas:
-
     RoadmapRequest:
       type: object
       description: Request schema for generate endpoint.
@@ -143,15 +150,9 @@ components:
       properties:
         milestones:
           type: array
+          description: Learning milestones
+          default: []
           items: {}
-
-    HTTPValidationError:
-      type: object
-      properties:
-        detail:
-          type: array
-          items:
-            $ref: '#/components/schemas/ValidationError'
 
     ValidationError:
       type: object
@@ -170,3 +171,11 @@ components:
           type: string
         type:
           type: string
+
+    HTTPValidationError:
+      type: object
+      properties:
+        detail:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationError'

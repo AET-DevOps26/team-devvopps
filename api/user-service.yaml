@@ -14,26 +14,30 @@ tags:
     description: User account management
   - name: auth
     description: Authentication and session management
+  - name: features
+    description: Runtime feature flag management
+  - name: settings
+    description: Runtime application settings management
 
 paths:
 
   /users:
     get:
-      tags: [users]
+      tags: [user-controller]
       summary: Get all users
       operationId: getAllUsers
       responses:
         '200':
-          description: List of all users
+          description: OK
           content:
-            application/json:
+            '*/*':
               schema:
                 type: array
                 items:
                   $ref: '#/components/schemas/User'
 
     post:
-      tags: [users]
+      tags: [user-controller]
       summary: Create a new user
       operationId: createUser
       requestBody:
@@ -44,15 +48,15 @@ paths:
               $ref: '#/components/schemas/User'
       responses:
         '200':
-          description: Created user
+          description: OK
           content:
-            application/json:
+            '*/*':
               schema:
                 $ref: '#/components/schemas/User'
 
   /users/{id}:
     get:
-      tags: [users]
+      tags: [user-controller]
       summary: Get a user by ID
       operationId: getUser
       parameters:
@@ -64,20 +68,14 @@ paths:
             format: int64
       responses:
         '200':
-          description: Matching user
+          description: OK
           content:
-            application/json:
+            '*/*':
               schema:
                 $ref: '#/components/schemas/User'
-        '404':
-          description: User not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
 
     delete:
-      tags: [users]
+      tags: [user-controller]
       summary: Delete a user by ID
       operationId: deleteUser
       parameters:
@@ -89,17 +87,11 @@ paths:
             format: int64
       responses:
         '200':
-          description: User deleted successfully
-        '404':
-          description: User not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          description: OK
 
   /auth/signup:
     post:
-      tags: [auth]
+      tags: [auth-controller]
       summary: Register a new account
       operationId: signup
       requestBody:
@@ -110,15 +102,15 @@ paths:
               $ref: '#/components/schemas/SignupRequest'
       responses:
         '200':
-          description: Account created successfully
+          description: OK
           content:
-            application/json:
+            '*/*':
               schema:
                 $ref: '#/components/schemas/AuthResponse'
 
   /auth/login:
     post:
-      tags: [auth]
+      tags: [auth-controller]
       summary: Log in with email and password
       operationId: login
       requestBody:
@@ -129,24 +121,24 @@ paths:
               $ref: '#/components/schemas/LoginRequest'
       responses:
         '200':
-          description: Login successful
+          description: OK
           content:
-            application/json:
+            '*/*':
               schema:
                 $ref: '#/components/schemas/AuthResponse'
 
   /auth/logout:
     post:
-      tags: [auth]
+      tags: [auth-controller]
       summary: Log out the current session
       operationId: logout
       responses:
         '200':
-          description: Logged out successfully
+          description: OK
 
   /auth/me:
     get:
-      tags: [auth]
+      tags: [auth-controller]
       summary: Get the currently authenticated user
       operationId: getMe
       parameters:
@@ -158,22 +150,22 @@ paths:
             format: int64
       responses:
         '200':
-          description: Current user info
+          description: OK
           content:
-            application/json:
+            '*/*':
               schema:
                 $ref: '#/components/schemas/AuthResponse'
 
   /auth/logs:
     get:
-      tags: [auth]
+      tags: [auth-controller]
       summary: Get authentication event logs
       operationId: getLogs
       responses:
         '200':
-          description: Map of email to list of auth events
+          description: OK
           content:
-            application/json:
+            '*/*':
               schema:
                 type: object
                 additionalProperties:
@@ -181,9 +173,92 @@ paths:
                   items:
                     $ref: '#/components/schemas/AuthEvent'
 
+  /features:
+    get:
+      tags: [feature-controller]
+      summary: Get all feature flags
+      operationId: getAllFeatures
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FeatureFlag'
+
+  /features/{name}:
+    put:
+      tags: [feature-controller]
+      summary: Enable or disable a feature flag
+      operationId: updateFeatureFlag
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                type: boolean
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/FeatureFlag'
+
+  /settings:
+    get:
+      tags: [setting-controller]
+      summary: Get all application settings
+      operationId: getAllSettings
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AppSetting'
+
+  /settings/{name}:
+    put:
+      tags: [setting-controller]
+      summary: Update an application setting
+      operationId: updateSetting
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/AppSetting'
+
 components:
   schemas:
-
     User:
       type: object
       properties:
@@ -192,35 +267,26 @@ components:
           format: int64
         email:
           type: string
-          format: email
         role:
           type: string
-          enum: [USER]
+          enum: [USER, ADMIN]
         name:
           type: string
 
     SignupRequest:
       type: object
-      required:
-        - email
-        - password
       properties:
         email:
           type: string
-          format: email
         password:
           type: string
           minLength: 8
 
     LoginRequest:
       type: object
-      required:
-        - email
-        - password
       properties:
         email:
           type: string
-          format: email
         password:
           type: string
 
@@ -232,10 +298,9 @@ components:
           format: int64
         email:
           type: string
-          format: email
         role:
           type: string
-          enum: [USER]
+          enum: [USER, ADMIN]
 
     AuthEvent:
       type: object
@@ -246,21 +311,25 @@ components:
           type: string
         email:
           type: string
-          format: email
         result:
           type: string
 
-    ErrorResponse:
+    FeatureFlag:
       type: object
       properties:
-        timestamp:
+        name:
           type: string
-          format: date-time
-        status:
-          type: integer
-        error:
+        enabled:
+          type: boolean
+        description:
           type: string
-        message:
+
+    AppSetting:
+      type: object
+      properties:
+        name:
           type: string
-        path:
+        value:
+          type: string
+        description:
           type: string
