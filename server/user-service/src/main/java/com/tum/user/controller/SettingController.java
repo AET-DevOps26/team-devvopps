@@ -48,7 +48,7 @@ public class SettingController {
      * monthlyTokenLimit must additionally be a positive integer.
      */
     @PutMapping("/{name}")
-    public AppSetting update(@PathVariable String name, @RequestBody Map<String, String> body) {
+    public AppSetting update(@PathVariable(name = "name") String name, @RequestBody Map<String, String> body) {
         String value = body.get("value");
         if (value == null || value.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Body must contain a non-empty \"value\"");

@@ -21,6 +21,16 @@ help:
 	@echo ""
 	@echo "Local Development:"
 	@echo "  make dev          - Start all Spring Boot services locally (background)"
+	@echo ""
+	@echo "Testing:"
+	@echo "  make test          - Run all backend and LLM service tests"
+	@echo "  make test-server   - Run all Spring Boot tests"
+	@echo "  make test-user     - Run user-service tests"
+	@echo "  make test-course   - Run course-service tests"
+	@echo "  make test-roadmap  - Run roadmap-service tests"
+	@echo "  make test-gateway  - Run api-gateway tests"
+	@echo "  make test-llm      - Run LLM service pytest tests"
+	@echo "  make test-client   - Run React/Vitest client tests"
 
 # ── Helm ───────────────────────────────────────────────────────────────────────
 
@@ -160,3 +170,49 @@ dev-stop:
 	@pkill -f "gradlew" || true
 	@pkill -f "bootRun" || true
 	@echo "Spring Boot processes stopped."
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+
+test:
+	@echo "Running all tests..."
+	$(MAKE) test-server
+	$(MAKE) test-llm
+	$(MAKE) test-client
+
+test-server:
+	@echo "Running all Spring Boot tests..."
+	cd server && $(GRADLE) test
+
+test-user:
+	@echo "Running user-service tests..."
+	cd server && $(GRADLE) :user-service:test
+
+test-course:
+	@echo "Running course-service tests..."
+	cd server && $(GRADLE) :course-service:test
+
+test-roadmap:
+	@echo "Running roadmap-service tests..."
+	cd server && $(GRADLE) :roadmap-service:test 
+
+test-gateway:
+	@echo "Running api-gateway tests..."
+	cd server && $(GRADLE) :api-gateway:test 
+
+test-llm:
+	@echo "Running LLM service tests..."
+	cd server/llm-service && \
+	pip install -r requirements.txt && \
+	pip install -r requirements-test.txt && \
+	pytest test-llm-service.py -v
+
+test-client:
+	@echo "Running client tests..."
+	cd client && npm install && npm test -- --run
+
+
+ifeq ($(OS),Windows_NT)
+GRADLE=gradlew.bat
+else
+GRADLE=./gradlew
+endif

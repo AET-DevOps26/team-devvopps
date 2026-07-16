@@ -1,0 +1,61 @@
+name: Test Code
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  spring-boot:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - name: Run Spring Boot tests
+        run: ./gradlew test
+  
+  llm-service:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server/llm-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-test.txt
+        
+      - name: Run LLM service tests
+        run: pytest test-llm-service.py -v
+  
+  client:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run client tests
+        run: npm test -- --run

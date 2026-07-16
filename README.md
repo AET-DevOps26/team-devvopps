@@ -41,7 +41,7 @@ The application uses a microservice-based client-server architecture.
 ### Components
 The backend consists of **3 independent Spring Boot microservices and 1 Python service** behind an API Gateway:
 
-- **api-gateway** (port 8080): Routes all incoming requests to the appropriate service
+**api-gateway** (port 8080): Routes all incoming requests to the appropriate service
 - **user-service** (port 8081): User management
 - **course-service** (port 8082): Mock TUM course database (source of truth for university courses)
 - **roadmap-service** (port 8083): Personalized learning roadmap generation and tracking
@@ -487,16 +487,29 @@ Current implemented endpoints include:
 - `GET /users/{id}` — Get a user by ID
 - `DELETE /users/{id}` — Delete a user by ID
 
+- `POST /auth/signup` - Register and starts a session
+- `POST /auth/login` - Verify credentials and start a session
+- `POST /auth/logout` - Clear the session cookie
+- `GET /auth/me` - Returns the currently authenticated user
+- `GET /auth/logs` - Recent auth events for the admin panel (admin only)
+
+- `GET /features` - Returns all flags with their state and description
+- `PUT /features/{name}` - Enables or disables a flag
+
+- `GET /settings`- Returns all settings
+- `PUT /settings/{name}` - Updates a setting's value
+
 #### Course Service
 
 - `GET /courses` — Get all courses
 - `GET /courses/{id}` — Get a course by ID
-- `GET /courses/search?title=<title>` — Search courses by title
+- `GET /courses/search` — Search courses by title
 
 #### Roadmap Service
 
-- `GET /roadmaps` — Get all roadmaps
-- `POST /roadmaps/generate?userId=<id>&goal=<goal>` — Generate a roadmap using the LLM service
+- `GET /roadmaps` — Returns the authenticated user's own roadmaps
+- `GET /roadmaps/all` - Returns every roadmap (admin only)
+- `POST /roadmaps/generate` — Generate a roadmap using the LLM service
 - `GET /roadmaps/{id}` — Get a roadmap by ID
 - `PATCH /roadmaps/{roadmapId}/tasks/{taskId}/complete` — Toggle task completion status
 - `GET /roadmaps/{roadmapId}/progress` — Get roadmap progress statistics
@@ -505,7 +518,7 @@ Current implemented endpoints include:
 
 - `POST /recommend` — Generate an AI-powered roadmap recommendation
 - `GET /health` — Check LLM service health and active model
-- `GET /usage/{user_id}` — Get token usage and remaining quota for a user
+- `GET /usage` — Get token usage and remaining quota for a user
 - `GET /logs` — Retrieve recent service logs
 - `GET /` — Get service information
 
@@ -520,6 +533,9 @@ GitHub Actions workflows are defined in `.github/workflows/`.
 | `deploy-vm.yml` | Automatically after `build.yml` completes successfully on `main` (via `workflow_run`) | Temporarily opens SSH access for the runner's IP, deploys the latest images to the Azure VM with Docker Compose, then closes SSH access again |
 | `deploy-k8s.yml` | Called by `build.yml` after a successful image build on `main` (via `workflow_call`); manual dispatch | Deploys the Helm chart to the AET Kubernetes cluster |
 | `provision.yml` | Manual dispatch | Provisions or imports Azure resources with Terraform, temporarily opens SSH for the runner's IP, configures the VM with Ansible, and updates the Azure public IP GitHub variable, then closes SSH access again |
+| `vm-start.yml` | Manual dispatch | Starts the Azure VM |
+| `vm-stop.yml` | Manual dispatch | Deallocates the Azure VM to stop billing |
+| `testing.yml` | Pull requests to `main`, pushes to `main` | Runs Spring Boot tests for all backend services, pytest tests for the LLM service and vitest tests for the client |
 
 Required GitHub configuration (secrets and variables) is documented per deployment target under Setup Instructions:
 [AET Kubernetes Cluster (Production)](#aet-kubernetes-cluster-production) and [Azure VM (Staging/Demo)](#azure-vm-stagingdemo).
@@ -553,6 +569,45 @@ On both Docker and the AET cluster, Grafana can also be opened from inside the a
 > - Client-side tests for core workflows and interactions
 > - How to run the full test suite locally
 > - How tests run automatically in the CI pipeline (on every pull request)
+
+
+## Testing
+
+The project contains test suites for all backend services and the React client. 
+
+### Run all 
+
+```bash
+make test
+```
+
+### Run Spring Boot tests
+
+```bash
+make test-server
+```
+
+### Run tests for a specific service
+
+```bash
+cd server
+make test-user 
+make test-course
+make test-roadmap
+make test-gateway
+```
+
+### Run LLM Service Tests
+
+```bash
+make test-llm
+```
+
+### Run Client Tests
+
+```bash
+make test-client
+```
 
 ## Student Responsibilities
 
