@@ -156,7 +156,7 @@ components:
         tasks:
           type: array
           items:
-            $ref: '#/components/schemas/Task"
+            $ref: '#/components/schemas/Task'
 
     Task:
       type: object
