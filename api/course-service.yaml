@@ -47,6 +47,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Course'
+        '404':
+          description: Course not found
+          content:
+            application/json:
+              schema:
+                $ref: '`#/components/schemas/ErrorResponse`'
 
   /courses/{id}:
     get:
@@ -81,7 +87,6 @@ components:
       required:
         - course_id
         - title
-        - tum_number
       properties:
         course_id:
           type: integer

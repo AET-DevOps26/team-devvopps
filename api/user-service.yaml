@@ -147,10 +147,6 @@ paths:
       responses:
         '204':
           description: Logged out successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthResponse'
 
   /auth/me:
     get:
@@ -184,6 +180,8 @@ paths:
             application/json:
               schema:
                 type: object
+                required:
+                  - logs
                 properties:
                   logs:
                     type: array
@@ -195,6 +193,8 @@ paths:
       tags: [features]
       summary: Get all feature flags
       operationId: getAllFeatures
+      security:
+        - cookieAuth: []
       responses:
         '200':
           description: List of feature flags
@@ -204,12 +204,20 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/FeatureFlag'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /features/{name}:
     put:
       tags: [features]
       summary: Enable or disable a feature flag
       operationId: updateFeatureFlag
+      security:
+        - cookieAuth: []
       parameters:
         - name: name
           in: path
@@ -234,14 +242,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/FeatureFlag'
-
         '400':
           description: Invalid request
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Feature flag not found
           content:
@@ -255,6 +267,8 @@ paths:
       tags: [settings]
       summary: Get all application settings
       operationId: getAllSettings
+      security:
+        - cookieAuth: []
       responses:
         '200':
           description: List of application settings
@@ -264,6 +278,12 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/AppSetting'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
 
   /settings/{name}:
@@ -271,13 +291,14 @@ paths:
       tags: [settings]
       summary: Update an application setting
       operationId: updateSetting
+      security:
+        - cookieAuth: []
       parameters:
         - name: name
           in: path
           required: true
           schema:
             type: string
-
       requestBody:
         required: true
         content:
@@ -289,7 +310,6 @@ paths:
               properties:
                 value:
                   type: string
-
       responses:
         '200':
           description: Updated application setting
@@ -297,14 +317,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AppSetting'
-
         '400':
           description: Invalid setting value
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Setting not found
           content:

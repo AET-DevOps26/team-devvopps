@@ -57,10 +57,10 @@ paths:
       responses:
         '200':
           description: Successful Response - Token usage information
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UsageResponse'
+          content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/UsageResponse'
         '422':
           description: Validation Error
           content:
