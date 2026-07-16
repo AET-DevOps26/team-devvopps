@@ -19,6 +19,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -242,11 +244,16 @@ public class RoadmapService {
     // Private Helper
     private RoadmapResponse callLLM(String goal, Long userId) {
         try {
-            return restTemplate.postForObject(
-                    getLlmUrl() + "/recommend?user_id=" + userId,
-                    new RoadmapRequest(goal),
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("X-User-Id", String.valueOf(userId));
+            HttpEntity<RoadmapRequest> entity = new HttpEntity<>(new RoadmapRequest(goal), headers);
+
+            return restTemplate.exchange(
+                    getLlmUrl() + "/recommend",
+                    org.springframework.http.HttpMethod.POST,
+                    entity,
                     RoadmapResponse.class
-            );
+            ).getBody();
         } catch (HttpClientErrorException e) {
             if (e.getStatusCode().value() == 429) {
                 throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Token quota exceeded");
