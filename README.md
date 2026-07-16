@@ -83,6 +83,7 @@ Architecture diagrams and product context are in `docs/system_overview/`, includ
 
 - **Local development with your IDE:** [Running Locally (Development)](#running-locally-development)
 - **Full stack with containers:** [Running with Docker Compose](#running-with-docker-compose) or [Running with Kubernetes](#running-with-kubernetes)
+- **Cloud** (staging/demo): [Azure VM](#azure-vm-cloud)
 
 ---
 
@@ -244,6 +245,19 @@ make helm-install-aet                   # Manual deploy fallback (requires crede
 > ⚠️ Remember to switch back with `kubectl config use-context docker-desktop`
 > before working locally again.
 
+### Azure VM (Cloud)
+
+> ⚠️ The VM is stopped by default to preserve free credits. Always stop it again after use.
+
+Deployed via GitHub Actions: 
+1. Run **Start VM (Azure)**.
+2. Run **Build Docker Images**, then **Deploy to VM**. 
+3. Run **Stop VM (Azure)** when done.
+
+The application is available under: https://client.20.240.141.213.nip.io (*If the URL is not working, check whether the public IP has changed in GitHub variables.*)
+
+See [README.md section on Azure](README.md#azure-vm-stagingdemo) for more details.
+
 ---
 
 ## API Documentation
@@ -372,13 +386,15 @@ GitHub Actions workflows are defined in `.github/workflows/`.
 | Workflow | Trigger | Purpose |
 |---|---|---|
 | `lint.yml` | Pull requests to `main`, pushes to non-`main` branches | Runs frontend ESLint, Java checks, actionlint, Helm lint, and OpenAPI lint |
-| `build.yml` | Push to `main` | Builds Docker images for all services and pushes them to GHRC |
+| `build.yml` | Push to `main`, manual dispatch | Builds Docker images for all services and pushes them to GHRC |
 | `deploy-vm.yml` | Automatically after `build.yml` completes successfully on `main` (via `workflow_run`) | Temporarily opens SSH access for the runner's IP, deploys the latest images to the Azure VM with Docker Compose, then closes SSH access again |
 | `deploy-k8s.yml` | Push to `main`, manual dispatch | Deploys the Helm chart to the AET Kubernetes cluster |
 | `provision.yml` | Manual dispatch | Provisions or imports Azure resources with Terraform, temporarily opens SSH for the runner's IP, configures the VM with Ansible, and updates the Azure public IP GitHub variable, then closes SSH access again |
+| `vm-start.yml` | Manual dispatch | Starts the Azure VM |
+| `vm-stop.yml` | Manual dispatch | Deallocates the Azure VM to stop billing |
 | `testing.yml` | Pull requests to `main`, pushes to `main` | Runs Spring Boot tests for all backend services, pytest tests for the LLM service and vitest tests for the client |
 
-Required GitHub configuration:
+**Required GitHub configuration:**
 
 For Azure VM:
 
@@ -410,12 +426,6 @@ For AET Kubernetes:
 | `K8S_NAMESPACE` | variable | Kubernetes namespace (`team-devvopps`) |
 
 ### Azure VM (Staging/Demo)
-
-The application is automatically built and deployed to an Azure VM on every merge to main.
-
-**URLs:**
-- **Frontend:** https://client.9.223.113.24.nip.io
-- **API Gateway:** https://api.9.223.113.24.nip.io
 
 **How it works:**
 
@@ -449,7 +459,6 @@ The application is automatically built and deployed to an Azure VM on every merg
 - HTTP (80) and HTTPS (443) remain open to all sources, since the application's frontend/API are intended to be publicly available. Only SSH is access-restricted.
 - **CI/CD SSH access**: Since the GitHub Actions runners don't have IPs within the MWN range, both `provision.yml` (which runs the Ansible playbook to configure the VM) and `deploy-vm.yml` (which deploys updated images) add a `/32` NSG rule for the runner's own public IP just before connecting over SSH, then delete that rule immediately afterward (even on failure, via `if: always()`). This keeps the NSG closed to the public internet while still allowing automated provisioning and deploys.
 
-See [README.md section on Azure](README.md#azure-vm-stagingdemo) for detailed setup.
 
 ### AET Kubernetes Cluster (Production)
 
@@ -466,14 +475,7 @@ For deployment to the AET Kubernetes cluster used in the course:
 
 ### Local Logs
 
-`make dev` writes Spring Boot logs to `logs/`:
-
-```bash
-tail -f logs/api-gateway.log
-tail -f logs/user-service.log
-tail -f logs/course-service.log
-tail -f logs/roadmap-service.log
-```
+`make dev` writes Spring Boot logs to `logs/`
 
 ### For AET Kubernetes
 | Name | Type | Description |
