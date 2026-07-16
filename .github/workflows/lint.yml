@@ -59,6 +59,29 @@ jobs:
       - name: Run SpotBugs
         run: ./gradlew check -x test --scan
         working-directory: server
+  
+  # Lints the Python LLM service using Ruff.
+  lint-python:
+    name: Lint Python LLM Service (Ruff)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Ruff
+        run: pip install ruff
+
+      - name: Run Ruff
+        run: ruff check .
+        working-directory: server/llm-service
 
   # Validates GitHub Actions workflow files themselves for correctness.
   # Catches common mistakes like invalid expressions or missing required fields.

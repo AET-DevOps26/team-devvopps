@@ -75,9 +75,13 @@ services:
         condition: service_healthy
       course-seeder:
         condition: service_started
-    entrypoint: sh -c "while ! psql -h postgres -U postgres -d coursedb -c 'SELECT COUNT(*) FROM courses WHERE course_id > 0' 2>/dev/null | grep -q '[1-9]'; do sleep 5; done; echo 'Courses ready'; sleep infinity"
+    # -tAc: tuples-only, unaligned output — just the bare count (e.g. "0" or
+    # "1196"), not psql's default table with a "(1 row)" footer. That footer
+    # always contains a "1", so a plain `grep -q '[1-9]'` on aligned output
+    # matches even when the count is genuinely 0.
+    entrypoint: sh -c "while [ \"$$(psql -h postgres -U postgres -d coursedb -tAc 'SELECT COUNT(*) FROM courses WHERE course_id > 0' 2>/dev/null)\" = '0' ]; do sleep 5; done; echo 'Courses ready'; sleep infinity"
     healthcheck:
-      test: ["CMD", "sh", "-c", "psql -h postgres -U postgres -d coursedb -c 'SELECT COUNT(*) FROM courses WHERE course_id > 0' 2>/dev/null | grep -q '[1-9]'"]
+      test: ["CMD", "sh", "-c", "test \"$(psql -h postgres -U postgres -d coursedb -tAc 'SELECT COUNT(*) FROM courses WHERE course_id > 0' 2>/dev/null)\" != '0'"]
       interval: 5s
       timeout: 5s
       retries: 1

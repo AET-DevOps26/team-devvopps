@@ -38,6 +38,44 @@ spec:
                 sleep 5
               done
               echo "postgres is ready."
+        # postgres being ready only means coursedb (the empty database) exists.
+        # course-service creates its own tables on startup via ddl-auto=update,
+        # so the seeder must also wait for course-service itself, or it can hit
+        # "relation courses does not exist" on a fresh install where nothing
+        # has ever run before. course-service's /actuator/health endpoint can't
+        # return at all until its application context — including the
+        # EntityManagerFactory bean that runs ddl-auto=update — has finished
+        # initializing, and Spring Boot's default health-to-HTTP-status mapping
+        # returns 503 while DOWN, so a plain "wait for 200" loop is a real
+        # guarantee, not a timing guess. Reuses the seeder's own image (has
+        # Python's stdlib urllib) instead of adding curl/wget as a dependency.
+        - name: wait-for-course-service
+          image: {{ .Values.imageRegistry }}/course-seeder:{{ .Values.imageTag }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          command:
+            - python3
+            - -c
+            - |
+              import time, urllib.request
+              url = "http://course-service:{{ .Values.services.courseService.port }}/actuator/health"
+              print("Waiting for course-service to be ready...")
+              while True:
+                  try:
+                      with urllib.request.urlopen(url, timeout=3) as r:
+                          if r.status == 200:
+                              break
+                  except Exception:
+                      pass
+                  print("  course-service not ready yet, retrying in 5s...")
+                  time.sleep(5)
+              print("course-service is ready.")
       containers:
         - name: seeder
           image: {{ .Values.imageRegistry }}/course-seeder:{{ .Values.imageTag }}
