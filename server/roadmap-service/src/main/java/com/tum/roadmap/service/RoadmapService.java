@@ -297,12 +297,11 @@ public class RoadmapService {
             headers.set("X-User-Id", String.valueOf(userId));
             HttpEntity<RoadmapRequest> entity = new HttpEntity<>(new RoadmapRequest(goal), headers);
 
-            return restTemplate.exchange(
+            return restTemplate.postForObject(
                     getLlmUrl() + "/recommend",
-                    org.springframework.http.HttpMethod.POST,
                     entity,
                     RoadmapResponse.class
-            ).getBody();
+            );
         } catch (HttpClientErrorException e) {
             if (e.getStatusCode().value() == 429) {
                 throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Token quota exceeded");
