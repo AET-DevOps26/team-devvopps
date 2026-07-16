@@ -13,6 +13,8 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+
 /**
  * Roadmap entity representing a personalized learning path.
  * A roadmap is generated based on a student's goal and contains milestones with tasks.
@@ -59,6 +61,7 @@ public class Roadmap {
     private int progress;
 
     /** List of milestones in this roadmap (must have at least 1) */
+    @JsonManagedReference
     @OneToMany(mappedBy = "roadmap", cascade = CascadeType.ALL)
     private List<Milestone> milestones = new ArrayList<>();
 

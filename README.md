@@ -20,7 +20,7 @@ The application uses a microservice-based client-server architecture.
 ### Components
 The backend consists of **3 independent Spring Boot microservices and 1 Python service** behind an API Gateway:
 
-- **api-gateway** (port 8080): Routes all incoming requests to the appropriate service
+**api-gateway** (port 8080): Routes all incoming requests to the appropriate service
 - **user-service** (port 8081): User management
 - **course-service** (port 8082): Mock TUM course database (source of truth for university courses)
 - **roadmap-service** (port 8083): Personalized learning roadmap generation and tracking
@@ -344,16 +344,29 @@ Current implemented endpoints include:
 - `GET /users/{id}` — Get a user by ID
 - `DELETE /users/{id}` — Delete a user by ID
 
+- `POST /auth/signup` - Register and starts a session
+- `POST /auth/login` - Verify credentials and start a session
+- `POST /auth/logout` - Clear the session cookie
+- `GET /auth/me` - Returns the currently authenticated user
+- `GET /auth/logs` - Recent auth events for the admin panel (admin only)
+
+- `GET /features` - Returns all flags with their state and description
+- `PUT /features/{name}` - Enables or disables a flag
+
+- `GET /settings`- Returns all settings
+- `PUT /settings/{name}` - Updates a setting's value
+
 #### Course Service
 
 - `GET /courses` — Get all courses
 - `GET /courses/{id}` — Get a course by ID
-- `GET /courses/search?title=<title>` — Search courses by title
+- `GET /courses/search` — Search courses by title
 
 #### Roadmap Service
 
-- `GET /roadmaps` — Get all roadmaps
-- `POST /roadmaps/generate?userId=<id>&goal=<goal>` — Generate a roadmap using the LLM service
+- `GET /roadmaps` — Returns the authenticated user's own roadmaps
+- `GET /roadmaps/all` - Returns every roadmap (admin only)
+- `POST /roadmaps/generate` — Generate a roadmap using the LLM service
 - `GET /roadmaps/{id}` — Get a roadmap by ID
 - `PATCH /roadmaps/{roadmapId}/tasks/{taskId}/complete` — Toggle task completion status
 - `GET /roadmaps/{roadmapId}/progress` — Get roadmap progress statistics
@@ -362,7 +375,7 @@ Current implemented endpoints include:
 
 - `POST /recommend` — Generate an AI-powered roadmap recommendation
 - `GET /health` — Check LLM service health and active model
-- `GET /usage/{user_id}` — Get token usage and remaining quota for a user
+- `GET /usage` — Get token usage and remaining quota for a user
 - `GET /logs` — Retrieve recent service logs
 - `GET /` — Get service information
 
@@ -477,6 +490,45 @@ For deployment to the AET Kubernetes cluster used in the course:
 | `GROQ_API_KEY` | secret | Groq API key for llm-service |
 | `LOGOS_API_KEY` | secret | Logos API key for llm-service (optional) |
 | `K8S_NAMESPACE` | variable | Kubernetes namespace (`team-devvopps`) |
+
+
+## Testing
+
+The project contains test suites for all backend services and the React client. 
+
+### Run all 
+
+```bash
+make test
+```
+
+### Run Spring Boot tests
+
+```bash
+make test-server
+```
+
+### Run tests for a specific service
+
+```bash
+cd server
+make test-user 
+make test-course
+make test-roadmap
+make test-gateway
+```
+
+### Run LLM Service Tests
+
+```bash
+make test-llm
+```
+
+### Run Client Tests
+
+```bash
+make test-client
+```
 
 ## Student Responsibilities
 
