@@ -533,6 +533,13 @@ async def health_check(response: Response):
     process is up but roadmap generation would run without course context.
     Flips back to 200 automatically once a course fetch succeeds (either at
     startup or via the retry-on-request in /recommend).
+
+    Not used as the Kubernetes readiness probe — see /livez for that. A pod
+    that permanently lost the startup race with course-service (e.g. on a
+    fresh cluster where course-service is also cold-starting) would never
+    recover here on its own without an actual /recommend call, which would
+    wedge Kubernetes rollout waits indefinitely even though the process is
+    otherwise fully able to serve traffic in degraded mode.
     """
     p = current_provider()
     courses_indexed = len(_courses)
@@ -546,6 +553,13 @@ async def health_check(response: Response):
         "api_key_configured": bool(p["key"]),
         "courses_indexed": courses_indexed,
     }
+
+
+@app.get("/livez")
+async def liveness_check():
+    """Kubernetes readiness probe target: process is up and serving HTTP.
+    Deliberately independent of course-index state — see /health's docstring."""
+    return {"status": "alive"}
 
 
 @app.get("/usage")

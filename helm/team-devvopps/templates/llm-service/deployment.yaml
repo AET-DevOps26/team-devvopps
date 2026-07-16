@@ -53,9 +53,16 @@ spec:
                   name: llm-secret
                   key: logos-api-key
                   optional: true
+          # /health intentionally stays 503 until courses are indexed (see its
+          # docstring) — that's a soft "degraded mode" signal for dashboards,
+          # not a hard readiness gate. Using it here would leave the pod
+          # permanently NotReady if it ever loses the startup race with
+          # course-service (most likely right after a fresh cluster install),
+          # since nothing retries the course fetch except a live /recommend
+          # call. /livez only confirms the process is up and serving HTTP.
           readinessProbe:
             httpGet:
-              path: /health
+              path: /livez
               port: {{ .Values.services.llmService.port }}
             initialDelaySeconds: 30
             periodSeconds: 10
