@@ -46,6 +46,12 @@ Metrics are collected every 15 seconds. Alert rules are evaluated every 15 secon
 - **Grafana:** http://localhost:3001 — login with `GRAFANA_ADMIN_USER` (default `admin`) / `GRAFANA_ADMIN_PASSWORD` from your `infra/.env`
 - **Prometheus:** http://localhost:9090
 
+Grafana can also be opened from inside the app: log in as an admin and use the **Grafana ↗** button in the Admin Panel (shown when the `grafanaLink` feature flag is enabled).
+
+> Safari quirk: on localhost the Admin Panel button may appear to do nothing — Safari
+> silently blocks cross-port `target="_blank"` links without showing a popup indicator.
+> Open http://localhost:3001 directly instead (or use another browser).
+
 > **Note:** Grafana no longer starts with a default password anywhere. Locally, compose fails fast unless `GRAFANA_ADMIN_PASSWORD` is set in `infra/.env` (pick any value — Grafana is only reachable from your machine). On the AET cluster, Grafana is publicly exposed via ingress, so the deploy workflow requires the `GRAFANA_ADMIN_USER`/`GRAFANA_ADMIN_PASSWORD` GitHub Secrets and fails fast if they are missing.
 
 <br>
@@ -72,6 +78,8 @@ On Kubernetes, Promtail runs as a **DaemonSet** (one pod per node) and discovers
 On AET, Grafana is publicly reachable through the ingress:
 
 - **Grafana:** https://team-devvopps.stud.k8s.aet.cit.tum.de/grafana (login: credentials from the `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` GitHub Secrets)
+
+As on Docker, admins can also reach it via the **Grafana ↗** button in the app's Admin Panel.
 
 Prometheus and Loki are not publicly exposed — port-forward to reach them (works for Grafana too):
 
