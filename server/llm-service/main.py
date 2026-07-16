@@ -14,6 +14,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Header, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from langchain_core.language_models.llms import LLM
+from langchain_core.callbacks.manager import CallbackManagerForLLMRun
+from prometheus_client import Counter, Histogram, make_asgi_app
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
 
 # ---------------------------------------------------------------------------
 # In-memory log store (last 200 entries, newest first)
@@ -24,12 +30,6 @@ def _log(level: str, message: str, **extra):
     entry = {"timestamp": datetime.now(timezone.utc).isoformat(), "level": level, "message": message, **extra}
     _logs.appendleft(entry)
     print(f"[{level}] {message}", flush=True)
-from langchain_core.language_models.llms import LLM
-from langchain_core.callbacks.manager import CallbackManagerForLLMRun
-from prometheus_client import Counter, Histogram, make_asgi_app
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
 
 
 # ---------------------------------------------------------------------------
@@ -626,7 +626,7 @@ async def recommend(req: RoadmapRequest, x_user_id: str = Header("anonymous")) -
                     _log("WARN", "Course index still empty — proceeding without courses")
 
         courses_str = filter_courses(req.goal)
-        course_count = len([l for l in courses_str.splitlines() if l.strip().startswith("-")])
+        course_count = len([line for line in courses_str.splitlines() if line.strip().startswith("-")])
         _log("INFO", f"TF-IDF filtered {course_count} relevant courses", goal=req.goal)
         _log("INFO", f"Calling LLM ({current_provider()['model']})...", goal=req.goal)
 
