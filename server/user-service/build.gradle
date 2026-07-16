@@ -1,0 +1,16 @@
+plugins {
+    id 'org.springframework.boot'
+    id 'io.spring.dependency-management'
+}
+
+springBoot {
+    mainClass = 'com.tum.user.UserApplication'
+}
+
+dependencies {
+    testRuntimeOnly 'com.h2database:h2'
+}
+
+tasks.withType(JavaCompile) {
+    options.compilerArgs << '-parameters'
+}
