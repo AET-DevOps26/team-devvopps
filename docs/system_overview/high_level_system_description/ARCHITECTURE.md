@@ -149,8 +149,10 @@ Independent Python/FastAPI microservice owning all AI logic:
   prompting, so recommendations reference real TUM courses.
 - **Runtime configuration** — reads feature flags and prompt/limit settings from
   user-service (cached 30s), letting admins tune behaviour without redeploys.
-- **Token quota** — per-user monthly token budget (in-memory, default 50k,
+- **Token quota** — per-user and per-request token limits
+  - per-user monthly token budget (in-memory, default 50k,
   admin-configurable); requests over budget are rejected with a quota error.
+  - per-request size limits (user input length ≤ 200 chars, llm output ≤ 400 chars); exceeding limits are rejected with an error
 - **Observability** — Prometheus metrics for request outcomes
   (success / parse_error / provider_error / quota_exceeded), per-provider
   latency, and token consumption; visualised in the *LLM Service* Grafana

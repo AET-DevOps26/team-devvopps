@@ -240,6 +240,7 @@ Per-service requests are defined in `helm/team-devvopps/values-aet.yaml`. Roughl
 | **AET manual (`make helm-install-aet`)** | Env vars passed to make, injected with `--set` | No — make fails without them; helm templates also `require` non-empty passwords (`values-aet.yaml` sets them to `""`) |
 | **Local Kubernetes (`make k8s-deploy`)** | `infra/.env` if set, otherwise generated ephemeral values | Yes, and that's fine — local cluster is not reachable from the internet |
 | **Local Docker (`make docker-up`)** | `infra/.env` (required — compose fails fast without `POSTGRES_PASSWORD`/`GRAFANA_ADMIN_PASSWORD`); JWT falls back to a dev-only key | Only the JWT dev key, which is fine — localhost only |
+| **Azure VM via GitHub Actions** | GitHub Secrets, written to `.env.prod` on the VM over SSH | Yes — GitHub Actions requires non-empty passwords and resolves a missing/empty secret to an empty string. |
 
 ##### Inspecting the cluster
 
@@ -284,7 +285,7 @@ Deployed via GitHub Actions:
 2. Run **Build Docker Images**, then **Deploy to VM**. 
 3. Run **Stop VM (Azure)** when done.
 
-The application is available under: https://client.20.240.141.213.nip.io (*If the URL is not working, check whether the public IP has changed in GitHub variables.*)
+The application is available under: https://client.20.240.141.213.nip.io (*if this URL isn't working, the exact current URL is shown in GitHub Actions: open the workflow run and check the url displayed once it's finished.*)
 
 **How it works:**
 
@@ -627,11 +628,11 @@ Main responsibilities per student. Ownership did not mean isolated work — inte
 **Linn Ewen**
 
 - API documentation (OpenAPI specs in `api/`, Swagger UI, pre-commit hooks for linting)
-- Backend (Spring Boot microservices, inter-service discovery)
-- CI/CD (build & push Docker images, deploy-to-VM workflow, provision workflow, testing workflow)
-- Azure VM deployment (Terraform & Ansible: resource group, storage account, service principal roles, restricted SSH access)
+- Backend (Spring Boot microservices with proper HTTP status exceptions, inter-service discovery)
+- CI/CD (build & push Docker images with per-service GitHub Actions layer caching, deploy-to-VM workflow, provision workflow, testing workflow)
+- Azure VM deployment (Terraform & Ansible (one-time infrastructure provisioning), and CI/CD deployment to the vm - with restricted SSH access)
 - Testing (Spring Boot unit & integration tests, API gateway tests, pytest for the LLM service, Vitest for the React client)
-- Features: task completion progress, per-user LLM token quota tracking
+- Features: task completion progress, per-user LLM token quota limitation & tracking 
 
 **Dilay Nurlu**
 
@@ -647,7 +648,7 @@ Main responsibilities per student. Ownership did not mean isolated work — inte
 
 - Initial project scaffolding (Gradle setup, system architecture doc, frontend framework switch from SvelteKit to React)
 - Docker & Kubernetes deployment (containerization for all services, initial K8s manifests, conversion of the local deployment to Helm, automatic course-seeder job, ingress host fixes)
-- LLM integration (Groq API + LangChain prompt chain, admin sign-in keys, feature toggles, per-user token limits with remaining-token display)
+- LLM integration (Groq API + LangChain prompt chain, admin sign-in keys, feature toggles, per-request token limits, remaining-token display for per-user token quota and input limit)
 - Admin panel (routing, log view for debugging, Grafana access from the panel)
 - Auth & UI (login/signup pages, roadmap UI, stable task-list ordering, general UI fixes and refactors)
 - CI/CD deployment reliability (fixed GitHub Actions deploy errors and timeouts, seeder as Helm hook, parallel and best-effort Promtail rollout so it cannot stall deploys)
