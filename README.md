@@ -105,6 +105,7 @@ Architecture diagrams and product context are in `docs/system_overview/`, includ
 
 - **Full stack, one command (start here):** [Running with Docker Compose](#running-with-docker-compose)
 - **Kubernetes:** [Running with Kubernetes](#running-with-kubernetes)
+- **Cloud** (staging/demo): [Azure VM](#azure-vm-cloud)
 - **Developing the services in an IDE:** [Local Development Setup](#local-development-setup-ide-optional)
 
 ---
@@ -276,9 +277,14 @@ make k8s-down        # Tear down (deletes the namespace and all local data)
 
 The application is automatically built and deployed to an Azure VM on every merge to main.
 
-**URLs:**
-- **Frontend:** https://client.9.223.113.24.nip.io
-- **API Gateway:** https://api.9.223.113.24.nip.io
+> ⚠️ The VM is stopped by default to preserve free credits. Always stop it again after use.
+
+Deployed via GitHub Actions: 
+1. Run **Start VM (Azure)**.
+2. Run **Build Docker Images**, then **Deploy to VM**. 
+3. Run **Stop VM (Azure)** when done.
+
+The application is available under: https://client.20.240.141.213.nip.io (*If the URL is not working, check whether the public IP has changed in GitHub variables.*)
 
 **How it works:**
 
