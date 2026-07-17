@@ -4,27 +4,24 @@ TUMgoal is a DevOps course project for helping TUM Computer Science students tur
 
 ## Project Deliverables
 
-> **TODO:** Turn each bullet below into a link to its README section, folder, or file,
-> so a grader can jump straight from requirement to proof. Final link targets to be
-> decided once the architecture/API documentation pass is done.
-
 This repository currently includes:
 
-- Docker Compose, Kubernetes (Helm), Azure VM, and AET cluster setup instructions.
-- Architecture documentation for the React client, API gateway, Spring Boot microservices, PostgreSQL databases, and GenAI integration.
-- OpenAPI specifications for the service APIs in `api/`.
-- CI/CD pipelines for linting, image builds, Azure VM deployment, AET Kubernetes deployment, and Azure VM provisioning.
-- A monitoring stack (Prometheus, Grafana, Loki/Promtail) with exported dashboards and alert rules, documented in [docs/MONITORING.md](docs/MONITORING.md).
-- A testing suite covering the Spring Boot services, the GenAI service, and the React client, with run instructions (`make test`) and automatic execution in CI.
-- Operational instructions for logs, Kubernetes status checks, Helm release checks, and deployment troubleshooting.
-- A student responsibilities section documenting who is responsible for which subsystem.
+- Setup instructions for [Docker Compose](#running-with-docker-compose), [Kubernetes (Helm)](#running-with-kubernetes), the [AET cluster](#aet-kubernetes-cluster-production), and the [Azure VM](#azure-vm-stagingdemo).
+- [Architecture documentation](docs/system_overview/high_level_system_description/ARCHITECTURE.md) for the React client, API gateway, Spring Boot microservices, PostgreSQL databases ([schema](docs/system_overview/high_level_system_description/database_schema.md)), and GenAI integration — summarized in [System Architecture](#system-architecture).
+- [OpenAPI specifications](api/) for the service APIs, referenced in [API Documentation](#api-documentation).
+- [CI/CD pipelines](.github/workflows/) for linting, testing, image builds, Azure VM deployment, AET Kubernetes deployment, and Azure VM provisioning — documented in [CI/CD](#cicd).
+- A [monitoring stack](#monitoring-and-observability) (Prometheus, Grafana, Loki/Promtail) with exported dashboards and alert rules, documented in [docs/MONITORING.md](docs/MONITORING.md).
+- A [testing suite](#testing) covering the Spring Boot services, the GenAI service, and the React client, with run instructions (`make test`) and automatic execution in CI.
+- Operational instructions for [logs and dashboards](docs/MONITORING.md), [Kubernetes status checks](#running-with-kubernetes), and deployment troubleshooting.
+- A [student responsibilities](#student-responsibilities) section documenting who is responsible for which subsystem.
 
 ## System Architecture
 
-**Full architecture documentation: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** —
+**Full architecture documentation:
+[ARCHITECTURE.md](docs/system_overview/high_level_system_description/ARCHITECTURE.md)** —
 high-level description, subsystem decomposition and interfaces, auth model, GenAI
 provider architecture — and the **database schema** in
-[docs/system_overview/database_schema.md](docs/system_overview/database_schema.md)
+[database_schema.md](docs/system_overview/high_level_system_description/database_schema.md)
 (ER diagrams per database). This section is a short summary.
 
 The application uses a microservice-based client-server architecture.
@@ -45,19 +42,16 @@ Each Spring Boot service has:
 
 ### GenAI Component
 
-The **llm-service** (Python/FastAPI) turns a student's goal into a roadmap with real TUM course recommendations — it fetches the course catalogue, narrows it with TF-IDF, prompts an LLM, and returns structured milestones and tasks. It supports **both cloud and local models**: TUM-hosted Logos (`gpt-oss-120b`) and Groq (`llama-3.3-70b-versatile`) in the cloud, or a local LM Studio server with no cloud dependency. Admins can switch providers at runtime via the `llmUseLogos` feature flag, and each user has a monthly token quota. Details in [docs/ARCHITECTURE.md §2.6](docs/ARCHITECTURE.md).
+The **llm-service** (Python/FastAPI) turns a student's goal into a roadmap with real TUM course recommendations — it fetches the course catalogue, narrows it with TF-IDF, prompts an LLM, and returns structured milestones and tasks. It supports **both cloud and local models**: TUM-hosted Logos (`gpt-oss-120b`) and Groq (`llama-3.3-70b-versatile`) in the cloud, or a local LM Studio server with no cloud dependency. Admins can switch providers at runtime via the `llmUseLogos` feature flag, and each user has a monthly token quota. Details in [ARCHITECTURE.md §2.6](docs/system_overview/high_level_system_description/ARCHITECTURE.md).
 
 Architecture diagrams and product context are in `docs/system_overview/`, including:
 
-- `docs/system_overview/database_schema.md`
+- `docs/system_overview/high_level_system_description/` — `ARCHITECTURE.md` and `database_schema.md`
 - `docs/system_overview/problem_statement.md`
 - `docs/system_overview/initial_system_structure.md`
 - `docs/system_overview/first_product_backlog.md`
-- `docs/system_overview/diagrams/system_architecture.png`
-- `docs/system_overview/diagrams/subsystem_decomposition_uml.png`
-- `docs/system_overview/diagrams/subsystem_decomposition_apollon.png`
-- `docs/system_overview/diagrams/use_case_diagram_updated.png`
-- `docs/system_overview/diagrams/final_analysis_object_model.png`
+- `docs/system_overview/diagrams/final/` — final Subsystem Decomposition, Use Case Diagram, and Analysis Object Model
+- `docs/system_overview/diagrams/initial/` — the initial-design versions of the same three diagrams
 
 ## Repository Structure
 
@@ -68,10 +62,9 @@ Architecture diagrams and product context are in `docs/system_overview/`, includ
 ├── api/                    # OpenAPI service specifications
 ├── client/                 # React frontend (Dockerfile inside)
 ├── docs/                   # Documentation deliverables
-│   ├── ARCHITECTURE.md     # Architecture: subsystem decomposition, interfaces, auth, GenAI
 │   ├── MONITORING.md       # Monitoring guide: dashboards, alerts, log pipeline
-│   ├── system_overview/    # Problem statement, diagrams, backlog, database schema
-│   ├── known-issues.md     # Known issues and their status
+│   ├── system_overview/    # Problem statement, backlog, UML diagrams (initial + final)
+│   │   └── high_level_system_description/  # ARCHITECTURE.md + database_schema.md
 │   └── security/           # Security review notes
 ├── helm/team-devvopps/     # Helm chart used for ALL Kubernetes deployments (local + AET)
 │   ├── grafana-dashboards/ # Exported Grafana dashboard JSON (also mounted by compose)
@@ -192,6 +185,12 @@ The AET cluster runs the Helm chart with `values-aet.yaml`: ingress with TLS, an
 2. Select **"Deploy to AET Kubernetes Cluster"**
 3. Click **"Run workflow"** and check the logs for success
 
+> **Note on the manual trigger:** the intended CD path is the automatic deployment on
+> merge to `main` — that is what we rely on. The `workflow_dispatch` trigger exists
+> solely so a tutor can (re)deploy on demand without having to push a commit. We are
+> aware that in a strict production setup the pipeline would deploy on merge to `main`
+> only, and we would remove the manual trigger.
+
 The workflow connects to the cluster with its own credentials, so your local kubectl context does not matter for this path. All values come from GitHub Secrets/Variables — the workflow **fails fast** if a required one is missing (it never falls back to default credentials):
 
 | Name | Type | Required | Description |
@@ -220,6 +219,17 @@ kubectl get services -n team-devvopps
 ```
 
 Expected: one pod per service, plus `postgres-0` and `postgres-1` (primary + replica with streaming replication).
+
+##### Fair Use Policy compliance
+
+The AET cluster's Fair Use Policy caps each team's summed `resources.requests` at **4 vCPU / 6 GB**. We stay safely below it (snapshot of 2026-07-16, average utilization — measured by summing `resources.requests` across all pods via `kubectl get pods -n team-devvopps -o json`):
+
+| | Cap | Measured | Usage |
+|---|---|---|---|
+| CPU requests | 4 vCPU | 0.77 vCPU | 19% |
+| Memory requests | 6 GB | 2.47 GiB | 41% |
+
+Per-service requests are defined in `helm/team-devvopps/values-aet.yaml`. Roughly a third of the usage comes from Promtail's per-node DaemonSet pods, so the measured value scales with the cluster's node count rather than with anything we deploy.
 
 ##### How credentials work per environment
 
@@ -264,12 +274,6 @@ make k8s-down        # Tear down (deletes the namespace and all local data)
 
 ### Azure VM (Staging/Demo)
 
-> **TODO:** One remaining gap from the docs review (the LLM provider key and admin bootstrap
-> were fixed in PR #142): `compose.azure.yml` still sets no `JWT_SIGNING_KEY`, so user-service
-> and api-gateway fall back to the committed dev-only key on a publicly reachable host.
-> Fix: pass a `JWT_SIGNING_KEY` secret through `deploy-vm.yml` → `.env.prod` → `compose.azure.yml`
-> (same pattern as `GROQ_API_KEY`).
-
 The application is automatically built and deployed to an Azure VM on every merge to main.
 
 **URLs:**
@@ -300,17 +304,15 @@ The application is automatically built and deployed to an Azure VM on every merg
 | `PAT_TOKEN` | secret | GitHub PAT for updating AZURE_PUBLIC_IP |
 | `POSTGRES_PASSWORD` | secret | Database password — `deploy-vm.yml` refuses to deploy without it (no default/fallback credential) |
 | `GROQ_API_KEY` | secret | Groq API key for the llm-service (written to `.env.prod` on deploy) |
+| `JWT_SIGNING_KEY` | secret | HS256 key for auth tokens, shared by user-service and api-gateway (written to `.env.prod` on deploy) |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | secret | Bootstrap admin account for user-service (optional) |
 
 The VM can be stopped and started on demand to save cost via the `vm-stop.yml` / `vm-start.yml` workflows (manual dispatch).
 
 **Stack on VM:**
-- Traefik (reverse proxy + Let's Encrypt HTTPS)
-- Docker socket proxy (`tecnativa/docker-socket-proxy`): brokers Traefik's
-  access to the Docker socket read-only, scoped to just the container-list
-  API it needs for service discovery — Traefik never mounts the real
-  socket directly
+- Traefik (reverse proxy + Let's Encrypt HTTPS; discovers services via the Docker socket)
 - Postgres 16
+- Course seeder (one-time job with a readiness gate that blocks services until courses exist)
 - All microservices
 
 **Setup Details (Reference Only):**
@@ -523,7 +525,9 @@ Current implemented endpoints include:
 - `PATCH /roadmaps/{roadmapId}/tasks/{taskId}/complete` — Toggle task completion status
 - `GET /roadmaps/{roadmapId}/progress` — Get roadmap progress statistics
 
-#### LLM Service (exposed through the gateway under `/llm/**`)
+#### LLM Service (via gateway only — no direct ingress route)
+
+The paths below are the service's own; external callers reach them through the gateway under `/llm/*` (prefix stripped). On the AET cluster the ingress deliberately has **no** direct route to the llm-service, so its endpoints can only be reached after passing the gateway's JWT check. `POST /recommend` is called internally by roadmap-service.
 
 - `POST /recommend` — Generate an AI-powered roadmap recommendation
 - `GET /health` — Check LLM service health and active model
@@ -537,14 +541,14 @@ GitHub Actions workflows are defined in `.github/workflows/`.
 
 | Workflow | Trigger | Purpose |
 |---|---|---|
-| `lint.yml` | Pull requests to `main`, pushes to non-`main` branches | Runs frontend ESLint, Java checks, actionlint, Helm lint, and OpenAPI lint |
+| `lint.yml` | Pull requests to `main`, pushes to non-`main` branches | Runs frontend ESLint, Java checks, Python linting (Ruff) for the llm-service, actionlint, Helm lint, and OpenAPI lint |
 | `build.yml` | Push to `main`, manual dispatch | Builds Docker images for all services, pushes them to GHCR, then calls `deploy-k8s.yml` |
 | `deploy-vm.yml` | Automatically after `build.yml` completes successfully on `main` (via `workflow_run`) | Temporarily opens SSH access for the runner's IP, deploys the latest images to the Azure VM with Docker Compose, then closes SSH access again |
 | `deploy-k8s.yml` | Called by `build.yml` after a successful image build on `main` (via `workflow_call`); manual dispatch | Deploys the Helm chart to the AET Kubernetes cluster |
 | `provision.yml` | Manual dispatch | Provisions or imports Azure resources with Terraform, temporarily opens SSH for the runner's IP, configures the VM with Ansible, and updates the Azure public IP GitHub variable, then closes SSH access again |
 | `vm-start.yml` | Manual dispatch | Starts the Azure VM |
 | `vm-stop.yml` | Manual dispatch | Deallocates the Azure VM to stop billing |
-| `testing.yml` | Every push and every pull request | Runs Spring Boot tests for all backend services, pytest tests for the LLM service, and vitest tests for the client |
+| `testing.yml` | Every push | Runs Spring Boot tests for all backend services, pytest tests for the LLM service, and vitest tests for the client |
 
 Required GitHub configuration (secrets and variables) is documented per deployment target under Setup Instructions:
 [AET Kubernetes Cluster (Production)](#aet-kubernetes-cluster-production) and [Azure VM (Staging/Demo)](#azure-vm-stagingdemo).
@@ -612,28 +616,35 @@ make test-client     # React client (vitest)
 
 ## Student Responsibilities
 
-> **TODO:** Complete the remaining items in Linn's and Hafizenur's lists before submission.
-
-**Dilay Nurlu**
-
-- TUM courses source-of-truth database population — `server/course-service/fetch_and_seed_courses.py`, the seeder image (`server/course-service/Dockerfile.seeder`, `requirements.seeder.txt`), and the Kubernetes seeder job (`helm/team-devvopps/templates/seeder/job.yaml`, `make k8s-seed`)
-- Kubernetes deployment setup (Helm chart, local docker-desktop + AET cluster)
-- Monitoring setup (Prometheus, Grafana dashboards, alert rules, Loki/Promtail logging)
-- Security issue fixes
+Main responsibilities per student. Ownership did not mean isolated work — integration, deployment, and debugging were shared across subsystem boundaries.
 
 **Linn Ewen**
 
-- API documentation (OpenAPI specs in `api/`, Swagger UI)
-- Backend (Spring Boot microservices)
-- Testing
-- _TODO: complete this list_
+- API documentation (OpenAPI specs in `api/`, Swagger UI, pre-commit hooks for linting)
+- Backend (Spring Boot microservices, inter-service discovery)
+- CI/CD (build & push Docker images, deploy-to-VM workflow, provision workflow, testing workflow)
+- Azure VM deployment (Terraform & Ansible: resource group, storage account, service principal roles, restricted SSH access)
+- Testing (Spring Boot unit & integration tests, API gateway tests, pytest for the LLM service, Vitest for the React client)
+- Features: task completion progress, per-user LLM token quota tracking
+
+**Dilay Nurlu**
+
+- Kubernetes deployment (Helm chart for the AET cluster, Postgres replication & self-healing, security contexts & resource limits)
+- Monitoring & observability (Prometheus + Grafana + Loki/Promtail stack, dashboards, alert rules)
+- CI/CD pipeline (linting workflows, Dependabot, least-privilege Actions permissions, Helm upgrade auto-recovery)
+- Security hardening (KICS/zizmor findings, pinned images & action SHAs, LLM-service ingress fix)
+- Database reliability & course seeding (replica self-heal, seeder readiness gates, real TUM course data)
+- Backend fixes (error propagation, 404 vs 500 handling, admin bootstrap/auth)
+- Local dev environment (Docker Compose with integrated monitoring and automatic seeding)
 
 **Hafizenur Sahbudak**
 
-- LLM service (GenAI component)
-- User login page
-- Admin panel
-- _TODO: complete this list_
+- Initial project scaffolding (Gradle setup, system architecture doc, frontend framework switch from SvelteKit to React)
+- Docker & Kubernetes deployment (containerization for all services, initial K8s manifests, conversion of the local deployment to Helm, automatic course-seeder job, ingress host fixes)
+- LLM integration (Groq API + LangChain prompt chain, admin sign-in keys, feature toggles, per-user token limits with remaining-token display)
+- Admin panel (routing, log view for debugging, Grafana access from the panel)
+- Auth & UI (login/signup pages, roadmap UI, stable task-list ordering, general UI fixes and refactors)
+- CI/CD deployment reliability (fixed GitHub Actions deploy errors and timeouts, seeder as Helm hook, parallel and best-effort Promtail rollout so it cannot stall deploys)
 
 In addition to their primary subsystem, every team member:
 

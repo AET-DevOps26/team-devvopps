@@ -4,10 +4,10 @@ High-level architecture description of TUMgoal: decomposition into subsystems,
 their responsibilities, and the interfaces between them.
 
 Related documents:
-- [Database schema](system_overview/database_schema.md) (ER diagrams per database)
-- [Monitoring guide](MONITORING.md) (dashboards, alerts, log pipeline)
-- [OpenAPI specifications](../api/) (per-service API contracts)
-- [README](../README.md) (setup and deployment instructions)
+- [Database schema](database_schema.md) (ER diagrams per database)
+- [Monitoring guide](../../MONITORING.md) (dashboards, alerts, log pipeline)
+- [OpenAPI specifications](../../../api/) (per-service API contracts)
+- [README](../../../README.md) (setup and deployment instructions)
 
 ## 1. High-Level Overview
 
@@ -131,7 +131,7 @@ Coordinates roadmap generation and tracks progress. On
 (`GET /users/{id}` — the id comes from the gateway-injected `X-User-Id`), calls
 the llm-service (`POST /recommend`), and persists the returned roadmap as
 goal → roadmap → milestones → tasks (see the
-[database schema](system_overview/database_schema.md)). Task completion toggles
+[database schema](database_schema.md)). Task completion toggles
 recompute milestone status and roadmap progress.
 
 ### 2.6 LLM Service (GenAI)
@@ -155,6 +155,13 @@ Independent Python/FastAPI microservice owning all AI logic:
   (success / parse_error / provider_error / quota_exceeded), per-provider
   latency, and token consumption; visualised in the *LLM Service* Grafana
   dashboard.
+- **Degraded-mode resilience** — if the course index could not be loaded at
+  startup (e.g. course-service was still cold), it is recovered in the
+  background; `GET /health` reports `degraded` (503) until then, while
+  `GET /livez` (the Kubernetes readiness probe) only checks that the process
+  serves HTTP, so a pod never wedges a rollout waiting on the index. Provider
+  errors and unparseable model output surface to the caller as a 502 with the
+  underlying detail instead of a generic message.
 
 It keeps no database; its only state is the in-memory quota counter.
 
@@ -165,7 +172,7 @@ PostgreSQL 16. One instance hosts `userdb`, `coursedb`, and `roadmapdb`
 Kubernetes); table schemas are auto-created by JPA from the entity classes. On
 the AET cluster postgres runs highly available as `postgres-0` (primary) +
 `postgres-1` (streaming replica). Full schema:
-[database_schema.md](system_overview/database_schema.md).
+[database_schema.md](database_schema.md).
 
 ### 2.8 Monitoring
 
@@ -173,7 +180,7 @@ Prometheus scrapes every service's metrics endpoint (15s interval) and evaluates
 the alert rules (`ServiceDown`, `HighErrorRate`, `HighLatency`); Grafana ships
 five provisioned dashboards; Promtail tails container logs into Loki. Deployed
 identically by Docker Compose and the Helm chart. Details:
-[MONITORING.md](MONITORING.md).
+[MONITORING.md](../../MONITORING.md).
 
 ## 3. Interfaces
 
@@ -192,7 +199,7 @@ cookie set by `POST /auth/login`.
 | `/settings/**` | user-service | GET signed-in; PUT admin |
 | `/llm/**` | llm-service (prefix stripped) | signed-in; `/llm/logs` admin |
 
-Per-service API contracts live in [`api/`](../api/) (OpenAPI), browsable via
+Per-service API contracts live in [`api/`](../../../api/) (OpenAPI), browsable via
 Swagger UI (see the README's API Documentation section).
 
 ### 3.2 Service-to-service (internal REST)
@@ -217,6 +224,11 @@ the gateway; internal calls between services do not re-verify JWTs.
 | Prometheus scraping | Prometheus → all services | Spring Actuator / FastAPI metrics endpoints |
 | Ingress (AET) / Traefik (Azure VM) | internet → client + gateway | TLS termination; Grafana exposed at `/grafana` on AET |
 
+The AET ingress deliberately has **no direct route to the llm-service**: all
+external access to it goes through the api-gateway (`/api/llm/**`), so the
+gateway's JWT check cannot be bypassed. Only the client, the gateway, and
+Grafana are reachable from the internet.
+
 ### 3.4 Service discovery and configuration
 
 No hardcoded hosts or ports: service hostnames and ports are injected as
@@ -229,11 +241,10 @@ secret is missing rather than falling back to defaults.
 
 ## 4. Diagrams
 
-- Subsystem decomposition: section 1 above (Mermaid) and
-  `system_overview/diagrams/system_architecture.png`; formal UML component
-  view: `system_overview/diagrams/subsystem_decomposition_uml.png`, and in the
-  Apollon notation used for the initial design:
-  `system_overview/diagrams/subsystem_decomposition_apollon.png`
-- Database ER diagrams: [database_schema.md](system_overview/database_schema.md)
-- Use Case Diagram: `system_overview/diagrams/use_case_diagram_updated.png`
-- Analysis Object Model: `system_overview/diagrams/final_analysis_object_model.png`
+- Subsystem Decomposition: section 1 above (Mermaid); UML component view
+  (Apollon): `../diagrams/final/final_subsystem_decomposition_diagram.png`
+- Use Case Diagram: `../diagrams/final/final_use_case_diagram.png`
+- Analysis Object Model: `../diagrams/final/final_analysis_object_model.png`
+- Database ER diagrams: [database_schema.md](database_schema.md)
+- Initial-design versions of the three UML diagrams are kept in
+  `../diagrams/initial/` for comparison with the final architecture.
