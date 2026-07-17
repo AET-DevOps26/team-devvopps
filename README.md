@@ -105,7 +105,7 @@ Architecture diagrams and product context are in `docs/system_overview/`, includ
 
 - **Full stack, one command (start here):** [Running with Docker Compose](#running-with-docker-compose)
 - **Kubernetes:** [Running with Kubernetes](#running-with-kubernetes)
-- **Cloud** (staging/demo): [Azure VM](#azure-vm-cloud)
+- **Cloud** (staging/demo): [Azure VM (Cloud)](#azure-vm-cloud)
 - **Developing the services in an IDE:** [Local Development Setup](#local-development-setup-ide-optional)
 
 ---
@@ -273,7 +273,7 @@ make k8s-down        # Tear down (deletes the namespace and all local data)
 
 ---
 
-### Azure VM (Staging/Demo)
+### Azure VM (Cloud)
 
 The application is automatically built and deployed to an Azure VM on every merge to main.
 
