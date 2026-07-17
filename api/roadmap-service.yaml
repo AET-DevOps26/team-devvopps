@@ -14,7 +14,6 @@ tags:
     description: Roadmap management
 
 paths:
-
   /roadmaps:
     get:
       tags: [roadmaps]
@@ -29,9 +28,9 @@ paths:
             format: int64
       responses:
         '200':
-          description: List of roadmaps belonging to the user
+          description: OK
           content:
-            application/json:
+            '*/*':
               schema:
                 type: array
                 items:
@@ -44,9 +43,9 @@ paths:
       operationId: getAllRoadmaps
       responses:
         '200':
-          description: List of all roadmaps
+          description: OK
           content:
-            application/json:
+            '*/*':
               schema:
                 type: array
                 items:
@@ -69,38 +68,33 @@ paths:
           required: true
           schema:
             type: string
-          description: Learning goal used for AI roadmap generation
       responses:
         '200':
-          description: Generated roadmap
+          description: OK
           content:
-            application/json:
+            '*/*':
               schema:
                 $ref: '#/components/schemas/Roadmap'
-        '404':
-          description: User does not exist
+
+  /roadmaps/{roadmapId}/progress:
+    get:
+      tags: [roadmaps]
+      summary: Get roadmap progress
+      operationId: getRoadmapProgress
+      parameters:
+        - name: roadmapId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: OK
           content:
-            application/json:
+            '*/*':
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '429':
-          description: LLM token quota exceeded
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '502':
-          description: LLM returned invalid roadmap data
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '503':
-          description: Dependent service unavailable
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/RoadmapProgress'
 
   /roadmaps/{id}:
     get:
@@ -122,17 +116,11 @@ paths:
             format: int64
       responses:
         '200':
-          description: Roadmap details
+          description: OK
           content:
-            application/json:
+            '*/*':
               schema:
                 $ref: '#/components/schemas/Roadmap'
-        '404':
-          description: Roadmap not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
 
   /roadmaps/{roadmapId}/tasks/{taskId}/complete:
     patch:
@@ -160,47 +148,14 @@ paths:
             format: int64
       responses:
         '200':
-          description: Updated roadmap
+          description: OK
           content:
-            application/json:
+            '*/*':
               schema:
                 $ref: '#/components/schemas/Roadmap'
-        '404':
-          description: Roadmap or task not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /roadmaps/{roadmapId}/progress:
-    get:
-      tags: [roadmaps]
-      summary: Get roadmap progress
-      operationId: getRoadmapProgress
-      parameters:
-        - name: roadmapId
-          in: path
-          required: true
-          schema:
-            type: integer
-            format: int64
-      responses:
-        '200':
-          description: Progress information
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RoadmapProgress'
-        '404':
-          description: Roadmap not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
 
 components:
   schemas:
-
     Roadmap:
       type: object
       properties:
@@ -210,6 +165,8 @@ components:
         user_id:
           type: integer
           format: int64
+        goal:
+          $ref: '#/components/schemas/Goal'
         title:
           type: string
         created_date:
@@ -217,9 +174,6 @@ components:
           format: date-time
         progress:
           type: integer
-          example: 50
-        goal:
-          $ref: '#/components/schemas/Goal'
         milestones:
           type: array
           items:
@@ -249,10 +203,7 @@ components:
           type: string
         status:
           type: string
-          enum:
-            - NOT_STARTED
-            - IN_PROGRESS
-            - COMPLETED
+          enum: [NOT_STARTED, IN_PROGRESS, COMPLETED]
         orderIndex:
           type: integer
         course_id:
@@ -288,17 +239,3 @@ components:
           type: integer
         roadmapCompleted:
           type: boolean
-
-    ErrorResponse:
-      type: object
-      properties:
-        timestamp:
-          type: string
-        status:
-          type: integer
-        error:
-          type: string
-        message:
-          type: string
-        path:
-          type: string
