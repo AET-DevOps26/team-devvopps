@@ -153,6 +153,32 @@ Access:
 
 See [docs/MONITORING.md](docs/MONITORING.md) for the dashboards, alert rules, and log pipeline.
 
+#### Running the LLM locally with LM Studio (no cloud key)
+
+The llm-service selects its provider per request in this order: **Logos → Groq → LM Studio**. If neither `LOGOS_API_KEY` nor `GROQ_API_KEY` is set, it falls back to a local [LM Studio](https://lmstudio.ai) server on the host — so roadmap generation works fully offline, with no cloud key.
+
+1. **Install LM Studio** and download an **instruct** model. Verified with `google/gemma-4-e4b` (~6.9 GB). Small models (≤4B) work but are slow and can emit invalid JSON; a 7–8B instruct model is more reliable.
+2. **Start the local server:** LM Studio → **Developer** tab → load the model → toggle **Status: Running** (default port **1234**). Verify:
+   ```bash
+   curl http://localhost:1234/v1/models   # lists the loaded model id
+   ```
+3. **Point the stack at it** in `infra/.env`:
+   ```bash
+   # Disable the cloud providers so the fallback is used (comment them out):
+   #GROQ_API_KEY=...
+   #LOGOS_API_KEY=...
+   # Match the exact model id from /v1/models above:
+   LLM_MODEL=google/gemma-4-e4b
+   ```
+   The container reaches the host at `host.docker.internal:1234` (already wired in `docker-compose.yml` via `extra_hosts`), so nothing else is needed on macOS/Windows.
+4. **Start and verify:**
+   ```bash
+   cd infra && docker compose up -d
+   curl http://localhost:8084/health     # expect "provider":"lm-studio"
+   ```
+
+> **Notes.** Local generation is much slower than cloud (~2 min/roadmap with `gemma-4-e4b` on a laptop CPU vs ~2–6 s on Groq). To switch back to cloud, re-enable the keys (remove the `#`) and re-run `docker compose up -d`. Running LM Studio (~7 GB) alongside the full stack needs plenty of RAM — on a 16 GB machine, quit LM Studio before rebuilding images (`make docker-up`), otherwise the concurrent memory spike can OOM-kill containers (exit 137).
+
 ---
 
 ### Running with Kubernetes
