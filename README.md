@@ -179,6 +179,28 @@ The llm-service selects its provider per request in this order: **Logos → Groq
 
 > **Notes.** Local generation is much slower than cloud (~2 min/roadmap with `gemma-4-e4b` on a laptop CPU vs ~2–6 s on Groq). To switch back to cloud, re-enable the keys (remove the `#`) and re-run `docker compose up -d`. Running LM Studio (~7 GB) alongside the full stack needs plenty of RAM — on a 16 GB machine, quit LM Studio before rebuilding images (`make docker-up`), otherwise the concurrent memory spike can OOM-kill containers (exit 137).
 
+#### Admin Panel
+
+The app has an admin panel at **`/admin`** that unlocks feature flags, runtime settings, log viewers, all-roadmaps view, and user management. All admin API calls require the **ADMIN** role — the api-gateway returns `403` for non-admins.
+
+**How the admin account is created.** On startup, user-service bootstraps an ADMIN account from `ADMIN_EMAIL` / `ADMIN_PASSWORD` (see `AdminBootstrap`). It is skipped if either value is unset or if the account already exists. There is no self-service way to become admin — the account must be seeded this way.
+
+**Local (Docker Compose).** The credentials come from `infra/.env` (passed to user-service by `docker-compose.yml`):
+
+1. Ensure `ADMIN_EMAIL` and `ADMIN_PASSWORD` are set in `infra/.env`. The team's local defaults are:
+   ```bash
+   ADMIN_EMAIL=admin@tumgoal.local
+   ADMIN_PASSWORD=admin12345
+   ```
+2. `make docker-up`
+3. Open http://localhost:3000, **log in** with those credentials, then go to **http://localhost:3000/admin**.
+
+**AET / remote.** The admin credentials come from the `ADMIN_EMAIL` / `ADMIN_PASSWORD` **GitHub Secrets** (wired through `deploy-k8s.yml`), not from `infra/.env`. Log in at https://team-devvopps.stud.k8s.aet.cit.tum.de and open `/admin`. Ask the team for the values — they are not committed.
+
+**What you can do in the panel:** manage users (list / delete), toggle feature flags (`tokenQuota`, `llmLogs`, `grafanaLink`, `llmUseLogos`), edit runtime settings (monthly token limit, the LLM prompt sections), view LLM and auth logs, view all users' roadmaps, and open Grafana.
+
+> If you reset the database (`docker compose down -v`), the admin account is re-created on the next startup from the same env values, so the login stays the same.
+
 ---
 
 ### Running with Kubernetes
