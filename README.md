@@ -6,7 +6,7 @@ TUMgoal is a DevOps course project for helping TUM Computer Science students tur
 
 This repository currently includes:
 
-- Setup instructions for [Docker Compose](#running-with-docker-compose), [Kubernetes (Helm)](#running-with-kubernetes), the [AET cluster](#aet-kubernetes-cluster-production), and the [Azure VM](#azure-vm-stagingdemo).
+- Setup instructions for [Docker Compose](#running-with-docker-compose), [Kubernetes (Helm)](#running-with-kubernetes), the [AET cluster](#aet-kubernetes-cluster-production), and the [Azure VM](#azure-vm-cloud).
 - [Architecture documentation](docs/system_overview/high_level_system_description/ARCHITECTURE.md) for the React client, API gateway, Spring Boot microservices, PostgreSQL databases ([schema](docs/system_overview/high_level_system_description/database_schema.md)), and GenAI integration — summarized in [System Architecture](#system-architecture).
 - [OpenAPI specifications](api/) for the service APIs, referenced in [API Documentation](#api-documentation).
 - [CI/CD pipelines](.github/workflows/) for linting, testing, image builds, Azure VM deployment, AET Kubernetes deployment, and Azure VM provisioning — documented in [CI/CD](#cicd).
@@ -179,28 +179,6 @@ The llm-service selects its provider per request in this order: **Logos → Groq
 
 > **Notes.** Local generation is much slower than cloud (~2 min/roadmap with `gemma-4-e4b` on a laptop CPU vs ~2–6 s on Groq). To switch back to cloud, re-enable the keys (remove the `#`) and re-run `docker compose up -d`. Running LM Studio (~7 GB) alongside the full stack needs plenty of RAM — on a 16 GB machine, quit LM Studio before rebuilding images (`make docker-up`), otherwise the concurrent memory spike can OOM-kill containers (exit 137).
 
-#### Admin Panel
-
-The app has an admin panel at **`/admin`** that unlocks feature flags, runtime settings, log viewers, all-roadmaps view, and user management. All admin API calls require the **ADMIN** role — the api-gateway returns `403` for non-admins.
-
-**How the admin account is created.** On startup, user-service bootstraps an ADMIN account from `ADMIN_EMAIL` / `ADMIN_PASSWORD` (see `AdminBootstrap`). It is skipped if either value is unset or if the account already exists. There is no self-service way to become admin — the account must be seeded this way.
-
-**Local (Docker Compose).** The credentials come from `infra/.env` (passed to user-service by `docker-compose.yml`):
-
-1. Ensure `ADMIN_EMAIL` and `ADMIN_PASSWORD` are set in `infra/.env`. The team's local defaults are:
-   ```bash
-   ADMIN_EMAIL=admin@tumgoal.local
-   ADMIN_PASSWORD=admin12345
-   ```
-2. `make docker-up`
-3. Open http://localhost:3000, **log in** with those credentials, then go to **http://localhost:3000/admin**.
-
-**AET / remote.** The admin credentials come from the `ADMIN_EMAIL` / `ADMIN_PASSWORD` **GitHub Secrets** (wired through `deploy-k8s.yml`), not from `infra/.env`. Log in at https://team-devvopps.stud.k8s.aet.cit.tum.de and open `/admin`. Ask the team for the values — they are not committed.
-
-**What you can do in the panel:** manage users (list / delete), toggle feature flags (`tokenQuota`, `llmLogs`, `grafanaLink`, `llmUseLogos`), edit runtime settings (monthly token limit, the LLM prompt sections), view LLM and auth logs, view all users' roadmaps, and open Grafana.
-
-> If you reset the database (`docker compose down -v`), the admin account is re-created on the next startup from the same env values, so the login stays the same.
-
 ---
 
 ### Running with Kubernetes
@@ -260,15 +238,6 @@ The workflow connects to the cluster with its own credentials, so your local kub
 
 A manual Helm fallback also exists: `make helm-install-aet` (run it without variables and it prints exactly which credentials it needs). It is not part of the required workflow — use the GitHub Actions path above.
 
-To verify a deployment:
-
-```bash
-kubectl get pods -n team-devvopps
-kubectl get services -n team-devvopps
-```
-
-Expected: one pod per service, plus `postgres-0` and `postgres-1` (primary + replica with streaming replication).
-
 ##### Fair Use Policy compliance
 
 The AET cluster's Fair Use Policy caps each team's summed `resources.requests` at **4 vCPU / 6 GB**. We stay safely below it (snapshot of 2026-07-16, average utilization — measured by summing `resources.requests` across all pods via `kubectl get pods -n team-devvopps -o json`):
@@ -278,28 +247,11 @@ The AET cluster's Fair Use Policy caps each team's summed `resources.requests` a
 | CPU requests | 4 vCPU | 0.77 vCPU | 19% |
 | Memory requests | 6 GB | 2.47 GiB | 41% |
 
-Per-service requests are defined in `helm/team-devvopps/values-aet.yaml`. Roughly a third of the usage comes from Promtail's per-node DaemonSet pods, so the measured value scales with the cluster's node count rather than with anything we deploy.
+Per-service requests are defined in `helm/team-devvopps/values-aet.yaml`.
 
-##### How credentials work per environment
 
-| Environment | Where credentials come from | Weak defaults possible? |
-|---|---|---|
-| **AET via GitHub Actions** | GitHub Secrets, injected with `--set` by the deploy workflow | No — workflow fails fast if secrets are missing |
-| **AET manual (`make helm-install-aet`)** | Env vars passed to make, injected with `--set` | No — make fails without them; helm templates also `require` non-empty passwords (`values-aet.yaml` sets them to `""`) |
-| **Local Kubernetes (`make k8s-deploy`)** | `infra/.env` if set, otherwise generated ephemeral values | Yes, and that's fine — local cluster is not reachable from the internet |
-| **Local Docker (`make docker-up`)** | `infra/.env` (required — compose fails fast without `POSTGRES_PASSWORD`/`GRAFANA_ADMIN_PASSWORD`); JWT falls back to a dev-only key | Only the JWT dev key, which is fine — localhost only |
-| **Azure VM via GitHub Actions** | GitHub Secrets, written to `.env.prod` on the VM over SSH | Yes — GitHub Actions requires non-empty passwords and resolves a missing/empty secret to an empty string. |
-
-##### Inspecting the cluster
-
-```bash
-kubectl config use-context stud
-
-kubectl get pods -n team-devvopps       # Inspect what is running on the server
-```
-
-> ⚠️ Remember to switch back with `kubectl config use-context docker-desktop`
-> before working locally again.
+⚠️ Remember to switch back with `kubectl config use-context docker-desktop`
+before working locally again.
 
 #### Local Kubernetes (extra, not a project requirement)
 
@@ -382,6 +334,26 @@ The VM can be stopped and started on demand to save cost via the `vm-stop.yml` /
 - The allowed range is set via the `allowed_ssh_eduVPN` Terraform variable in `terraform/` and defaults to `129.187.0.0/16`. Update it there (and re-run `terraform apply` or the `provision.yml` workflow) if the MWN allocation changes.
 - HTTP (80) and HTTPS (443) remain open to all sources, since the application's frontend/API are intended to be publicly available. Only SSH is access-restricted.
 - **CI/CD SSH access**: Since the GitHub Actions runners don't have IPs within the MWN range, both `provision.yml` (which runs the Ansible playbook to configure the VM) and `deploy-vm.yml` (which deploys updated images) add a `/32` NSG rule for the runner's own public IP just before connecting over SSH, then delete that rule immediately afterward (even on failure, via `if: always()`). This keeps the NSG closed to the public internet while still allowing automated provisioning and deploys.
+
+---
+
+### Admin Panel
+
+The app has an admin panel at **`/admin`** that unlocks feature flags, runtime settings, log viewers, all-roadmaps view, and user management. All admin API calls require the **ADMIN** role — the api-gateway returns `403` for non-admins.
+
+**How the admin account is created.** On startup, user-service bootstraps an ADMIN account from `ADMIN_EMAIL` / `ADMIN_PASSWORD` (see `AdminBootstrap`). It is skipped if either value is unset or if the account already exists. There is no self-service way to become admin — the account must be seeded this way.
+
+**Local (Docker Compose).** The credentials come from `infra/.env` (passed to user-service by `docker-compose.yml`):
+
+1. Ensure `ADMIN_EMAIL` and `ADMIN_PASSWORD` are set in `infra/.env`. 
+2. `make docker-up`
+3. Open http://localhost:3000, **log in** with those credentials, then go to **http://localhost:3000/admin**.
+
+**AET / remote.** The admin credentials come from the `ADMIN_EMAIL` / `ADMIN_PASSWORD` **GitHub Secrets** (wired through `deploy-k8s.yml`), not from `infra/.env`. Log in at https://team-devvopps.stud.k8s.aet.cit.tum.de and open `/admin`. Ask the team for the values — they are not committed.
+
+**What you can do in the panel:** manage users (list / delete), toggle feature flags (`tokenQuota`, `llmLogs`, `grafanaLink`, `llmUseLogos`), edit runtime settings (monthly token limit, the LLM prompt sections), view LLM and auth logs, view all users' roadmaps, and open Grafana.
+
+> If you reset the database (`docker compose down -v`), the admin account is re-created on the next startup from the same env values, so the login stays the same.
 
 ---
 
@@ -599,18 +571,18 @@ GitHub Actions workflows are defined in `.github/workflows/`.
 | `lint.yml` | Pull requests to `main`, pushes to non-`main` branches | Runs frontend ESLint, Java checks, Python linting (Ruff) for the llm-service, actionlint, Helm lint, and OpenAPI lint |
 | `build.yml` | Push to `main`, manual dispatch | Builds Docker images for all services, pushes them to GHCR, then calls `deploy-k8s.yml` |
 | `deploy-vm.yml` | Automatically after `build.yml` completes successfully on `main` (via `workflow_run`) | Temporarily opens SSH access for the runner's IP, deploys the latest images to the Azure VM with Docker Compose, then closes SSH access again |
-| `deploy-k8s.yml` | Called by `build.yml` after a successful image build on `main` (via `workflow_call`); manual dispatch | Deploys the Helm chart to the AET Kubernetes cluster |
+| `deploy-k8s.yml` | Called by `build.yml` after a successful image build on `main` (via `workflow_call`) or manual dispatch | Deploys the Helm chart to the AET Kubernetes cluster |
 | `provision.yml` | Manual dispatch | Provisions or imports Azure resources with Terraform, temporarily opens SSH for the runner's IP, configures the VM with Ansible, and updates the Azure public IP GitHub variable, then closes SSH access again |
 | `vm-start.yml` | Manual dispatch | Starts the Azure VM |
 | `vm-stop.yml` | Manual dispatch | Deallocates the Azure VM to stop billing |
 | `testing.yml` | Every push | Runs Spring Boot tests for all backend services, pytest tests for the LLM service, and vitest tests for the client |
 
 Required GitHub configuration (secrets and variables) is documented per deployment target under Setup Instructions:
-[AET Kubernetes Cluster (Production)](#aet-kubernetes-cluster-production) and [Azure VM (Staging/Demo)](#azure-vm-stagingdemo).
+[AET Kubernetes Cluster (Production)](#aet-kubernetes-cluster-production) and [Azure VM (Cloud)](#azure-vm-cloud).
 
 ## Monitoring and Observability
 
-The monitoring stack — **Prometheus** (metrics + alert rules), **Grafana** (dashboards), **Loki** + **Promtail** (log aggregation) — is deployed automatically by both the Docker Compose setup and the Helm chart. Five pre-built dashboards (Request Metrics, System Health, Logs, LLM Service, Auth & Security) and the alert rules (`ServiceDown`, `HighErrorRate`, `HighLatency`) are provisioned on startup, with the exported dashboard JSON in `helm/team-devvopps/grafana-dashboards/` and the alert rule files in `infra/prometheus/alerts.yaml` (compose) and `helm/team-devvopps/templates/prometheus/alerts.yaml` (Kubernetes).
+The monitoring stack — **Prometheus** (metrics + alert rules), **Grafana** (dashboards), **Loki** + **Promtail** (log aggregation) — is deployed automatically by both the Docker Compose setup and the Helm chart. Five pre-built dashboards (Request Metrics, System Health, Logs, LLM Service, Auth & Security) and the alert rules (ServiceDown, HighErrorRate, HighLatency) are provisioned on startup, with the exported dashboard JSON in `helm/team-devvopps/grafana-dashboards/` and the alert rule files in `infra/prometheus/alerts.yaml` (compose) and `helm/team-devvopps/templates/prometheus/alerts.yaml` (Kubernetes).
 
 **Full guide: [docs/MONITORING.md](docs/MONITORING.md)** — dashboard explanations, alert thresholds, how logs flow, how to test alerts, and troubleshooting.
 
@@ -622,7 +594,7 @@ The monitoring stack — **Prometheus** (metrics + alert rules), **Grafana** (da
 | Kubernetes (local & AET via kubectl) | `kubectl port-forward -n team-devvopps svc/grafana 3001:3000` | `kubectl port-forward -n team-devvopps svc/prometheus 9090:9090` |
 | AET cluster (public) | https://team-devvopps.stud.k8s.aet.cit.tum.de/grafana | port-forward only (not publicly exposed) |
 
-On both Docker and the AET cluster, Grafana can also be opened from inside the app: log in as an admin and use the **Grafana ↗** button in the Admin Panel (shown when the `grafanaLink` feature flag is enabled).
+> ⚠️ On both Docker and the AET cluster, Grafana can also be opened easily from inside the app without port forwarding: log in as an admin and use the **Grafana ↗** button in the Admin Panel (shown when the `grafanaLink` feature flag is enabled).
 
 ### Local Logs
 
@@ -678,13 +650,13 @@ Main responsibilities per student. Ownership did not mean isolated work — inte
 - API documentation (OpenAPI specs in `api/`, Swagger UI, pre-commit hooks for linting)
 - Backend (Spring Boot microservices with proper HTTP status exceptions, inter-service discovery)
 - CI/CD (build & push Docker images with per-service GitHub Actions layer caching, deploy-to-VM workflow, provision workflow, testing workflow)
-- Azure VM deployment (Terraform & Ansible (one-time infrastructure provisioning), and CI/CD deployment to the vm - with restricted SSH access)
+- Azure VM deployment (Terraform & Ansible for one-time infrastructure provisioning, and CI/CD deployment to the VM with restricted SSH access)
 - Testing (Spring Boot unit & integration tests, API gateway tests, pytest for the LLM service, Vitest for the React client)
 - Features: task completion progress, per-user LLM token quota limitation & tracking 
 
 **Dilay Nurlu**
 
-- Kubernetes deployment (Helm chart for the AET cluster, Postgres replication & self-healing, security contexts & resource limits)
+- Kubernetes deployment (deploy-k8s.yml, Helm chart for the AET cluster, Postgres replication & self-healing, security contexts & resource limits)
 - Monitoring & observability (Prometheus + Grafana + Loki/Promtail stack, dashboards, alert rules)
 - CI/CD pipeline (linting workflows, Dependabot, least-privilege Actions permissions, Helm upgrade auto-recovery)
 - Security hardening (KICS/zizmor findings, pinned images & action SHAs, LLM-service ingress fix)
@@ -701,17 +673,6 @@ Main responsibilities per student. Ownership did not mean isolated work — inte
 - Auth & UI (login/signup pages, roadmap UI, stable task-list ordering, general UI fixes and refactors)
 - CI/CD deployment reliability (fixed GitHub Actions deploy errors and timeouts, seeder as Helm hook, parallel and best-effort Promtail rollout so it cannot stall deploys)
 
-In addition to their primary subsystem, every team member:
-
-- Works on feature branches and opens pull requests into `main`.
-- Keeps changes small enough to review and describes the tested behavior in the PR.
-- Runs relevant local checks before requesting review.
-- Updates OpenAPI specs in `api/` whenever service endpoints or request/response shapes change.
-- Updates this README or `docs/MONITORING.md` whenever setup, deployment, monitoring, ports, secrets, or operational commands change.
-- Keeps Docker, Kubernetes, Helm, Terraform, and Ansible files aligned with the services they deploy.
-- Never commits real credentials, kubeconfig files, private keys, or production secrets.
-- Monitors GitHub Actions after pushing or merging and fixes failing pipelines quickly.
-
 ## Making Changes
 
 - **Code changes:** Commit to feature branches, open PR, merge to main
@@ -721,7 +682,7 @@ In addition to their primary subsystem, every team member:
 
 ### Local Pre-commit Hooks
 
-Developer can install pre-commit hooks to run Lint OpenAPI specifications checks locally  before committing:
+Developers can install pre-commit hooks to run OpenAPI specification lint checks locally before committing:
 
 ```bash
 npm install
