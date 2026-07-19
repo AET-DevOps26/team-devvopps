@@ -1,3 +1,5 @@
+> **Note:** The content of our `infra/.env` file - containing all passwords and keys necessary to run the app locally, as well as the admin and Grafana login credentials (for local Docker and AET cluster) - was sent via Matrix to our tutor, Leopold Thomas.
+
 # team-devvopps
 
 TUMgoal is a DevOps course project for helping TUM Computer Science students turn academic or career goals into structured learning roadmaps. Students enter a goal and receive milestones, tasks, course recommendations, and progress tracking.
