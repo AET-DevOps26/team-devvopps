@@ -212,7 +212,21 @@ export default function RoadmapChat() {
         return;
       }
 
-      if (!res.ok) throw new Error(`Error ${res.status}: ${res.statusText}`);
+      if (!res.ok) {
+        // roadmap-service (Spring) puts the reason under "message"; llm-service
+        // (FastAPI) uses "detail" — check both before falling back to the bare
+        // status, so e.g. the 502 "AI model returned invalid output" message
+        // (see RoadmapService.callLLM) actually reaches the UI instead of a
+        // bare "Error 502: Bad Gateway".
+        let message: string | undefined;
+        try {
+          const data = await res.json();
+          message = data.message || data.detail;
+        } catch {
+          // body wasn't JSON — fall through to default message
+        }
+        throw new Error(message || `Error ${res.status}: ${res.statusText}`);
+      }
       const data: RoadmapResponse = await res.json();
       showRoadmap(data);
       fetchUsage();
